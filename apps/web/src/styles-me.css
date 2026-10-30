@@ -1,0 +1,148 @@
+/* 我的页：评分展示与位置编辑器 */
+
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.rating-hero {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 6px 0 18px;
+}
+
+.rating-score {
+  font-family: var(--display);
+  font-size: 56px;
+  line-height: 1;
+  color: var(--gold-2);
+  text-shadow: 0 0 28px rgba(201, 162, 39, 0.28);
+}
+
+.rating-pm {
+  font-size: 15px;
+  color: var(--muted);
+  padding-bottom: 8px;
+}
+
+.rating-split {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* 折叠说明：不用 JS，键盘与读屏都能用 */
+.explainer {
+  margin-top: 16px;
+}
+
+.explainer summary {
+  cursor: pointer;
+  color: var(--gold-2);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  list-style: none;
+}
+
+.explainer summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainer summary::before {
+  content: '▸ ';
+  color: var(--gold);
+}
+
+.explainer[open] summary::before {
+  content: '▾ ';
+}
+
+.explainer-body {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+
+.explainer-body ul {
+  margin: 10px 0;
+  padding-left: 18px;
+}
+
+.explainer-body b {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.explainer-body strong {
+  color: var(--text);
+}
+
+.id-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.id-row:last-child {
+  border-bottom: none;
+}
+
+/* 位置编辑器 */
+
+.pos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pos-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) 140px minmax(160px, 1fr);
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.pos-name {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.pos-select {
+  padding: 7px 10px;
+}
+
+.pos-prof {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pos-prof input[type='range'] {
+  flex: 1;
+  accent-color: var(--gold);
+}
+
+.pos-prof input[type='range']:disabled {
+  opacity: 0.3;
+}
+
+@media (max-width: 760px) {
+  .pos-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .rating-split {
+    grid-template-columns: 1fr;
+  }
+}

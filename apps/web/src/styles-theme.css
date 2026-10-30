@@ -1,0 +1,594 @@
+/* ==========================================================================
+   主题覆盖层（最后加载）
+   1. 悬停态：两个主题统一收敛，避免"鼠标一放上去像换了个按钮"
+   2. 浅色：主色改为 Dota2 红，沿用概念图的浅灰底 + 白卡
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 悬停 */
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(212, 173, 51, 0.13), rgba(212, 173, 51, 0.04));
+  box-shadow:
+    0 0 0 1px rgba(212, 173, 51, 0.22),
+    0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #8478f5, #6455d6);
+  box-shadow: 0 6px 16px rgba(123, 108, 240, 0.26);
+}
+
+/* ---------------------------------------------------------------- 浅色 */
+
+:root[data-theme='light'] {
+  /* Dota2 的深红作为文字/图形/按钮主色 */
+  --gold: #b3261e;
+  --gold-2: #8e1b15;
+  --brand: #b3261e;
+  --line: rgba(179, 38, 30, 0.16);
+  --line-strong: rgba(179, 38, 30, 0.45);
+  --input-line: rgba(27, 32, 51, 0.24);
+}
+
+:root[data-theme='light'] body {
+  background-image:
+    radial-gradient(1100px 560px at 50% -10%, rgba(179, 38, 30, 0.09), transparent 72%),
+    radial-gradient(900px 500px at 92% 0%, rgba(27, 32, 51, 0.05), transparent 65%);
+}
+
+:root[data-theme='light'] .nav {
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom-color: rgba(27, 32, 51, 0.1);
+  box-shadow: 0 1px 12px rgba(27, 32, 51, 0.05);
+}
+
+:root[data-theme='light'] .brand-name {
+  color: #b3261e;
+}
+
+:root[data-theme='light'] .nav-link {
+  color: #4a5265;
+}
+
+:root[data-theme='light'] .nav-link:hover {
+  color: #8e1b15;
+  background: rgba(179, 38, 30, 0.06);
+}
+
+:root[data-theme='light'] .nav-link.active {
+  color: #8e1b15;
+  background: rgba(179, 38, 30, 0.1);
+}
+
+:root[data-theme='light'] .hero {
+  background:
+    radial-gradient(700px 320px at 12% 20%, rgba(179, 38, 30, 0.14), transparent 68%),
+    radial-gradient(600px 300px at 88% 90%, rgba(27, 32, 51, 0.08), transparent 70%),
+    linear-gradient(160deg, #ffffff 0%, #f1eee9 100%);
+  border-color: rgba(27, 32, 51, 0.1);
+}
+
+:root[data-theme='light'] .hero::after {
+  background: repeating-linear-gradient(
+    -55deg,
+    rgba(179, 38, 30, 0.05) 0 2px,
+    transparent 2px 16px
+  );
+}
+
+:root[data-theme='light'] .hero-title {
+  color: #1b2033;
+  text-shadow: none;
+}
+
+:root[data-theme='light'] .card {
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(27, 32, 51, 0.06);
+}
+
+:root[data-theme='light'] .stat,
+:root[data-theme='light'] .team,
+:root[data-theme='light'] .pos-row,
+:root[data-theme='light'] .empty {
+  background: #ffffff;
+}
+
+/* 次级按钮：白底红字，悬停只加深文字与极淡底色 */
+:root[data-theme='light'] .btn {
+  background: #ffffff;
+  border-color: rgba(179, 38, 30, 0.32);
+  color: #8e1b15;
+}
+
+:root[data-theme='light'] .btn:hover:not(:disabled) {
+  background: rgba(179, 38, 30, 0.06);
+  border-color: rgba(179, 38, 30, 0.5);
+  color: #7a1710;
+  box-shadow: 0 2px 8px rgba(179, 38, 30, 0.1);
+}
+
+:root[data-theme='light'] .btn-ghost {
+  background: transparent;
+  border-color: rgba(27, 32, 51, 0.18);
+  color: #4a5265;
+}
+
+:root[data-theme='light'] .btn-ghost:hover:not(:disabled) {
+  background: rgba(179, 38, 30, 0.06);
+  border-color: rgba(179, 38, 30, 0.32);
+  color: #8e1b15;
+}
+
+/* 主按钮：同一色阶里微微加深，不做跳色 */
+:root[data-theme='light'] .btn-primary {
+  color: #ffffff;
+  border-color: #8e1b15;
+  background: linear-gradient(180deg, #be2f26, #a8261e);
+}
+
+:root[data-theme='light'] .btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ac2820, #8e1b15);
+  box-shadow: 0 4px 12px rgba(179, 38, 30, 0.22);
+}
+
+:root[data-theme='light'] .input {
+  background-color: #ffffff;
+  border-color: var(--input-line);
+  color: #1b2033;
+}
+
+:root[data-theme='light'] .input:focus {
+  border-color: rgba(179, 38, 30, 0.6);
+  box-shadow: 0 0 0 3px rgba(179, 38, 30, 0.1);
+}
+
+:root[data-theme='light'] .progress {
+  background: rgba(27, 32, 51, 0.08);
+}
+
+:root[data-theme='light'] .progress-bar {
+  background: linear-gradient(90deg, #b3261e, #d4694a);
+}
+
+:root[data-theme='light'] .team-radiant {
+  background: linear-gradient(180deg, rgba(31, 143, 82, 0.08), transparent 60%), #ffffff;
+}
+
+:root[data-theme='light'] .team-dire {
+  background: linear-gradient(180deg, rgba(179, 38, 30, 0.07), transparent 60%), #ffffff;
+}
+
+:root[data-theme='light'] .table tr:hover td {
+  background: rgba(179, 38, 30, 0.04);
+}
+
+:root[data-theme='light'] .slot,
+:root[data-theme='light'] .id-row {
+  border-bottom-color: rgba(27, 32, 51, 0.08);
+}
+
+:root[data-theme='light'] .footer {
+  border-top-color: rgba(27, 32, 51, 0.1);
+}
+
+:root[data-theme='light'] .tag-other {
+  color: #4a5265;
+}
+
+/* 状态色不受主色影响：绿=成功、琥珀=待办、灰=完结 */
+:root[data-theme='light'] .pill-open {
+  color: #1f8f52;
+  background: rgba(31, 143, 82, 0.1);
+}
+
+:root[data-theme='light'] .pill-closed {
+  color: #a8620a;
+  background: rgba(168, 98, 10, 0.1);
+}
+
+:root[data-theme='light'] .pill-published {
+  color: #3b4a66;
+  background: rgba(59, 74, 102, 0.1);
+}
+
+:root[data-theme='light'] .pill-idle {
+  color: #4a5265;
+  background: rgba(74, 82, 101, 0.08);
+}
+
+/* 深色下也把"不可用"的导航项提亮一档，原来的 0.35 几乎看不见 */
+.nav-link.disabled {
+  opacity: 0.55;
+}
+
+/* ==========================================================================
+   浅色模式排查修正
+   下面每一条都对应一个"深色下正常、浅色下坏掉"的具体原因。
+   ========================================================================== */
+
+/* ① 硬编码的近白色标题：浅色下会变成白底白字（赛事卡、详情页、后台标题全中招） */
+.event-name,
+.section-title {
+  color: var(--text);
+}
+
+/* ② 错误提示：深色用的是浅粉字 (#e6a6a6)，放到浅底上几乎看不见 */
+:root[data-theme='light'] .alert {
+  border-color: rgba(179, 38, 30, 0.32);
+  background: #fdecea;
+  color: #8e1b15;
+}
+
+/* ③ 用白色 alpha 画的分隔线：在浅底上等于隐形（表格、场次行、阵容槽位） */
+:root[data-theme='light'] .table td,
+:root[data-theme='light'] .match-row,
+:root[data-theme='light'] .slot,
+:root[data-theme='light'] .id-row,
+:root[data-theme='light'] .pos-row {
+  border-color: rgba(27, 32, 51, 0.09);
+}
+
+:root[data-theme='light'] .table th {
+  border-bottom-color: rgba(27, 32, 51, 0.16);
+}
+
+/* ④ 评分数字的金色辉光在浅底上发脏，直接去掉 */
+:root[data-theme='light'] .rating-score {
+  text-shadow: none;
+}
+
+/* ⑤ 禁用态在浅色下过淡（红字本来饱和度就低，再乘 0.42 就糊了） */
+:root[data-theme='light'] .btn:disabled {
+  opacity: 0.58;
+}
+
+/* 附加：空状态、表头、隔行底色在浅色下的可读性 */
+:root[data-theme='light'] .empty {
+  border-color: rgba(27, 32, 51, 0.16);
+  background: rgba(255, 255, 255, 0.7);
+  color: #4a5265;
+}
+
+:root[data-theme='light'] .table tbody tr:nth-child(even) td {
+  background: rgba(27, 32, 51, 0.018);
+}
+
+:root[data-theme='light'] .table th {
+  color: #4a5265;
+}
+
+:root[data-theme='light'] .hero-kicker,
+:root[data-theme='light'] .stat-label,
+:root[data-theme='light'] .field-label {
+  color: #5b6478;
+}
+
+/* 输入、下拉、多行文本统一文字色，避免浏览器继承成灰 */
+:root[data-theme='light'] input,
+:root[data-theme='light'] select,
+:root[data-theme='light'] textarea {
+  color: var(--text);
+}
+
+:root[data-theme='light'] select.input option {
+  background-color: #ffffff;
+  color: #1b2033;
+}
+
+/* 卡片描边在浅色下需要实一点，否则一整页都是"浮着的白色方块" */
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .stat,
+:root[data-theme='light'] .team {
+  border-color: rgba(27, 32, 51, 0.1);
+}
+
+/* ==========================================================================
+   优先级修正（真 bug，不是配色问题）
+   ========================================================================== */
+
+/* ① 主按钮悬停时文字变红、和红底糊在一起。
+   原因：.btn:hover:not(:disabled) 的优先级 (0,5,0) 高于 .btn-primary (0,3,0)，
+   它把 color 改成了深红。必须显式把主按钮的颜色钉回来。 */
+:root[data-theme='light'] .btn-primary,
+:root[data-theme='light'] .btn-primary:hover:not(:disabled),
+:root[data-theme='light'] .btn-primary:active:not(:disabled) {
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  color: #f7f5ff;
+}
+
+/* ② 下拉框箭头消失。
+   原因有两层：
+     a) .input 用过 background 简写，会把 background-image 重置为 none；
+     b) 即使改成 background-color，:root[data-theme] .input 的权重也高于 select.input。
+   所以这里既用 background-color（已在上方修掉），又用同等权重的选择器重新声明箭头。 */
+:root[data-theme] select.input,
+select.input {
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) calc(50% + 1px),
+    calc(100% - 11px) calc(50% + 1px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* ③ 浅色下的页面标题用 Dota2 红，和"红色作为文字主色"的基线一致 */
+:root[data-theme='light'] .section-title {
+  color: var(--gold-2);
+}
+
+:root[data-theme='light'] .card-title,
+:root[data-theme='light'] .brand-name {
+  color: #b3261e;
+}
+
+/* ==========================================================================
+   阵容预览：两列等宽
+   原因：.match-board 原本是 1fr auto 1fr 的三列网格（中间留给 "VS"），
+   但后台预览只渲染了两个队伍卡，第二张就掉进了中间那列 auto 里被挤窄。
+   这里按"两列等宽"重定义，中间分隔符若存在则独占一行。
+   ========================================================================== */
+
+.match-board {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.match-board .vs {
+  grid-column: 1 / -1;
+  text-align: center;
+}
+
+/* minmax(0, 1fr) 允许列收缩；否则长昵称会把其中一列撑开 */
+.team {
+  min-width: 0;
+}
+
+.team-name {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* "1 号位" 在 34px 里会折行，加宽并禁止换行 */
+.slot-pos {
+  width: 46px;
+  white-space: nowrap;
+  flex: none;
+}
+
+.slot-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slot-rating {
+  flex: none;
+}
+
+/* 移动端仍然单列 */
+@media (max-width: 760px) {
+  .match-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   赛事卡片网格：一行三个
+   auto-fit 在宽屏下会排出 4 个，卡片被压窄后「查看详情」按钮折成竖排、
+   状态徽章也断成两行。改成固定列数 + 卡片等高 + 底部对齐。
+   ========================================================================== */
+
+.grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-3 > * {
+  min-width: 0;
+}
+
+@media (max-width: 1120px) {
+  .grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 卡片撑满格子高度，内部纵向排布，底部那行永远贴底——一排卡片才会对齐 */
+.event-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.event-card .event-foot {
+  margin-top: auto;
+}
+
+.event-head {
+  align-items: flex-start;
+}
+
+.event-name {
+  min-width: 0;
+}
+
+/* 徽章与按钮不折行：折行是排版事故，不是信息量太大 */
+.pill {
+  white-space: nowrap;
+  flex: none;
+}
+
+.btn {
+  white-space: nowrap;
+}
+
+.event-foot {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+/* ==========================================================================
+   帮助浮窗（章节标题后面那个 "?"）
+   ========================================================================== */
+
+.help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  color: var(--gold-2);
+  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* 让标题变成 flex 容器，图标靠 align-items 居中——
+   vertical-align: middle 对齐的是"基线上方半个 x-height"，
+   对中文字体的行盒来说总是偏高，视觉上会显得悬空 */
+.section-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title .help {
+  margin-left: 0;
+  flex: none;
+}
+
+.help:hover,
+.help:focus-visible {
+  background: rgba(179, 38, 30, 0.1);
+  outline: none;
+}
+
+.help-pop {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  z-index: 40;
+  width: 320px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--muted);
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.9;
+  text-align: left;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-50%) translateY(-6px);
+  transition:
+    opacity 0.16s ease,
+    transform 0.16s ease,
+    visibility 0.16s;
+  pointer-events: none;
+}
+
+/* 箭头 */
+.help-pop::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  border-left: 1px solid var(--line-strong);
+  border-top: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  transform: rotate(45deg);
+}
+
+.help:hover .help-pop,
+.help:focus .help-pop,
+.help:focus-within .help-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
+.help-pop b {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--gold-2);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.help-step {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.help-note {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 11px;
+}
+
+:root[data-theme='light'] .help-pop {
+  background: #ffffff;
+  color: #4a5265;
+  box-shadow: 0 16px 40px rgba(27, 32, 51, 0.14);
+}
+
+:root[data-theme='light'] .help-pop::before {
+  background: #ffffff;
+}
+
+/* ==========================================================================
+   手动填写段位：两行两列
+   卡片内容区只有约 440px，四个控件挤一行需要 ~500px，
+   「超凡入圣」这类四字勋章会被压缩箭头压住。改成 2×2：
+     第 1 行：勋章 · 星级
+     第 2 行：天梯分 · 保存
+   ========================================================================== */
+
+.rank-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.rank-form > * {
+  min-width: 0;
+}
+
+/* 天梯分与按钮平分第二行；按钮拉满格子宽，视觉上更稳 */
+.rank-form .btn {
+  width: 100%;
+  padding-left: 12px;
+  padding-right: 12px;
+}

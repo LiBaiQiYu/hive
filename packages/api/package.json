@@ -1,0 +1,13 @@
+{
+  "name": "@hive/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@hive/db": "workspace:*",
+    "@hive/shared": "workspace:*",
+    "drizzle-orm": "^0.38.0",
+    "hono": "^4.6.0",
+    "zod": "^3.23.8"
+  }
+}

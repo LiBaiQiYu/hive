@@ -1,0 +1,29 @@
+{
+  "name": "hive",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler dev --config packages/api/wrangler.jsonc --persist-to packages/database/.wrangler/state --var APP_ORIGIN:http://127.0.0.1:8787",
+    "dev:web": "pnpm --filter @hive/web dev",
+    "build": "pnpm --filter @hive/web build",
+    "typecheck": "tsc -p tsconfig.json --pretty false",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate --config packages/database/drizzle.config.ts",
+    "db:migrate:local": "wrangler d1 migrations apply hive --local -c packages/database/wrangler.d1.jsonc",
+    "db:migrate:remote": "wrangler d1 migrations apply hive --remote -c packages/database/wrangler.d1.jsonc",
+    "db:backup": "wrangler d1 export hive --remote --output backups/hive.sql -c packages/database/wrangler.d1.jsonc",
+    "db:check": "python packages/database/scripts/check_schema.py && python packages/database/scripts/check_parity.py",
+    "deploy": "wrangler deploy --config packages/api/wrangler.jsonc"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261030.1",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "wrangler": "^4.0.0"
+  }
+}

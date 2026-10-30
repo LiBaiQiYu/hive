@@ -1,0 +1,26 @@
+{
+  // ===========================================================================
+  // 临时配置：只用于验证 D1 迁移在真实数据库上的行为（测完即删）
+  // ---------------------------------------------------------------------------
+  // 为什么不直接用 packages/api/wrangler.jsonc？
+  //   那份配置里 assets.directory 指向 apps/web/dist，该目录此时还不存在，
+  //   wrangler 校验配置时会直接报错，和本次测试无关。
+  //
+  // 用法见 docs/SMOKE-TEST.md 第一部分。
+  // migrations_dir 相对于本文件所在目录，指向真实的迁移目录，
+  // 这样测的就是将来要上线的同一批 SQL。
+  // ===========================================================================
+  "name": "hive-d1-smoke",
+  "main": "stub.js",
+  "compatibility_date": "2025-09-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hive-d1-smoke",
+      // 注意：必须是 hive-d1-smoke 的 ID。
+      // 同账号下还有一个名为 "hive" 的库（15164698-04xx...），别复制错了。
+      "database_id": "87c1e863-5b9c-4517-9e4c-07ccc228a9a2",
+      "migrations_dir": "../packages/database/migrations"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+# 依赖与构建缓存
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Cloudflare 本地状态：包含本地 D1 数据，绝不入仓
+.wrangler/
+
+# 本地密钥（假值，但也不该进仓库）
+.dev.vars
+.env
+.env.*
+
+# 邀请码清单、数据库导出：属于凭据，只留在本地
+backups/
+*.sqlite
+*.sqlite3
+
+# 杂项
+*.log
+.DS_Store
+Thumbs.db

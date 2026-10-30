@@ -1,0 +1,503 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { ApiError, newId } from '@hive/shared';
+import type { AppEnv } from '../env';
+import { requireUser } from '../guard';
+import { explainRejection, normalizePositions } from '../services/positions';
+import { collectInput } from './admin-ratings';
+import { ALGO_VERSION, computeEffective, computeRating, rankTierFromMmr } from '../algorithms/rating';
+
+export const meRoutes = new Hono<AppEnv>();
+
+/* --------------------------------------------------------------------------
+ * GET /api/me —— 档案 + 评分 + 位置偏好 + 账号绑定状态
+ * ------------------------------------------------------------------------ */
+meRoutes.get('/', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const user = await env.DB.prepare(
+    `SELECT id, username, display_name AS displayName, role, status,
+            qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt
+       FROM users WHERE id = ?`,
+  )
+    .bind(userId)
+    .first();
+
+  const rating = await env.DB.prepare(
+    `SELECT system_rating AS system, admin_adjustment AS adjustment,
+            effective_rating AS effective, confidence_bp AS confidenceBp,
+            algorithm_version AS algorithmVersion, updated_at AS updatedAt
+       FROM player_ratings WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      system: number;
+      adjustment: number;
+      effective: number;
+      confidenceBp: number;
+      algorithmVersion: string;
+      updatedAt: number;
+    }>();
+
+  const positions = await env.DB.prepare(
+    `SELECT position, preference_rank AS rank, proficiency
+       FROM player_positions WHERE user_id = ? ORDER BY preference_rank ASC`,
+  )
+    .bind(userId)
+    .all<{ position: number; rank: number; proficiency: number }>();
+
+  const account = await env.DB.prepare(
+    `SELECT provider, verification, dota_account_id AS dotaAccountId, persona_name AS personaName,
+            last_synced_at AS lastSyncedAt
+       FROM game_accounts WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      provider: string;
+      verification: string;
+      dotaAccountId: number;
+      personaName: string | null;
+      lastSyncedAt: number | null;
+    }>();
+
+  // 外部数据：段位、天梯分、数据来源——不返回这些，用户根本不知道"同步了什么"
+  const stats = await env.DB.prepare(
+    `SELECT rank_tier AS rankTier, declared_mmr AS declaredMmr, rank_source AS rankSource,
+            rank_checked_at AS rankCheckedAt, career_matches AS careerMatches
+       FROM player_stats WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{
+      rankTier: number | null;
+      declaredMmr: number | null;
+      rankSource: string | null;
+      rankCheckedAt: number | null;
+      careerMatches: number;
+    }>();
+
+  return c.json({
+    data: {
+      user,
+      rating: rating
+        ? {
+            ...rating,
+            // 不确定度用于 UI 显示 ±N：置信度越低，展示区间越宽
+            uncertainty: Math.round(300 * (1 - rating.confidenceBp / 10000)),
+          }
+        : null,
+      positions: positions.results ?? [],
+      gameAccount: account ?? null,
+      stats: stats ?? null,
+    },
+    meta: { requestId: c.get('requestId') },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * PUT /api/me/positions —— 全量覆盖位置偏好
+ *
+ * 用"全量替换"而不是 PATCH：志愿是一个有序集合，
+ * 局部更新必然要处理重排，反而更容易出错。
+ * ------------------------------------------------------------------------ */
+meRoutes.put('/positions', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = normalizePositions(body);
+  if (!parsed.ok) {
+    throw new ApiError('VALIDATION_FAILED', explainRejection(parsed.reason) ?? '位置偏好不合法');
+  }
+
+  const now = Date.now();
+  const statements = [env.DB.prepare(`DELETE FROM player_positions WHERE user_id = ?`).bind(userId)];
+
+  for (const entry of parsed.positions) {
+    statements.push(
+      env.DB.prepare(
+        `INSERT INTO player_positions (id, user_id, position, preference_rank, proficiency, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).bind(newId(now), userId, entry.position, entry.rank, entry.proficiency, now),
+    );
+  }
+
+  // batch 是事务：删旧插新要么全成功，要么完全不动
+  await env.DB.batch(statements);
+
+  return c.json({
+    data: {
+      positions: parsed.positions,
+      // 下次分组才会用上新值；已发布的阵容不会因为改偏好而变化
+      note: '下次生成阵容时生效',
+    },
+    meta: { requestId: c.get('requestId') },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * PATCH /api/me —— 编辑资料
+ *
+ * 只允许改"自己说了算"的字段：显示名、简介、QQ。
+ * 用户名是登录凭据、role 是权限、评分与段位归系统/管理员，这几样一律不接受客户端写入。
+ * ------------------------------------------------------------------------ */
+const patchSchema = z.object({
+  displayName: z.string().trim().min(1).max(32).optional(),
+  bio: z.string().trim().max(280).nullable().optional(),
+  qqNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{5,12}$/, 'QQ 号应为 5-12 位数字')
+    .nullable()
+    .optional(),
+});
+
+meRoutes.patch('/', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const parsed = patchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  const { displayName, bio, qqNumber } = parsed.data;
+
+  if (displayName !== undefined) {
+    assignments.push('display_name = ?');
+    values.push(displayName);
+  }
+  if (bio !== undefined) {
+    assignments.push('bio = ?');
+    values.push(bio === null || bio === '' ? null : bio);
+  }
+  if (qqNumber !== undefined) {
+    assignments.push('qq_number = ?');
+    values.push(qqNumber === null || qqNumber === '' ? null : qqNumber);
+  }
+
+  if (assignments.length === 0) {
+    throw new ApiError('VALIDATION_FAILED', '没有需要更新的字段');
+  }
+
+  const now = Date.now();
+  assignments.push('updated_at = ?');
+  values.push(now, userId);
+
+  try {
+    await env.DB.prepare(`UPDATE users SET ${assignments.join(', ')} WHERE id = ?`)
+      .bind(...values)
+      .run();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('UNIQUE')) throw new ApiError('CONFLICT', '这个 QQ 号已经被其他成员使用');
+    throw err;
+  }
+
+  const user = await env.DB.prepare(
+    `SELECT id, username, display_name AS displayName, role, status,
+            qq_number AS qqNumber, avatar_url AS avatarUrl, bio
+       FROM users WHERE id = ?`,
+  )
+    .bind(userId)
+    .first();
+
+  return c.json({ data: { user }, meta: { requestId: c.get('requestId') } });
+});
+
+/* --------------------------------------------------------------------------
+ * POST /api/me/game-account/claim —— 用数字 ID 从 OpenDota 拉段位
+ *
+ * 语义必须说清楚：**验证的是"这个账号存在且有公开数据"，不是"这是你的账号"**。
+ * 所以写入的是 verification='CLAIMED'，徽章显示"归属未验证"。
+ * ------------------------------------------------------------------------ */
+const claimSchema = z.object({
+  accountId: z.number().int().min(1).max(4_294_967_295),
+});
+
+interface OpenDotaPlayer {
+  profile?: { personaname?: string; avatarfull?: string };
+  rank_tier?: number | null;
+  leaderboard_rank?: number | null;
+}
+
+meRoutes.post('/game-account/claim', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const parsed = claimSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '请填写数字 ID（例如 109902856）');
+  }
+  const accountId = parsed.data.accountId;
+
+  // 已有 Steam 验证的账号时不允许降级成"声明"
+  const existing = await env.DB.prepare(
+    `SELECT id, verification FROM game_accounts WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ id: string; verification: string }>();
+  if (existing?.verification === 'VERIFIED') {
+    throw new ApiError('CONFLICT', '已绑定 Steam，无需再用数字 ID');
+  }
+
+  const taken = await env.DB.prepare(
+    `SELECT user_id AS userId FROM game_accounts WHERE dota_account_id = ?`,
+  )
+    .bind(accountId)
+    .first<{ userId: string }>();
+  if (taken && taken.userId !== userId) {
+    throw new ApiError('CONFLICT', '这个账号 ID 已经被其他成员占用');
+  }
+
+  let player: OpenDotaPlayer;
+  try {
+    const response = await fetch(`https://api.opendota.com/api/players/${accountId}`);
+    if (response.status === 404) {
+      throw new ApiError('NOT_FOUND', '查不到这个账号，请确认数字 ID 是否正确');
+    }
+    if (response.status === 429) {
+      throw new ApiError('RATE_LIMITED', 'OpenDota 限流了，请稍后再试');
+    }
+    if (!response.ok) {
+      throw new ApiError('CONFLICT', `OpenDota 返回 ${response.status}，稍后再试`);
+    }
+    player = (await response.json()) as OpenDotaPlayer;
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('CONFLICT', '无法连接 OpenDota，请检查网络或稍后再试');
+  }
+
+  if (!player.profile) {
+    throw new ApiError('NOT_FOUND', 'OpenDota 里没有这个账号的资料');
+  }
+
+  // 顺手取一下累计场次，用于置信度（失败不影响主流程）
+  let careerMatches = 0;
+  try {
+    const wl = await fetch(`https://api.opendota.com/api/players/${accountId}/wl`);
+    if (wl.ok) {
+      const data = (await wl.json()) as { win?: number; lose?: number };
+      careerMatches = (data.win ?? 0) + (data.lose ?? 0);
+    }
+  } catch {
+    /* 忽略 */
+  }
+
+  const now = Date.now();
+  const rankTier = typeof player.rank_tier === 'number' ? player.rank_tier : null;
+  const personaname = player.profile.personaname ?? null;
+  const avatar = player.profile.avatarfull ?? null;
+
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE game_accounts
+          SET provider = 'DOTA_ACCOUNT_ID', steam_id64 = NULL, dota_account_id = ?,
+              verification = 'CLAIMED', persona_name = ?, avatar_url = ?,
+              profile_url = ?, verified_at = NULL, last_synced_at = ?, updated_at = ?
+        WHERE id = ?`,
+    )
+      .bind(
+        accountId,
+        personaname,
+        avatar,
+        `https://www.opendota.com/players/${accountId}`,
+        now,
+        now,
+        existing.id,
+      )
+      .run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO game_accounts (id, user_id, provider, steam_id64, dota_account_id, verification,
+         persona_name, avatar_url, profile_url, is_primary, verified_at, last_synced_at, created_at, updated_at)
+       VALUES (?, ?, 'DOTA_ACCOUNT_ID', NULL, ?, 'CLAIMED', ?, ?, ?, 1, NULL, ?, ?, ?)`,
+    )
+      .bind(
+        newId(now),
+        userId,
+        accountId,
+        personaname,
+        avatar,
+        `https://www.opendota.com/players/${accountId}`,
+        now,
+        now,
+        now,
+      )
+      .run();
+  }
+
+  const stats = await env.DB.prepare(`SELECT id FROM player_stats WHERE user_id = ?`).bind(userId).first<{ id: string }>();
+  if (stats) {
+    // 同步到权威段位后，手填的 MMR 就该作废——留着只会和段位打架
+    await env.DB.prepare(
+      `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = 'OPENDOTA',
+              career_matches = ?, rank_checked_at = ?, fetched_at = ?, updated_at = ?
+        WHERE user_id = ?`,
+    )
+      .bind(rankTier, careerMatches, rankTier !== null ? now : null, now, now, userId)
+      .run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO player_stats (id, user_id, rank_tier, rank_source, career_matches,
+         rank_checked_at, fetched_at, created_at, updated_at)
+       VALUES (?, ?, ?, 'OPENDOTA', ?, ?, ?, ?, ?)`,
+    )
+      .bind(newId(now), userId, rankTier, careerMatches, rankTier !== null ? now : null, now, now, now)
+      .run();
+  }
+
+  // 立刻按新数据重算，否则"拉了段位但分数没变"会让人以为失败
+  const rating = computeRating(await collectInput(env, userId));
+  const current = await env.DB.prepare(
+    `SELECT admin_adjustment AS adjustment FROM player_ratings WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ adjustment: number }>();
+  const effective = computeEffective(rating.system, current?.adjustment ?? 0);
+
+  await env.DB.prepare(
+    `UPDATE player_ratings
+        SET system_rating = ?, effective_rating = ?, confidence_bp = ?, breakdown_json = ?,
+            algorithm_version = ?, computed_at = ?, updated_at = ?
+      WHERE user_id = ?`,
+  )
+    .bind(
+      rating.system,
+      effective,
+      rating.confidenceBp,
+      JSON.stringify({ components: rating.components, estimatedMmr: rating.estimatedMmr }),
+      ALGO_VERSION,
+      now,
+      now,
+      userId,
+    )
+    .run();
+
+  return c.json({
+    data: {
+      accountId,
+      personaName: personaname,
+      rankTier,
+      careerMatches,
+      hiddenData: rankTier === null,
+      rating: { system: rating.system, effective, confidenceBp: rating.confidenceBp },
+      note:
+        rankTier === null
+          ? '这个账号没有公开段位（对方可在 Dota2 设置里开启「公开比赛数据」），只能手动填写段位'
+          : '段位来自 OpenDota；账号归属未验证，徽章会显示「归属未验证」',
+    },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * PUT /api/me/rank —— 手动填写段位与天梯分
+ *
+ * 这是"不想绑 Steam"的人的正式路径：段位由自己申报，徽章会显示"自报"，
+ * 置信度按 SELF_REPORTED 计，评分随即重算（否则填了也不生效）。
+ * 填了天梯分时以天梯分为准，自动折算勋章与星级。
+ * ------------------------------------------------------------------------ */
+const rankSchema = z.object({
+  /** 手选段位（勋章 × 10 + 星级）；填了天梯分时可以不填，会被天梯分覆盖 */
+  rankTier: z.number().int().min(11).max(85).optional(),
+  declaredMmr: z.number().int().min(0).max(20000).nullable().optional(),
+});
+
+meRoutes.put('/rank', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const parsed = rankSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+
+  const declaredMmr = parsed.data.declaredMmr ?? null;
+
+  // 天梯分优先：填了它就按它反推段位，手选值被忽略（两者矛盾时以更具体的输入为准）
+  const rankTier =
+    declaredMmr !== null ? rankTierFromMmr(declaredMmr) : parsed.data.rankTier;
+
+  if (rankTier === undefined) {
+    throw new ApiError('VALIDATION_FAILED', '请填写天梯分，或手动选择一个段位');
+  }
+
+  const medal = Math.floor(rankTier / 10);
+  const star = rankTier % 10;
+  const validMedal = medal >= 1 && medal <= 8;
+  const validStar = medal === 8 ? star === 0 : star >= 1 && star <= 5;
+  if (!validMedal || !validStar) {
+    throw new ApiError(
+      'VALIDATION_FAILED',
+      medal === 8 ? '冠绝没有星级，请只选择「冠绝」' : '星级需 1-5，勋章需 1-8',
+    );
+  }
+
+  const derivedFromMmr = declaredMmr !== null;
+
+  const now = Date.now();
+  const existing = await env.DB.prepare(`SELECT id FROM player_stats WHERE user_id = ?`)
+    .bind(userId)
+    .first<{ id: string }>();
+
+  if (existing) {
+    await env.DB.prepare(
+      `UPDATE player_stats
+          SET rank_tier = ?, declared_mmr = ?, rank_source = 'SELF_REPORTED',
+              rank_checked_at = NULL, updated_at = ?
+        WHERE user_id = ?`,
+    )
+      .bind(rankTier, declaredMmr ?? null, now, userId)
+      .run();
+  } else {
+    await env.DB.prepare(
+      `INSERT INTO player_stats (id, user_id, rank_tier, declared_mmr, rank_source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'SELF_REPORTED', ?, ?)`,
+    )
+      .bind(newId(now), userId, rankTier, declaredMmr ?? null, now, now)
+      .run();
+  }
+
+  // 立刻重算：不重算的话"填了段位但分数没变"会让人以为没保存成功
+  const input = await collectInput(env, userId);
+  const rating = computeRating(input);
+
+  const current = await env.DB.prepare(
+    `SELECT admin_adjustment AS adjustment FROM player_ratings WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ adjustment: number }>();
+  const effective = computeEffective(rating.system, current?.adjustment ?? 0);
+
+  await env.DB.prepare(
+    `UPDATE player_ratings
+        SET system_rating = ?, effective_rating = ?, confidence_bp = ?, breakdown_json = ?,
+            algorithm_version = ?, computed_at = ?, updated_at = ?
+      WHERE user_id = ?`,
+  )
+    .bind(
+      rating.system,
+      effective,
+      rating.confidenceBp,
+      JSON.stringify({ components: rating.components, estimatedMmr: rating.estimatedMmr }),
+      ALGO_VERSION,
+      now,
+      now,
+      userId,
+    )
+    .run();
+
+  return c.json({
+    data: {
+      rankTier,
+      declaredMmr: declaredMmr,
+      derivedFromMmr,
+      rating: { system: rating.system, effective, confidenceBp: rating.confidenceBp },
+      note: derivedFromMmr
+        ? '段位已按天梯分自动折算；段位为自报，绑定 Steam 后可验证'
+        : '段位为自报，徽章会显示"自报"；绑定 Steam 后可以验证',
+    },
+  });
+});

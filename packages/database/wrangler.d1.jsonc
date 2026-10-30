@@ -1,0 +1,42 @@
+{
+  // ===========================================================================
+  // 数据库专用配置（不用于 deploy）
+  // ---------------------------------------------------------------------------
+  // 为什么需要它：
+  //   packages/api/wrangler.jsonc 里声明了 assets.directory = ../../apps/web/dist。
+  //   前端还没构建时该目录不存在，wrangler 会在"解析配置"阶段就报错——
+  //   哪怕你只是想跑一条 d1 migrations apply。
+  //
+  // 因此所有数据库操作（migrations list/apply、execute、export）都用这份配置：
+  //   wrangler d1 migrations apply hive --remote -c packages/database/wrangler.d1.jsonc
+  //
+  // 这份配置刻意不声明 main / assets / queues：它只能操作数据库，
+  // 误用 `wrangler deploy -c` 会直接失败，不会把半个 Worker 推上去。
+  // ===========================================================================
+  "name": "hive-db",
+  "compatibility_date": "2025-09-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hive",
+      "database_id": "15164698-0424-47cc-861f-817a5c529cc7",
+      // 相对本文件所在目录，即 packages/database/migrations
+      "migrations_dir": "./migrations"
+    }
+  ],
+
+  // 测试库建好之后（wrangler d1 create hive-staging）把下面的占位 ID 换成真实的，
+  // 然后用 --env staging 指向它
+  "env": {
+    "staging": {
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hive-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_ID",
+          "migrations_dir": "./migrations"
+        }
+      ]
+    }
+  }
+}

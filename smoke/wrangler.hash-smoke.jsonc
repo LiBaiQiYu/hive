@@ -1,0 +1,13 @@
+{
+  // ===========================================================================
+  // 临时配置：PBKDF2 CPU 校准（测完即删）
+  // 不需要 D1、不需要 assets，纯 Web Crypto，免费版可直接部署。
+  // 用法见 docs/SMOKE-TEST.md 第二部分。
+  // ===========================================================================
+  "name": "hive-hash-smoke",
+  "main": "hash-calibration.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true }
+}

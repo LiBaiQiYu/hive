@@ -1,0 +1,179 @@
+{
+  // ===========================================================================
+  // HIVE V1.0 · 单一 Worker：前端静态资源 + 后端 Hono API，同域名同入口
+  // ---------------------------------------------------------------------------
+  // 运行在 Workers **免费版**，因此本配置遵守免费版的硬限制：
+  //   · 每请求 CPU 10ms  → 密码哈希迭代次数与分组算法复杂度都按此预算设计
+  //   · Cron Triggers 最多 3 个 → 所有定时任务复用一个 scheduled handler
+  //   · 不包含 Queues（需付费计划）→ 异步任务改用 D1 outbox + Cron 抽干
+  //   · 静态资源请求不消耗 Worker 调用 → /api/* 之外全部走资源层
+  //
+  // 部署：
+  //   wrangler deploy --config packages/api/wrangler.jsonc                    # 生产
+  //   wrangler deploy --config packages/api/wrangler.jsonc --env staging      # 测试
+  //
+  // 关键约定：
+  //   1. 禁止在 env 中依赖"继承"。每个环境显式声明自己的 D1 / vars / secrets，
+  //      否则一次 `--env staging` 误发就可能连上生产库。
+  //   2. vars 中只放非敏感配置；密钥一律 `wrangler secret put <NAME> --env ...`。
+  //   3. 迁移执行权归 wrangler（wrangler d1 migrations apply），不归 drizzle-kit。
+  // ===========================================================================
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hive",
+  "main": "src/index.ts",
+  // 首次部署前请按 `wrangler --version` 当日可用日期上调；只需前进，不要回退
+  "compatibility_date": "2025-09-01",
+  // Hono 与 Drizzle 在纯 Web 标准 API 下即可运行；nodejs_compat 仅为个别依赖的兜底，
+  // 若构建期确认无 Node 内建模块依赖，可以删除以缩小启动开销。
+  "compatibility_flags": ["nodejs_compat"],
+
+  // --- 前端：Vue 构建产物作为静态资源挂在同一个 Worker 上 ---
+  "assets": {
+    "directory": "../../apps/web/dist",
+    "binding": "ASSETS",
+    // SPA 路由（/events/:id）回落到 index.html；真正的 404 由前端路由自己处理
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash",
+    // 只有 /api/* 先进入 Worker；其余请求由资源层直接返回，静态资源不消耗 Worker 调用
+    "run_worker_first": ["/api/*"]
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "upload_source_maps": true,
+  // 生产环境关闭 workers.dev 备用域名：避免出现绕过 Cookie / CORS 预期的第二入口
+  "workers_dev": false,
+  "preview_urls": false,
+
+  // --- 绑定：D1 （唯一数据源） ---
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // 生产库：账号下已存在并完成 0001/0002 迁移（2026-10-30 实测通过）
+      "database_name": "hive",
+      "database_id": "15164698-0424-47cc-861f-817a5c529cc7",
+      "migrations_dir": "../database/migrations"
+    }
+  ],
+
+  // --- 异步任务：免费版没有 Queues，用 D1 表 sync_jobs 充当 outbox ---
+  // 升级到 Workers 付费版后，把下面这段解除注释，并在 packages/api/src/jobs/ 中
+  // 把 drainJobs() 换成 queue.send()：消息契约不变，业务代码无需改动。
+  // "queues": {
+  //   "producers": [{ "binding": "SYNC_QUEUE", "queue": "hive-sync" }],
+  //   "consumers": [
+  //     {
+  //       "queue": "hive-sync",
+  //       "max_batch_size": 10,
+  //       "max_batch_timeout": 10,
+  //       "max_retries": 3,
+  //       "dead_letter_queue": "hive-sync-dlq",
+  //       "max_concurrency": 2
+  //     }
+  //   ]
+  // },
+
+  // 免费版上限：单个 Worker 最多 3 个 Cron，因此三个任务共用一个 scheduled handler，
+  // 按 cron 表达式分发（见 packages/api/src/jobs/scheduler.ts）。
+  // Cron 表达式一律为 UTC。18:00 UTC = 次日 02:00 (Asia/Shanghai)
+  // 免费版上限 3 个 Cron，本项目只用 2 个：一个抽干任务，一个做每日维护。
+  // 空出的第 3 个位置留给"开赛前 2 小时提醒"这类真正需要准点的任务。
+  // Cron 表达式一律为 UTC。18:00 UTC = 次日 02:00 (Asia/Shanghai)
+  "triggers": {
+    "crons": [
+      "* * * * *", // 抽干 sync_jobs（免费版没有 Queues，这是异步执行的主通道）
+      "0 18 * * *" // 每日维护：扫描待同步玩家、清理过期会话、回收卡死任务、归档日志
+    ]
+  },
+
+  // 自定义域名。**在拿到真实域名之前必须保持注释状态**：
+  //   1) 生产部署会因域名不存在而失败；
+  //   2) 更隐蔽的是——wrangler dev 会把这里的 route 套到本地请求上，
+  //      于是 Worker 看到的 request.url 变成 http://hive.example.com，
+  //      Steam 的 return_to 会指向一个被代理接管成 fake-ip 的域名，
+  //      浏览器直接 ERR_EMPTY_RESPONSE。
+  // 有了域名后解开注释，并把 APP_ORIGIN / STEAM_OPENID_REALM 同步改成真实域名。
+  // "routes": [{ "pattern": "hive.example.com", "custom_domain": true }],
+
+  // 非敏感配置。业务代码通过 env.* 读取，禁止在代码中硬编码这些值
+  "vars": {
+    "APP_ENV": "production",
+    "APP_ORIGIN": "https://hive.example.com",
+    // Steam OpenID 的 realm 必须与 return_to 同源，且与 Cookie 域一致
+    "STEAM_OPENID_REALM": "https://hive.example.com",
+    "SESSION_TTL_DAYS": 14,
+    "SESSION_IDLE_TIMEOUT_HOURS": 72,
+    "ADMIN_ADJUSTMENT_LIMIT": 150,
+    "RATING_ALGO_VERSION": "warroom-v1",
+    // 免费版每请求 CPU 上限 10ms。实测边界：单次 PBKDF2 ≈95ns/次迭代，
+    // 100,000 次刚好贴满 10ms，105,000 次必撞 1102；取 50,000 次（≈4.8ms）留一半余量。
+    // 实测方法与数据见 docs/SMOKE-TEST.md「实测记录」。
+    // 补偿措施：密码 pepper（不进数据库）+ 账号锁定 + 边缘限流，详见 ARCHITECTURE.md §5.1
+    "PASSWORD_PBKDF2_ITERATIONS": 50000,
+    // 封闭社区：注册必须携带有效邀请码
+    "REGISTRATION_REQUIRE_INVITE": "true",
+    // 人数卡在两档之间（如 16 人 / 目标 2 场）时，默认必须由管理员显式选择如何处理，
+    // 服务端不静默生成"1 场 + 6 人轮空"
+    "AUTO_FINALIZE_ODD": "false",
+    "INVITE_CODE_DEFAULT_MAX_USES": 10,
+    "SYNC_JOB_BATCH_SIZE": 5,
+    "SYNC_JOB_LEASE_SECONDS": 120,
+    "AUDIT_RETENTION_DAYS": 365
+  },
+
+  // wrangler 4.x：缺密钥时部署即失败，而不是上线后 500
+  "secrets": {
+    "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY"]
+  },
+
+  // ===========================================================================
+  // 测试环境：独立的 D1 / 域名，与生产完全隔离
+  // ===========================================================================
+  "env": {
+    "staging": {
+      "name": "hive-staging",
+      "workers_dev": true,
+      "routes": [{ "pattern": "hive-staging.example.com", "custom_domain": true }],
+      "assets": {
+        "directory": "../../apps/web/dist",
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        "html_handling": "auto-trailing-slash",
+        "run_worker_first": ["/api/*"]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "hive-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_ID",
+          "migrations_dir": "../database/migrations"
+        }
+      ],
+      // 测试环境只保留低频抽干，不跑每日维护，避免污染测试数据集
+      "triggers": {
+        "crons": ["*/15 * * * *"]
+      },
+      "vars": {
+        "APP_ENV": "staging",
+        "APP_ORIGIN": "https://hive-staging.example.com",
+        "STEAM_OPENID_REALM": "https://hive-staging.example.com",
+        "SESSION_TTL_DAYS": 3,
+        "SESSION_IDLE_TIMEOUT_HOURS": 12,
+        "ADMIN_ADJUSTMENT_LIMIT": 150,
+        "RATING_ALGO_VERSION": "warroom-v1",
+        "PASSWORD_PBKDF2_ITERATIONS": 50000,
+        "REGISTRATION_REQUIRE_INVITE": "true",
+        "AUTO_FINALIZE_ODD": "false",
+        "INVITE_CODE_DEFAULT_MAX_USES": 5,
+        "SYNC_JOB_BATCH_SIZE": 5,
+        "SYNC_JOB_LEASE_SECONDS": 120,
+        "AUDIT_RETENTION_DAYS": 30
+      },
+      "secrets": {
+        "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY"]
+      }
+    }
+  }
+}

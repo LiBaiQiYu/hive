@@ -1,0 +1,657 @@
+/* ==========================================================================
+   HIVE · 设计语言
+   参考 DOTA2 的界面气质：近黑底、赤金细描边、阵营双色、衬线体标题。
+   ========================================================================== */
+
+:root {
+  /* 深色（默认）：提高对比度，正文与次要文字都往上提了一档 */
+  --bg: #0a0c10;
+  --bg-2: #0e1116;
+  --surface: #151a24;
+  --surface-2: #1c2230;
+  --line: rgba(201, 162, 39, 0.22);
+  --line-strong: rgba(201, 162, 39, 0.55);
+  --gold: #d4ad33;
+  --gold-2: #f0d68d;
+  --text: #efece3;
+  --muted: #a9b0c0;
+  --brand: #7b6cf0;
+  --radiant: #63bb6c;
+  --dire: #c25454;
+  --amber: #eab03c;
+  --input-bg: #0d1017;
+  --input-line: rgba(201, 162, 39, 0.38);
+  --radius: 10px;
+  --display: 'Trajan Pro', 'Cinzel', Georgia, 'Songti SC', 'Noto Serif SC', serif;
+  color-scheme: dark;
+}
+
+/* 浅色：沿用概念图的配色（浅灰底 + 白卡 + 紫色主色 + 深藏青标题） */
+:root[data-theme='light'] {
+  --bg: #f4f6fb;
+  --bg-2: #eaeef7;
+  --surface: #ffffff;
+  --surface-2: #f6f8fd;
+  --line: rgba(27, 32, 51, 0.14);
+  --line-strong: rgba(108, 92, 231, 0.5);
+  --gold: #6c5ce7;
+  --gold-2: #5546c4;
+  --text: #1b2033;
+  --muted: #5b6478;
+  --brand: #6c5ce7;
+  --radiant: #1f8f52;
+  --dire: #b3261e;
+  --amber: #a8620a;
+  --input-bg: #ffffff;
+  --input-line: rgba(27, 32, 51, 0.22);
+  color-scheme: light;
+}
+
+/* select 的原生下拉列表由操作系统绘制，不继承 .input 的背景色，
+   不显式指定就会出现"深色页面 + 白底白字"的不可读下拉框 */
+select.input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) calc(50% + 1px),
+    calc(100% - 11px) calc(50% + 1px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+select.input option {
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+input[type='date'],
+input[type='datetime-local'],
+input[type='number'],
+input[type='password'],
+input[type='email'],
+input[type='text'] {
+  color-scheme: inherit;
+}
+
+::placeholder {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  font: 14px/1.7 -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background-color: var(--bg);
+  /* 两层径向暗角 + 一层极淡的斜向纹理，制造"石材表面"的质感 */
+  background-image:
+    radial-gradient(1100px 560px at 50% -10%, rgba(108, 92, 231, 0.14), transparent 70%),
+    radial-gradient(900px 500px at 90% 0%, rgba(163, 59, 59, 0.1), transparent 65%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 7px);
+  background-attachment: fixed;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---------------------------------------------------------------- 布局 */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.container {
+  width: min(1180px, 100% - 40px);
+  margin: 0 auto;
+}
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--line);
+  background: rgba(10, 12, 16, 0.86);
+  backdrop-filter: blur(10px);
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  height: 62px;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand-name {
+  font-family: var(--display);
+  font-size: 21px;
+  letter-spacing: 0.28em;
+  color: var(--gold-2);
+}
+
+.brand-tag {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.nav-links {
+  display: flex;
+  gap: 4px;
+  margin-left: 8px;
+}
+
+.nav-link {
+  padding: 6px 14px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-link:hover {
+  color: var(--gold-2);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.nav-link.active {
+  color: var(--gold-2);
+  background: rgba(201, 162, 39, 0.12);
+}
+
+.nav-link.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.nav-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.main {
+  flex: 1;
+  padding: 34px 0 64px;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding: 20px 0;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- 英雄区 */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 54px 48px;
+  background:
+    radial-gradient(700px 320px at 12% 20%, rgba(108, 92, 231, 0.22), transparent 68%),
+    radial-gradient(600px 300px at 88% 90%, rgba(163, 59, 59, 0.18), transparent 70%),
+    linear-gradient(160deg, #151a24 0%, #0d1015 100%);
+}
+
+.hero::after {
+  /* 右侧的斜切装饰 */
+  content: '';
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 38%;
+  background: repeating-linear-gradient(
+    -55deg,
+    rgba(201, 162, 39, 0.07) 0 2px,
+    transparent 2px 16px
+  );
+  pointer-events: none;
+}
+
+.hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--gold);
+  text-transform: uppercase;
+}
+
+.hero-title {
+  font-family: var(--display);
+  font-size: clamp(38px, 6vw, 62px);
+  line-height: 1.05;
+  margin: 14px 0 6px;
+  letter-spacing: 0.12em;
+  color: #f2eee2;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+}
+
+.hero-sub {
+  max-width: 34em;
+  color: var(--muted);
+  margin: 0 0 26px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- 卡片 */
+
+.grid {
+  display: grid;
+  gap: 16px;
+}
+
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    var(--surface);
+  padding: 20px 22px;
+}
+
+.card-title {
+  font-family: var(--display);
+  letter-spacing: 0.1em;
+  font-size: 16px;
+  margin: 0 0 16px;
+  color: var(--gold-2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--line-strong), transparent);
+}
+
+.section {
+  margin-top: 30px;
+}
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.section-title {
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  margin: 0;
+  color: #efe9d8;
+}
+
+/* ---------------------------------------------------------------- 控件 */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.04));
+  color: var(--gold-2);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+}
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.26), rgba(201, 162, 39, 0.08));
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.25), 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  border-color: rgba(108, 92, 231, 0.6);
+  background: linear-gradient(180deg, #6c5ce7, #5546c4);
+  color: #f4f2ff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #7d6ef0, #5b4bd0);
+  box-shadow: 0 8px 22px rgba(108, 92, 231, 0.35);
+}
+
+.btn-ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--muted);
+}
+
+.btn-ghost:hover:not(:disabled) {
+  color: var(--gold-2);
+}
+
+/* ---------------------------------------------------------------- 徽标 */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  line-height: 1.9;
+}
+
+.pill-open {
+  color: var(--radiant);
+  background: rgba(87, 160, 94, 0.1);
+}
+
+.pill-closed {
+  color: var(--amber);
+  background: rgba(224, 160, 40, 0.1);
+}
+
+.pill-published {
+  color: var(--brand);
+  background: rgba(108, 92, 231, 0.12);
+}
+
+.pill-idle {
+  color: var(--muted);
+  background: rgba(138, 143, 156, 0.08);
+}
+
+/* ---------------------------------------------------------------- 数据 */
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.stat-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.stat-value {
+  font-family: var(--display);
+  font-size: 26px;
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--radiant), var(--gold));
+  transition: width 0.3s;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------------- 表单 */
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.field-label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  /* 只改 background-color：用 background 简写会把 select 的箭头（background-image）连同清掉 */
+  background-color: var(--input-bg);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input:focus {
+  border-color: var(--line-strong);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.1);
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(163, 59, 59, 0.5);
+  background: rgba(163, 59, 59, 0.12);
+  color: #e6a6a6;
+  font-size: 13px;
+  margin-bottom: 14px;
+}
+
+/* ---------------------------------------------------------------- 赛事 */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.event-card:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-2px);
+}
+
+.event-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-name {
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  color: #f0ebdc;
+  margin: 0;
+}
+
+.event-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.event-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.slots {
+  font-family: var(--display);
+  font-size: 20px;
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- 对阵 */
+
+.match-board {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.team {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--surface);
+}
+
+.team-radiant {
+  border-color: rgba(87, 160, 94, 0.4);
+  background: linear-gradient(180deg, rgba(87, 160, 94, 0.1), transparent 60%), var(--surface);
+}
+
+.team-dire {
+  border-color: rgba(163, 59, 59, 0.4);
+  background: linear-gradient(180deg, rgba(163, 59, 59, 0.1), transparent 60%), var(--surface);
+}
+
+.team-name {
+  font-family: var(--display);
+  letter-spacing: 0.18em;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.slot:last-child {
+  border-bottom: none;
+}
+
+.slot-pos {
+  width: 34px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+
+.slot-name {
+  flex: 1;
+}
+
+.slot-rating {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-2);
+  font-size: 13px;
+}
+
+.vs {
+  align-self: center;
+  font-family: var(--display);
+  color: var(--muted);
+  letter-spacing: 0.2em;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    padding: 34px 24px;
+  }
+  .nav-inner {
+    gap: 14px;
+  }
+  .brand-tag {
+    display: none;
+  }
+  .match-board {
+    grid-template-columns: 1fr;
+  }
+  .vs {
+    text-align: center;
+  }
+}

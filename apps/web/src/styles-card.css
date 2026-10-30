@@ -1,0 +1,294 @@
+/* ==========================================================================
+   玩家卡片
+   —— 3D 倾斜 + 视差层 + 跟随指针的光斑
+   皮肤扩展点：所有视觉都走 --skin-* 变量，后续加背景 / 边框 / 材质时
+   只需要写 [data-skin='xxx'] { --skin-*: ... }，组件本身不用改。
+   ========================================================================== */
+
+.pcard {
+  --skin-bg: linear-gradient(160deg, #1c2231 0%, #0f131b 100%);
+  --skin-border: rgba(201, 162, 39, 0.34);
+  --skin-glow: rgba(201, 162, 39, 0.22);
+  --skin-foil: rgba(255, 255, 255, 0.07);
+  --skin-text: var(--text);
+
+  perspective: 900px;
+  min-height: 232px;
+  position: relative;
+}
+
+.pcard-inner {
+  position: relative;
+  height: 100%;
+  min-height: 232px;
+  padding: 16px 16px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--skin-border);
+  background: var(--skin-bg);
+  color: var(--skin-text);
+  /* 倾斜由指针驱动，回中由 transition 完成；带一点回弹更有"卡片被放下"的手感 */
+  transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
+  transform-style: preserve-3d;
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 300ms ease,
+    border-color 300ms ease;
+  overflow: hidden;
+  will-change: transform;
+}
+
+.pcard.is-active .pcard-inner {
+  transition:
+    transform 90ms linear,
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--skin-border),
+    0 0 28px -6px var(--skin-glow);
+}
+
+/* 跟随指针的柔光 */
+.pcard-glare {
+  position: absolute;
+  inset: -40%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateZ(60px);
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 50%),
+    var(--skin-foil) 0%,
+    transparent 55%
+  );
+  transition: opacity 260ms ease;
+}
+
+.pcard.is-active .pcard-glare {
+  opacity: 1;
+}
+
+/* 内描边 + 顶部高光：廉价但有效的"材质感" */
+.pcard-frame {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 34%);
+  transform: translateZ(1px);
+}
+
+/* ---------------------------------------------------------------- 内容层 */
+
+.pcard-head,
+.pcard-medal,
+.pcard-stats,
+.pcard-bio,
+.pcard-foot {
+  position: relative;
+  transform: translateZ(28px);
+}
+
+.pcard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pcard-name {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+}
+
+.pcard-badge {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+  transform: translateZ(14px);
+}
+
+.badge-ok {
+  color: var(--radiant);
+  background: rgba(99, 187, 108, 0.12);
+}
+
+.badge-info {
+  color: #8aa4d6;
+  background: rgba(138, 164, 214, 0.12);
+}
+
+.badge-warn {
+  color: var(--amber);
+  background: rgba(234, 176, 60, 0.12);
+}
+
+.badge-idle {
+  color: var(--muted);
+  background: rgba(138, 143, 156, 0.1);
+}
+
+.pcard-medal {
+  margin-top: 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 22px;
+  transform: translateZ(22px);
+}
+
+.medal-text {
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--gold-2);
+}
+
+.medal-star {
+  display: inline-flex;
+  gap: 2px;
+  color: var(--gold);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.medal-none {
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+}
+
+.pcard-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  transform: translateZ(16px);
+}
+
+.pcard-stats dt {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pcard-stats dd {
+  margin: 2px 0 0;
+  font-size: 15px;
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pcard-bio {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  transform: translateZ(10px);
+}
+
+.pcard-bio-empty {
+  font-style: italic;
+  opacity: 0.65;
+}
+
+.pcard-foot {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  transform: translateZ(8px);
+}
+
+.pcard-wait {
+  letter-spacing: 0.1em;
+  color: var(--amber);
+}
+
+.pcard-confirmed {
+  color: var(--radiant);
+}
+
+.pcard-steam {
+  color: var(--muted);
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 浅色 */
+
+:root[data-theme='light'] .pcard {
+  --skin-bg: linear-gradient(160deg, #ffffff 0%, #f4f1ec 100%);
+  --skin-border: rgba(27, 32, 51, 0.12);
+  --skin-glow: rgba(179, 38, 30, 0.16);
+  --skin-foil: rgba(179, 38, 30, 0.08);
+}
+
+:root[data-theme='light'] .pcard-name {
+  text-shadow: none;
+  color: #1b2033;
+}
+
+:root[data-theme='light'] .pcard-stats {
+  border-top-color: rgba(27, 32, 51, 0.1);
+}
+
+:root[data-theme='light'] .pcard-frame {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px rgba(27, 32, 51, 0.04);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent 34%);
+}
+
+:root[data-theme='light'] .pcard.is-active .pcard-inner {
+  box-shadow:
+    0 16px 32px rgba(27, 32, 51, 0.14),
+    0 0 0 1px var(--skin-border),
+    0 0 24px -8px var(--skin-glow);
+}
+
+:root[data-theme='light'] .badge-info {
+  color: #33507f;
+  background: rgba(51, 80, 127, 0.1);
+}
+
+/* ---------------------------------------------------------------- 无障碍 */
+
+/* 触屏没有 hover，倾斜只会让卡片抖；动效敏感用户也不该被强制晃动 */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .pcard-inner {
+    transform: none;
+    transition: none;
+  }
+  .pcard-glare {
+    display: none;
+  }
+}
+
+/* 报名卡片网格 */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
