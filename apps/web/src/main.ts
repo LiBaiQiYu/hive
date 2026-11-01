@@ -36,7 +36,7 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomePage },
     { path: '/events', name: 'events', component: EventsPage },
     { path: '/events/:id', name: 'event-detail', component: EventDetailPage },
-    { path: '/me', name: 'me', component: MePage, meta: { auth: true } },
+    { path: '/me', name: 'me', component: MePage },
     { path: '/leaderboard', name: 'leaderboard', component: LeaderboardPage },
     { path: '/records', name: 'records', component: RecordsPage },
     { path: '/matches/:id', name: 'match', component: MatchPage },
@@ -54,24 +54,20 @@ const router = createRouter({
 });
 
 // 服务端已经用 requireAdmin 兜底，这里只是避免非管理员看到空页面。
-// 进入需要权限的页面前一定重新问一次服务端：内存里的 session 可能是旧的
+// 进入后台前重新问一次服务端：内存里的 session 可能是旧的
 // （会话过期、在别的标签页退出），只看缓存会让用户进到一个只剩 401 的页面。
+// 注意：「我的」不做拦截 —— 未登录时页面自己会显示「请先 登录」，跳走反而突兀。
 router.beforeEach(async (to) => {
-  const needsAuth = Boolean(to.meta.auth || to.meta.admin);
-  if (!session.ready || needsAuth) await loadMe();
+  if (!session.ready || to.meta.admin) await loadMe();
   if (to.meta.admin && session.me?.user.role !== 'ADMIN') {
-    return { path: '/login' };
-  }
-  // 「我的」需要登录：未登录直接送登录页，避免停在只有一行「请先登录」的半空白页
-  if (to.meta.auth && !session.me) {
     return { path: '/login' };
   }
   return true;
 });
 
-// 会话在服务端失效时（api 层广播 401），把用户送回登录页；
-// session.me 由 lib/session.ts 监听同一个事件清空，两边各管各的，不互相 import。
-window.addEventListener('hive:unauthorized', () => {
+// 会话「用着用着失效」（过期 / 在别的标签页退出）时把人送回登录页。
+// 游客的 401 不算：那只是没登录，页面自己会提示，不该把人从「我的」踢走。
+window.addEventListener('hive:session-expired', () => {
   if (router.currentRoute.value.path !== '/login') {
     void router.replace('/login');
   }

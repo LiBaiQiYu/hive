@@ -26,10 +26,15 @@ export async function logout(): Promise<void> {
   }
 }
 
-// 任何请求收到 401（会话过期 / 在别的标签页退出），都把内存里的会话清掉，
-// 否则导航和路由守卫会一直以为还登录着，页面停留在旧数据上。
+// 任何请求收到 401 都清掉内存里的会话。
+// 只有「本来登录着、突然 401」才算会话过期（需要把人送去登录页）；
+// 游客本来就是未登录状态，401 是正常的，不能因此把人踢走。
 if (typeof window !== 'undefined') {
   window.addEventListener('hive:unauthorized', () => {
+    const wasLoggedIn = session.me !== null;
     session.me = null;
+    if (wasLoggedIn) {
+      window.dispatchEvent(new CustomEvent('hive:session-expired'));
+    }
   });
 }
