@@ -54,9 +54,11 @@ const router = createRouter({
 });
 
 // 服务端已经用 requireAdmin 兜底，这里只是避免非管理员看到空页面。
-// 必须先等会话拉回来再判断，否则直接打开 /admin 会因为 session 还没到而弹回登录页。
+// 进入需要权限的页面前一定重新问一次服务端：内存里的 session 可能是旧的
+// （会话过期、在别的标签页退出），只看缓存会让用户进到一个只剩 401 的页面。
 router.beforeEach(async (to) => {
-  if (!session.ready) await loadMe();
+  const needsAuth = Boolean(to.meta.auth || to.meta.admin);
+  if (!session.ready || needsAuth) await loadMe();
   if (to.meta.admin && session.me?.user.role !== 'ADMIN') {
     return { path: '/login' };
   }

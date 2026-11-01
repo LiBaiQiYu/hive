@@ -9,7 +9,8 @@ export const session = reactive<{ me: Me | null; ready: boolean }>({
 
 export async function loadMe(): Promise<void> {
   try {
-    session.me = await api<Me>('/me');
+    // 游客调用 /api/me 返回 401 是正常状态，别让它触发全局「跳登录页」事件
+    session.me = await api<Me>('/me', { silent401: true });
   } catch {
     session.me = null;
   } finally {

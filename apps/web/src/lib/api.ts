@@ -15,6 +15,12 @@ type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 interface RequestOptions {
   method?: Method;
   body?: unknown;
+  /**
+   * 401 时不广播 hive:unauthorized。
+   * 专门给「加载会话」用：游客调 /api/me 必然 401，那是正常状态，
+   * 不该因此把人从首页踢到登录页。
+   */
+  silent401?: boolean;
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -38,7 +44,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (!response.ok) {
     // 会话在服务端失效（过期 / 别处登出）时，前端内存里可能还留着旧会话。
     // 这里只广播事件，清状态和跳转交给 session / router 处理，避免循环依赖。
-    if (response.status === 401) {
+    if (response.status === 401 && !options.silent401) {
       window.dispatchEvent(new CustomEvent('hive:unauthorized'));
     }
     throw new ApiError(
