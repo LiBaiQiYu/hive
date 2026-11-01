@@ -142,15 +142,15 @@ a {
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
 }
 
-.brand-name {
-  font-family: var(--display);
-  font-size: 21px;
-  letter-spacing: 0.28em;
-  color: var(--gold-2);
+/* logo 图本身带字标，尺寸由组件按高度算好，这里只管排版细节 */
+.brand-logo {
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .brand-tag {
@@ -478,7 +478,11 @@ a {
 }
 
 .field-label {
-  display: block;
+  /* flex 而不是 block：标签后面可能跟着一个「?」提示（HelpTip），
+     用 gap 对齐，别让图标靠 vertical-align 悬在半空 */
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   letter-spacing: 0.16em;
   color: var(--muted);
@@ -653,5 +657,41 @@ a {
   }
   .vs {
     text-align: center;
+  }
+}
+
+/* 手机宽度：导航是唯一会撑破视口的元素。
+   链接区改成可横向滚动，用户名收起只留图标，保证 body 不再出现横向滚动条。 */
+@media (max-width: 560px) {
+  .nav-inner {
+    gap: 10px;
+    height: 56px;
+  }
+
+  .nav-links {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 0;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    padding: 6px 9px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .nav-right {
+    gap: 8px;
+  }
+
+  .user-name {
+    display: none;
   }
 }

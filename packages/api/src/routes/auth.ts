@@ -2,11 +2,12 @@ import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { drizzle } from 'drizzle-orm/d1';
 import { playerRatings, users } from '@hive/db';
-import { ApiError, newId, loginSchema, registerSchema, SESSION_COOKIE } from '@hive/shared';
+import { ApiError, newId, loginSchema, registerSchema, changePasswordSchema, SESSION_COOKIE } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { intVar } from '../env';
+import { requireUser } from '../guard';
 import { hashPassword, verifyPassword } from '../password';
-import { createSession, hashIp, readSession, revokeSession } from '../session';
+import { createSession, hashIp, hashToken, readSession, revokeSession } from '../session';
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -209,6 +210,63 @@ authRoutes.post('/login', async (c) => {
     },
     meta: { requestId: c.get('requestId') },
   });
+});
+
+/* --------------------------------------------------------------------------
+ * POST /api/auth/password
+ * 改密码 = 换掉所有旧 token 的效力：除了当前这台设备，其余会话一律撤销。
+ * 不能"只改哈希不踢人"——密码泄露的场景下，攻击者的会话会一直活着。
+ * ------------------------------------------------------------------------ */
+authRoutes.post('/password', async (c) => {
+  const env = c.env;
+  const userId = requireUser(c);
+
+  const parsed = changePasswordSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+  const { currentPassword, newPassword } = parsed.data;
+
+  const row = await env.DB.prepare(
+    `SELECT password_hash AS passwordHash FROM users WHERE id = ? AND status = 'ACTIVE'`,
+  )
+    .bind(userId)
+    .first<{ passwordHash: string }>();
+  if (!row) throw new ApiError('UNAUTHENTICATED', '会话已失效');
+
+  const verified = await verifyPassword(
+    row.passwordHash,
+    currentPassword,
+    env.PASSWORD_PEPPER,
+    iterations(env),
+  );
+  if (!verified.ok) throw new ApiError('UNAUTHENTICATED', '当前密码不正确');
+  if (newPassword === currentPassword) {
+    throw new ApiError('VALIDATION_FAILED', '新密码不能与当前密码相同');
+  }
+
+  const passwordHash = await hashPassword(newPassword, env.PASSWORD_PEPPER, iterations(env));
+  const now = Date.now();
+  const token = getCookie(c, SESSION_COOKIE);
+  const currentSessionId = token ? await hashToken(token) : null;
+
+  // batch 是事务：密码与"踢掉其他设备"必须一起成功，否则会出现改了密码但旧会话仍可用
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = ?
+        WHERE id = ?`,
+    ).bind(passwordHash, now, userId),
+    currentSessionId
+      ? env.DB.prepare(
+          `UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id <> ? AND revoked_at IS NULL`,
+        ).bind(now, userId, currentSessionId)
+      : env.DB.prepare(`UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`).bind(
+          now,
+          userId,
+        ),
+  ]);
+
+  return c.json({ data: { ok: true }, meta: { requestId: c.get('requestId') } });
 });
 
 /* --------------------------------------------------------------------------

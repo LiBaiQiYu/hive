@@ -149,11 +149,12 @@ steamRoutes.get('/callback', async (c) => {
       .run();
   }
 
-  // 身份变了，评分输入也变了：投一条重算任务（幂等，同一玩家只会排一条）
-  const dedupeKey = `rating:${userId}`;
+  // 刚绑上 Steam，手里有了 dota_account_id：排一条 PLAYER_SYNC 去拉段位与累计场次，
+  // 拉到之后 handler 会顺手重算评分。幂等：同一玩家只会有一条在途任务。
+  const dedupeKey = `player:${userId}`;
   await env.DB.prepare(
     `INSERT OR IGNORE INTO sync_jobs (id, kind, payload_json, dedupe_key, status, available_at, created_at, updated_at)
-     VALUES (?, 'RATING_RECOMPUTE', ?, ?, 'PENDING', ?, ?, ?)`,
+     VALUES (?, 'PLAYER_SYNC', ?, ?, 'PENDING', ?, ?, ?)`,
   )
     .bind(newId(now), JSON.stringify({ userId }), dedupeKey, now, now, now)
     .run();

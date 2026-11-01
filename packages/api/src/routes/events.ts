@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { ApiError, newId } from '@hive/shared';
+import { ApiError, newId, toCardSkin } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { requireUser } from '../guard';
 import { MATCH_SIZE, slotsToNextMatch, targetMatches } from '../services/roster';
@@ -164,6 +164,7 @@ eventRoutes.get('/:id/registrations', async (c) => {
     `SELECT r.user_id AS userId, r.status,
             COALESCE(r.position_preference, pp.position) AS position,
             u.display_name AS displayName, u.bio,
+            u.card_material AS cardMaterial, u.card_frame AS cardFrame,
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr,
             pr.effective_rating AS rating,
             ga.verification AS accountVerification, ga.persona_name AS personaName
@@ -184,6 +185,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
       position: number | null;
       displayName: string;
       bio: string | null;
+      cardMaterial: string;
+      cardFrame: string;
       rankTier: number | null;
       declaredMmr: number | null;
       rating: number | null;
@@ -211,6 +214,11 @@ eventRoutes.get('/:id/registrations', async (c) => {
       rating: row.rating,
       verification,
       personaName: row.personaName,
+      // 卡片外观跟着人走：别人看到的永远是玩家自己选的那套皮肤
+      skin: toCardSkin({
+        material: row.cardMaterial,
+        frame: row.cardFrame,
+      }),
     };
   });
 

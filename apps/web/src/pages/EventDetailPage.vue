@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import { NButton, NSelect, useMessage } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { session } from '../lib/session';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
+import HelpTip from '../components/HelpTip.vue';
 
 interface Registration {
   id: string;
@@ -21,6 +23,21 @@ const error = ref('');
 const message = ref('');
 const submitting = ref(false);
 
+interface MatchRow {
+  id: string;
+  matchNo: number;
+  status: string;
+  ratingGap: number | null;
+}
+
+const matchList = ref<MatchRow[]>([]);
+
+/** 报名时的主位置：0 = 不指定 */
+const positionOptions = [
+  { label: '不指定', value: 0 },
+  ...[1, 2, 3, 4, 5].map((p) => ({ label: `${p} 号位`, value: p })),
+];
+
 async function load() {
   try {
     const id = route.params.id as string;
@@ -36,6 +53,13 @@ async function load() {
       players.value = roster.players;
     } catch {
       players.value = [];
+    }
+
+    // 场次也单独拉：未发布时后端会过滤掉草稿
+    try {
+      matchList.value = await api<MatchRow[]>(`/events/${id}/matches`);
+    } catch {
+      matchList.value = [];
     }
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
@@ -150,34 +174,47 @@ async function withdraw() {
           </div>
 
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-            <select
+            <label
               v-if="canRegister"
-              v-model.number="positionChoice"
-              class="input"
-              style="width: 128px"
-              title="报名时先定一个主位置；之后在「我的」里补全 3–5 个位置，分组质量会更好"
+              style="display: flex; align-items: center; gap: 8px"
             >
-              <option :value="0">不指定</option>
-              <option v-for="p in [1, 2, 3, 4, 5]" :key="p" :value="p">{{ p }} 号位</option>
-            </select>
-            <button
+              <span class="field-label" style="margin: 0">
+                主位置
+                <HelpTip
+                  title="位置是怎么定的？"
+                  :steps="[
+                    '① 报名时选的位置只是这一次的意向',
+                    '② 选「不指定」时，按「我的 → 位置偏好」里的第一志愿安排',
+                    '③ 建议填满 3–5 个位置：志愿决定顺序，熟练度决定你实际能不能打',
+                  ]"
+                  note="报名时会把评分与位置冻结成快照；事后改档案、改评分都不会影响已公布的阵容。"
+                />
+              </span>
+              <NSelect
+                v-model:value="positionChoice"
+                :options="positionOptions"
+                style="width: 132px"
+                size="medium"
+              />
+            </label>
+            <NButton
               v-if="canRegister"
-              class="btn btn-primary"
-              type="button"
+              type="primary"
               :disabled="submitting"
+              :loading="submitting"
               @click="register"
             >
               {{ isFull ? '加入候补' : '立即报名' }}
-            </button>
-            <button
+            </NButton>
+            <NButton
               v-else-if="mine"
-              class="btn btn-ghost"
-              type="button"
+              quaternary
               :disabled="submitting"
+              :loading="submitting"
               @click="withdraw"
             >
               退赛
-            </button>
+            </NButton>
             <RouterLink v-else-if="!session.me" to="/login" class="btn btn-primary">
               登录后报名
             </RouterLink>
@@ -187,36 +224,42 @@ async function withdraw() {
         <p v-if="error" class="alert" style="margin-top: 16px">{{ error }}</p>
         <p v-if="message" class="muted" style="margin-top: 16px">{{ message }}</p>
 
-        <div
-          v-if="canRegister"
-          class="muted"
-          style="
-            margin-top: 18px;
-            padding: 12px 14px;
-            border-left: 2px solid var(--line-strong);
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 0 6px 6px 0;
-            font-size: 12px;
-            line-height: 1.9;
-          "
-        >
-          <div style="color: var(--text); margin-bottom: 4px">位置是怎么定的？</div>
-          <p style="margin: 0 0 6px">
-            报名时选的位置只是<b>这一次的意向</b>。选了「不指定」时，分组会按你在
-            <RouterLink to="/me" style="color: var(--gold-2)">「我的 → 位置偏好」</RouterLink>
-            里的
-            <b>{{ profilePrimary ? `第一志愿（${profilePrimary} 号位）` : '志愿' }}</b>
-            来安排。
-          </p>
-          <p v-if="!profilePrimary" style="margin: 0 0 6px" class="coverage-warn">
-            你的档案里还没填位置偏好。这种情况下分组算法只能把你当成"位置未知"，
-            每项契合度都按最低的 10 分计算——队伍很可能会出现「位置冲突」，
-            你也更容易被塞到不熟的位置上。
-          </p>
-          <p style="margin: 0">
-            建议把档案填满 <b>3–5 个位置</b>：志愿决定优先顺序，熟练度决定你实际能不能打。
-            报名时选的位置会被冻结成快照，事后改档案不会影响已经公布的阵容。
-          </p>
+        <p v-if="canRegister && !profilePrimary" class="coverage-warn" style="margin: 16px 0 0; font-size: 12px">
+          档案里还没填位置偏好——分队只能把你当成「位置未知」，容易被排到不熟的位置。
+          <RouterLink to="/me" style="color: var(--gold-2)">去补全 →</RouterLink>
+        </p>
+      </section>
+
+      <section v-if="matchList.length > 0" class="section">
+        <div class="section-head">
+          <h2 class="section-title">场次</h2>
+          <span class="muted" style="font-size: 13px">{{ matchList.length }} 场</span>
+        </div>
+        <div class="card" style="padding: 8px 12px">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>场次</th>
+                <th>状态</th>
+                <th class="num">分差</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in matchList" :key="item.id">
+                <td class="mono">第 {{ item.matchNo }} 场</td>
+                <td class="muted" style="font-size: 12px">
+                  {{ STATUS_LABEL[item.status] ?? item.status }}
+                </td>
+                <td class="num mono">{{ item.ratingGap ?? '—' }}</td>
+                <td style="text-align: right">
+                  <RouterLink :to="`/matches/${item.id}`" style="color: var(--gold-2); font-size: 13px">
+                    查看阵容 →
+                  </RouterLink>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -232,16 +275,23 @@ async function withdraw() {
 
       <section v-if="mine" class="section">
         <div class="card">
-          <h3 class="card-title">我的报名</h3>
+          <h3 class="card-title">
+            我的报名
+            <HelpTip
+              title="快照是什么意思？"
+              :steps="[
+                '① 报名那一刻，你的评分与位置会存成一份快照',
+                '② 之后管理员调评分、你自己改档案，都不会回写快照',
+              ]"
+              note="所以已经公布的阵容是稳定的：改数据不会让排好的分队悄悄变样。"
+            />
+          </h3>
           <p class="muted" style="margin: 0">
             状态：{{ mine.status === 'WAITLIST' ? '候补' : '已确认' }}
             <template v-if="mine.waitlistPosition">（排队第 {{ mine.waitlistPosition }} 位）</template>
             <template v-if="mine.positionPreference">
               · 主位置 {{ mine.positionPreference }} 号位
             </template>
-          </p>
-          <p class="muted" style="margin: 8px 0 0; font-size: 12px">
-            报名时会把你的评分与位置冻结成快照；之后管理员调整评分，不会影响已经公布的阵容。
           </p>
         </div>
       </section>

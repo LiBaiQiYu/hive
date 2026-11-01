@@ -5,6 +5,14 @@ import type { AppEnv, Env } from '../env';
 import { requireAdmin } from '../guard';
 import { countRegistrations, loadEvent, toEventView } from './events';
 import { planFinalize, type FinalizePolicy } from '../services/roster';
+import { recomputeEventRatings } from '../services/rating';
+import {
+  assertPromotable,
+  assertTitleEditable,
+  compactWaitlist,
+  planEventUpdate,
+  type WaitlistEntry,
+} from '../services/event-edit';
 
 export const adminEventRoutes = new Hono<AppEnv>();
 
@@ -23,6 +31,28 @@ const createEventSchema = z.object({
   registrationClosesAt: isoDate.optional(),
   startsAt: isoDate.optional(),
 });
+
+/**
+ * 编辑赛事。所有字段可选，但至少要给一个。
+ * 时间字段允许显式传 null 表示"清空 / 回到待定"；路由里一律用 `=== undefined`
+ * 区分"没传"和"传了 null"，不能用 falsy 判断。
+ */
+const updateEventSchema = z
+  .object({
+    title: z.string().trim().min(1).max(64).optional(),
+    summary: z.string().trim().max(500).nullable().optional(),
+    capacity: z
+      .number()
+      .int()
+      .positive()
+      .max(100)
+      .refine((value) => value % 10 === 0, '容量必须是 10 的整数倍')
+      .optional(),
+    registrationOpensAt: isoDate.nullable().optional(),
+    registrationClosesAt: isoDate.nullable().optional(),
+    startsAt: isoDate.nullable().optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, '至少要修改一个字段');
 
 const transitionSchema = z.object({
   to: z.enum([
@@ -133,6 +163,92 @@ adminEventRoutes.post('/', async (c) => {
   return c.json({ data: toEventView(await loadEvent(c.env, id), { confirmed: 0, waitlist: 0 }) }, 201);
 });
 
+/* --------------------------------------------------------------------------
+ * 编辑赛事：改错别字、改容量、改赛程
+ * 容量只在 DRAFT / REGISTRATION_OPEN 可改，且不能低于已确认人数——
+ * 封盘与分队都按当时的 capacity 做过决策，事后调小会让"目标人数"失去意义。
+ * ------------------------------------------------------------------------ */
+adminEventRoutes.patch('/:id', async (c) => {
+  const env = c.env;
+  const adminId = requireAdmin(c);
+  const event = await loadEvent(env, c.req.param('id'));
+
+  const parsed = updateEventSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+  const patch = parsed.data;
+
+  if (patch.title !== undefined || patch.summary !== undefined) {
+    assertTitleEditable(event);
+  }
+
+  const counts = await countRegistrations(env, event.id);
+  // 传输层用 ISO 字符串，存储层用毫秒整数；undefined = 没传，null = 清空
+  const toMs = (value: string | null | undefined): number | null | undefined =>
+    value === undefined ? undefined : value === null ? null : Date.parse(value);
+  const next = planEventUpdate(
+    event,
+    {
+      title: patch.title,
+      summary: patch.summary,
+      capacity: patch.capacity,
+      registrationOpensAt: toMs(patch.registrationOpensAt),
+      registrationClosesAt: toMs(patch.registrationClosesAt),
+      startsAt: toMs(patch.startsAt),
+    },
+    counts.confirmed,
+  );
+
+  const title = patch.title ?? event.title;
+  const summary = patch.summary === undefined ? event.summary : patch.summary;
+  const now = Date.now();
+
+  await env.DB.prepare(
+    `UPDATE events SET title = ?, summary = ?, capacity = ?,
+       registration_opens_at = ?, registration_closes_at = ?, starts_at = ?, updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      title,
+      summary,
+      next.capacity,
+      next.opensAt,
+      next.closesAt,
+      next.startsAt,
+      now,
+      event.id,
+    )
+    .run();
+
+  await audit(env, {
+    actorId: adminId,
+    action: 'event.update',
+    entityType: 'event',
+    entityId: event.id,
+    before: {
+      title: event.title,
+      summary: event.summary,
+      capacity: event.capacity,
+      registrationOpensAt: event.registration_opens_at,
+      registrationClosesAt: event.registration_closes_at,
+      startsAt: event.starts_at,
+    },
+    after: {
+      title,
+      summary,
+      capacity: next.capacity,
+      registrationOpensAt: next.opensAt,
+      registrationClosesAt: next.closesAt,
+      startsAt: next.startsAt,
+    },
+    requestId: c.get('requestId'),
+  });
+
+  const updated = await loadEvent(env, event.id);
+  return c.json({ data: toEventView(updated, counts) });
+});
+
 adminEventRoutes.post('/:id/transition', async (c) => {
   const adminId = requireAdmin(c);
   const event = await loadEvent(c.env, c.req.param('id'));
@@ -161,6 +277,12 @@ adminEventRoutes.post('/:id/transition', async (c) => {
     after: { status: target },
     requestId: c.get('requestId'),
   });
+
+  // 赛事结束时出勤口径才成立（"报名且赛事已结束"），这里顺手重算相关玩家，
+  // 不然出勤那 100 分要等管理员去评分页手动点「重算全部」
+  if (target === 'COMPLETED') {
+    await recomputeEventRatings(c.env, event.id);
+  }
 
   const counts = await countRegistrations(c.env, event.id);
   return c.json({ data: toEventView({ ...event, status: target, updated_at: now }, counts) });
@@ -300,6 +422,79 @@ adminEventRoutes.get('/:id/registrations', async (c) => {
     data: {
       event: toEventView(event, await countRegistrations(c.env, event.id)),
       registrations: rows.results ?? [],
+    },
+    meta: { requestId: c.get('requestId') },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * 候补转正：把一个人从候补队列提到正选，并把后面的候补整体前移一位。
+ * 正选人数受 capacity 约束——这是"目标人数"语义，不是座位数，所以不能无限转正。
+ * ------------------------------------------------------------------------ */
+adminEventRoutes.post('/:id/registrations/:rid/promote', async (c) => {
+  const env = c.env;
+  const adminId = requireAdmin(c);
+  const event = await loadEvent(env, c.req.param('id'));
+
+  const registration = await env.DB.prepare(
+    `SELECT id, user_id AS userId, status, waitlist_position AS waitlistPosition
+       FROM registrations WHERE id = ? AND event_id = ?`,
+  )
+    .bind(c.req.param('rid'), event.id)
+    .first<{ id: string; userId: string; status: string; waitlistPosition: number | null }>();
+
+  if (!registration) throw new ApiError('NOT_FOUND', '报名记录不存在');
+
+  const counts = await countRegistrations(env, event.id);
+  assertPromotable({
+    eventStatus: event.status,
+    registrationStatus: registration.status,
+    confirmedCount: counts.confirmed,
+    capacity: event.capacity,
+  });
+
+  const waitlistRows = await env.DB.prepare(
+    `SELECT id, waitlist_position AS position FROM registrations
+      WHERE event_id = ? AND status = 'WAITLIST'
+      ORDER BY waitlist_position ASC, created_at ASC`,
+  )
+    .bind(event.id)
+    .all<WaitlistEntry>();
+
+  const remaining = compactWaitlist(waitlistRows.results ?? [], registration.id);
+  const now = Date.now();
+
+  // 转正 + 重排必须在同一个事务里：否则中途失败会留下"两个 1 号候补"的队列
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE registrations SET status = 'CONFIRMED', waitlist_position = NULL, updated_at = ?
+        WHERE id = ? AND status = 'WAITLIST'`,
+    ).bind(now, registration.id),
+    ...remaining.map((row) =>
+      env.DB.prepare(`UPDATE registrations SET waitlist_position = ?, updated_at = ? WHERE id = ?`).bind(
+        row.position,
+        now,
+        row.id,
+      ),
+    ),
+  ]);
+
+  await audit(env, {
+    actorId: adminId,
+    action: 'registration.promote',
+    entityType: 'registration',
+    entityId: registration.id,
+    before: { status: 'WAITLIST', waitlistPosition: registration.waitlistPosition },
+    after: { status: 'CONFIRMED', waitlistPosition: null },
+    requestId: c.get('requestId'),
+  });
+
+  const after = await countRegistrations(env, event.id);
+  return c.json({
+    data: {
+      registration: { id: registration.id, userId: registration.userId, status: 'CONFIRMED' },
+      waitlist: remaining,
+      event: toEventView(await loadEvent(env, event.id), after),
     },
     meta: { requestId: c.get('requestId') },
   });

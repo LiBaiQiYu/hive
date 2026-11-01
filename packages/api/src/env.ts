@@ -13,6 +13,9 @@ export interface Env {
   REGISTRATION_REQUIRE_INVITE?: string;
   /** 可选：只用于取 Steam 昵称与头像，不参与身份校验；缺失时绑定仍应成功 */
   STEAM_WEB_API_KEY?: string;
+  /** outbox 每次抽干的任务数 / 租约秒数（wrangler.jsonc 的 vars） */
+  SYNC_JOB_BATCH_SIZE?: string;
+  SYNC_JOB_LEASE_SECONDS?: string;
 }
 
 export interface Variables {

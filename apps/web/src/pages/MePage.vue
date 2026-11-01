@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ApiError, api } from '../lib/api';
+import { NButton, NInput, NInputNumber, NPopconfirm, NSelect, useMessage } from 'naive-ui';
+import HelpTip from '../components/HelpTip.vue';
+import CardStudio from '../components/CardStudio.vue';
+import type { PlayerCardData } from '../components/PlayerCard.vue';
+import { DEFAULT_CARD_SKIN, normalizeCardSkin, type CardSkin } from '../lib/cards';
+import { ApiError, api, formatDate } from '../lib/api';
 import { loadMe, session } from '../lib/session';
 
 interface Slot {
@@ -30,6 +35,14 @@ const loading = ref(true);
 const saving = ref(false);
 const error = ref('');
 const saved = ref(false);
+const message = useMessage();
+
+/** 志愿下拉：已被别的位置占用的档位不再出现，避免"选完再报错" */
+function rankSelectOptions(slot: Slot) {
+  return [0, 1, 2, 3, 4, 5]
+    .filter((rank) => rank === 0 || rank === slot.rank || !usedRanks.value.has(rank))
+    .map((rank) => ({ label: rank === 0 ? '不打' : `第 ${rank} 志愿`, value: rank }));
+}
 
 function fillFromProfile(positions: { position: number; rank: number; proficiency: number }[]) {
   slots.value = [1, 2, 3, 4, 5].map((position) => {
@@ -45,6 +58,7 @@ function fillFromProfile(positions: { position: number; rank: number; proficienc
 onMounted(async () => {
   if (!session.ready) await loadMe();
   fillFromProfile(session.me?.positions ?? []);
+  void loadRatingHistory();
   loading.value = false;
 });
 
@@ -108,6 +122,7 @@ async function saveProfile() {
     });
     await loadMe();
     profileSaved.value = true;
+    message.success('资料已保存');
   } catch (err) {
     profileError.value = err instanceof ApiError ? err.message : '保存失败';
   } finally {
@@ -115,9 +130,78 @@ async function saveProfile() {
   }
 }
 
+/* ---------------------------------------------------------------- 卡片外观 */
+const cardSkin = ref<CardSkin>({ ...DEFAULT_CARD_SKIN });
+const cardSkinSaving = ref(false);
+const cardSkinStatus = ref('');
+let cardSkinTimer: number | undefined;
+
+watch(
+  () => session.me?.cardSkin,
+  (skin) => {
+    if (skin) cardSkin.value = normalizeCardSkin(skin);
+  },
+  { deep: true, immediate: true },
+);
+
+/**
+ * 点一下就要有反馈：本地立刻换装，350ms 内的连续点击合并成一次请求。
+ * 皮肤是整份提交（三个字段一起写），不做"只改一半"的局部更新。
+ */
+function onCardSkinChange(next: CardSkin) {
+  cardSkin.value = next;
+  cardSkinStatus.value = '';
+  window.clearTimeout(cardSkinTimer);
+  cardSkinTimer = window.setTimeout(() => void saveCardSkin(), 350);
+}
+
+async function saveCardSkin() {
+  cardSkinSaving.value = true;
+  try {
+    await api('/me/card-skin', { method: 'PUT', body: cardSkin.value });
+    // 不重新拉 /me：那会把刚点的选择回滚成服务端旧值，直接写回本地会话即可
+    if (session.me) session.me.cardSkin = { ...cardSkin.value };
+    cardSkinStatus.value = '已保存';
+  } catch (err) {
+    cardSkinStatus.value = err instanceof ApiError ? err.message : '保存失败';
+  } finally {
+    cardSkinSaving.value = false;
+  }
+}
+
+/** 预览用的"我"：字段和报名名单里的玩家卡完全一致，所见即所得 */
+const previewPlayer = computed<PlayerCardData>(() => {
+  const me = session.me;
+  const topPosition = me?.positions.find((item) => item.rank === 1)?.position ?? null;
+  const rankTier = me?.stats?.rankTier ?? null;
+  const accountVerification = me?.gameAccount?.verification ?? null;
+  let verification = 'SELF_REPORTED';
+  if (accountVerification === 'VERIFIED') {
+    verification = rankTier !== null ? 'VERIFIED' : 'VERIFIED_NO_DATA';
+  } else if (accountVerification === 'CLAIMED') {
+    verification = 'CLAIMED';
+  }
+
+  return {
+    userId: me?.user.id ?? 'preview',
+    status: 'CONFIRMED',
+    displayName: me?.user.displayName || '你的名字',
+    bio: me?.user.bio ?? null,
+    position: topPosition,
+    rankTier,
+    declaredMmr: me?.stats?.declaredMmr ?? null,
+    rating: me?.rating?.effective ?? null,
+    verification,
+    personaName: me?.gameAccount?.personaName ?? null,
+    skin: cardSkin.value,
+  };
+});
+
 /* ---------------------------------------------------------------- 手动段位 */
 const MEDALS = ['先锋', '卫士', '中军', '统帅', '传奇', '万古流芳', '超凡入圣', '冠绝'];
 const MEDAL_FLOORS = [0, 770, 1540, 2310, 3080, 3850, 4620, 5420];
+const medalOptions = MEDALS.map((name, index) => ({ label: name, value: index + 1 }));
+const starOptions = [1, 2, 3, 4, 5].map((s) => ({ label: `${s} 星`, value: s }));
 const rankForm = ref({ medal: 4, star: 1, mmr: null as number | null });
 const rankSaving = ref(false);
 const rankMsg = ref('');
@@ -204,6 +288,7 @@ async function saveRank() {
     });
     await loadMe();
     rankMsg.value = `已保存，WARROOM 评分更新为 ${result.rating.effective}`;
+    message.success('段位已保存');
   } catch (err) {
     rankErr.value = err instanceof ApiError ? err.message : '保存失败';
   } finally {
@@ -239,10 +324,98 @@ async function claimAccount() {
     claimMsg.value = result.hiddenData
       ? `${result.personaName ?? '该账号'} 没有公开段位，请在 Dota2 里开启「公开比赛数据」，或手动填写段位`
       : `已同步 ${result.personaName ?? ''} 的段位（${result.rankTier ? `${MEDALS[Math.floor(result.rankTier / 10) - 1] ?? ''} ${result.rankTier % 10} 星` : ''}），评分更新为 ${result.rating.effective}`;
+    message.success('已从 OpenDota 同步');
   } catch (err) {
     claimErr.value = err instanceof ApiError ? err.message : '获取失败';
   } finally {
     claiming.value = false;
+  }
+}
+
+/* ---------------------------------------------------------------- Steam 解绑 / 重新认证 */
+const steamBusy = ref(false);
+
+/** 解绑会删掉 game_accounts 整行，段位来源随之失效 */
+async function unbindSteam() {
+  steamBusy.value = true;
+  try {
+    await api('/auth/steam/unlink', { method: 'DELETE' });
+    await loadMe();
+    message.success('已解绑 Steam，可以重新认证');
+  } catch (err) {
+    message.error(err instanceof ApiError ? err.message : '解绑失败');
+  } finally {
+    steamBusy.value = false;
+  }
+}
+
+/** 重新认证 = 先解绑再跳 Steam：否则唯一索引会挡住新的绑定 */
+async function rebindSteam() {
+  steamBusy.value = true;
+  try {
+    await api('/auth/steam/unlink', { method: 'DELETE' }).catch(() => undefined);
+    window.location.href = '/api/auth/steam/start';
+  } catch (err) {
+    message.error(err instanceof ApiError ? err.message : '跳转失败');
+    steamBusy.value = false;
+  }
+}
+
+/* ---------------------------------------------------------------- 评分调整记录 */
+interface RatingHistoryRow {
+  id: string;
+  oldAdjustment: number;
+  newAdjustment: number;
+  oldEffective: number;
+  newEffective: number;
+  reason: string;
+  createdAt: number;
+  operatorName: string | null;
+}
+
+const ratingHistory = ref<RatingHistoryRow[]>([]);
+
+async function loadRatingHistory() {
+  try {
+    const data = await api<{ history: RatingHistoryRow[] }>('/me/rating-history');
+    ratingHistory.value = data.history;
+  } catch {
+    ratingHistory.value = [];
+  }
+}
+
+const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}`;
+
+/* ---------------------------------------------------------------- 修改密码 */
+const pwd = ref({ current: '', next: '', confirm: '' });
+const pwdSaving = ref(false);
+const pwdError = ref('');
+const pwdMsg = ref('');
+
+async function changePassword() {
+  pwdError.value = '';
+  pwdMsg.value = '';
+  if (pwd.value.next.length < 10) {
+    pwdError.value = '新密码至少 10 位';
+    return;
+  }
+  if (pwd.value.next !== pwd.value.confirm) {
+    pwdError.value = '两次输入的新密码不一致';
+    return;
+  }
+  pwdSaving.value = true;
+  try {
+    await api('/auth/password', {
+      method: 'POST',
+      body: { currentPassword: pwd.value.current, newPassword: pwd.value.next },
+    });
+    pwd.value = { current: '', next: '', confirm: '' };
+    pwdMsg.value = '密码已修改。其他设备上的登录已失效，这台保持在线。';
+    message.success('密码已修改');
+  } catch (err) {
+    pwdError.value = err instanceof ApiError ? err.message : '修改失败';
+  } finally {
+    pwdSaving.value = false;
   }
 }
 
@@ -261,6 +434,7 @@ async function save() {
     });
     await loadMe();
     saved.value = true;
+    message.success('位置偏好已保存');
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '保存失败';
   } finally {
@@ -288,7 +462,20 @@ async function save() {
       <div class="grid grid-2">
         <!-- 评分 -->
         <section class="card">
-          <h2 class="card-title">WARROOM Rating</h2>
+          <h2 class="card-title">
+            WARROOM Rating
+            <HelpTip
+              wide
+              title="这个分怎么算的？"
+              :steps="[
+                '① 范围 0–1000，是分队用的内部值，和天梯 MMR 不是一回事',
+                '② 段位 900：天梯勋章与 MMR，几乎决定全部实力判断',
+                '③ 社区出勤 100：报名后是否到场，报了不来按缺席比例扣分',
+                '④ 样本不足时向 500 收缩，新人不会因为两三局连胜就虚高',
+              ]"
+              note="战绩、英雄池、位置能力都不进评分（位置属于分队逻辑）。管理员可修正，必须填原因且不可删除，幅度随数据可信度放宽到 ±500。报名与分组时冻结快照，改评分不影响已公布的阵容。"
+            />
+          </h2>
 
           <template v-if="rating">
             <div class="rating-hero">
@@ -313,34 +500,45 @@ async function save() {
               </div>
             </div>
 
-            <details class="explainer">
-              <summary>这个分怎么算的？</summary>
+            <!-- 评分构成：段位与出勤各贡献多少分 -->
+            <div v-if="rating.breakdown" class="rating-break">
+              <div class="rating-break-title">系统分构成</div>
+              <div v-for="part in rating.breakdown.components" :key="part.key" class="rating-break-row">
+                <span class="rating-break-name">
+                  {{ part.key === 'RANK' ? '段位' : '社区出勤' }}
+                </span>
+                <div class="rating-break-bar">
+                  <i :style="{ width: `${Math.round(part.value * 100)}%` }"></i>
+                </div>
+                <span class="rating-break-score mono">{{ part.score }}<span class="muted"> / {{ part.weight }}</span></span>
+              </div>
+              <p class="rating-break-note muted">
+                <template v-if="typeof rating.breakdown.attendanceBp === 'number'">
+                  出勤率 {{ (rating.breakdown.attendanceBp / 100).toFixed(0) }}% ·
+                </template>
+                <template v-else>还没有已结束的赛事，出勤按满分计 ·</template>
+                <template v-if="typeof rating.breakdown.estimatedMmr === 'number'">
+                  估算 MMR {{ rating.breakdown.estimatedMmr }}
+                </template>
+                <template v-else>缺少段位数据，按中性值计</template>
+              </p>
+            </div>
+
+            <details v-if="ratingHistory.length > 0" class="explainer">
+              <summary>评分调整记录（{{ ratingHistory.length }}）</summary>
               <div class="explainer-body">
-                <p>
-                  这是 HIVE 用来分队的内部评分，范围 0–1000。它和你的天梯 MMR 不是一回事，
-                  也不能直接比较——它只回答一个问题：
-                  <strong>在这十几个人里，怎么分队两边才更接近。</strong>
-                </p>
-                <ul>
-                  <li><b>段位 900</b> · 天梯勋章与 MMR，几乎决定全部实力判断</li>
-                  <li><b>社区出勤 100</b> · 报名后是否到场；报了不来按缺席比例扣分</li>
-                </ul>
-                <p>
-                  只算这两项，是因为它们几乎没有争议：段位是 Valve 给你的标签，
-                  出勤是能数出来的事实。近期战绩和英雄池不参与算分——
-                  15 人的社区里 20 局胜负的样本太小，用它们评判实力只会把所有人拉向平均。
-                  位置能力也不在评分里，它属于分队逻辑（决定你站哪个位置，不影响你有多强）。
-                </p>
-                <p>
-                  样本不足时会向 500（基准线）收缩，所以新人的分数不会因为两三局连胜就虚高。
-                  管理员可以修正，但必须填写原因且不可删除；修正幅度会随数据可信度放宽（最多 ±500）。
-                </p>
-                <p class="muted">
-                  报名与分组时会冻结当时的评分快照，之后调整评分不会影响已公布的阵容。
-                  算法版本 {{ rating.algorithmVersion }}。
-                </p>
+                <div v-for="item in ratingHistory" :key="item.id" class="rating-history-row">
+                  <span class="muted">{{ formatDate(item.createdAt) }}</span>
+                  <span class="mono">
+                    {{ signed(item.oldAdjustment) }} → {{ signed(item.newAdjustment) }}
+                  </span>
+                  <span class="mono">最终 {{ item.newEffective }}</span>
+                  <span class="muted">{{ item.operatorName ?? '—' }}</span>
+                  <span class="rating-history-reason">{{ item.reason }}</span>
+                </div>
               </div>
             </details>
+
           </template>
 
           <p v-else class="muted" style="margin: 0">
@@ -350,7 +548,19 @@ async function save() {
 
         <!-- 身份 -->
         <section class="card">
-          <h2 class="card-title">游戏身份</h2>
+          <h2 class="card-title">
+            游戏身份
+            <HelpTip
+              wide
+              title="身份怎么验证？"
+              :steps="[
+                '① Steam 登录只是跳转到 Steam 官方页面确认身份，本站接触不到你的密码',
+                '② 不绑定也能用：手动填段位同样计入评分，只是归属显示「未验证」',
+                '③ 数字 ID 只证明这个账号存在且有公开数据，不能证明它是你的',
+              ]"
+              note="归属验证只有 Steam 能给。解绑会删掉 Steam 归属验证和同步来的段位，之后可以重新绑定。"
+            />
+          </h2>
 
           <div v-if="account" class="id-row">
             <span
@@ -394,31 +604,34 @@ async function save() {
               </span>
             </span>
           </div>
-          <p v-else class="muted" style="margin: 0 0 12px">
-            尚未绑定游戏账号。绑定后可以自动获取段位与近期表现；不绑定也可以由管理员手动设定评分。
-          </p>
-
           <div class="id-row">
             <span class="stat-label">归属验证</span>
-            <a
-              v-if="account?.verification !== 'VERIFIED'"
-              class="btn"
-              href="/api/auth/steam/start"
-              title="跳转到 Steam 官方页面确认身份，本站接触不到你的密码"
-            >
-              绑定 Steam
-            </a>
-            <span v-else class="muted" style="font-size: 13px">Steam 已验证</span>
-          </div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap">
+              <span v-if="account?.verification === 'VERIFIED'" class="pill pill-open">✓ Steam 已验证</span>
+              <span v-else class="muted" style="font-size: 13px">未验证</span>
 
-          <p
-            v-if="account && account.verification !== 'VERIFIED'"
-            class="muted"
-            style="font-size: 12px; margin: 0 0 10px"
-          >
-            当前段位来自数字 ID，只能证明"这个账号存在"，不能证明"这是你的账号"。
-            绑定 Steam 可以把它升级为「已认证」。
-          </p>
+              <a
+                v-if="account?.verification !== 'VERIFIED'"
+                class="btn"
+                href="/api/auth/steam/start"
+                title="跳转到 Steam 官方页面确认身份，本站接触不到你的密码"
+              >
+                绑定 Steam
+              </a>
+
+              <template v-else>
+                <NButton :disabled="steamBusy" :loading="steamBusy" @click="rebindSteam">
+                  重新认证
+                </NButton>
+                <NPopconfirm @positive-click="unbindSteam">
+                  <template #trigger>
+                    <NButton :disabled="steamBusy">解绑</NButton>
+                  </template>
+                  解绑会删除 Steam 归属验证和同步来的段位数据，之后可以重新绑定。确定解绑吗？
+                </NPopconfirm>
+              </template>
+            </div>
+          </div>
 
           <div
             v-if="account?.verification !== 'VERIFIED'"
@@ -426,79 +639,96 @@ async function save() {
           >
             <div class="field-label" style="margin-bottom: 8px">
               用数字 ID 获取段位（免 Steam）
+              <HelpTip
+                title="数字 ID 从哪来？"
+                :steps="[
+                  '① 打开 Dota2 个人资料页，地址栏最后那串 9 位数字',
+                  '② 只读取公开的段位数据，不需要密码',
+                ]"
+                note="它证明「这个账号存在」，不证明「这是你的账号」——所以徽章是「归属未验证」。"
+              />
             </div>
             <div style="display: flex; gap: 8px">
-              <input
-                v-model.number="accountForm.id"
-                class="input mono"
-                type="number"
+              <NInputNumber
+                v-model:value="accountForm.id"
+                class="mono"
+                :min="1"
+                :show-button="false"
                 placeholder="例如 109902856"
                 style="flex: 1; min-width: 0"
+                size="medium"
               />
-              <button class="btn" type="button" :disabled="claiming" @click="claimAccount">
+              <NButton :disabled="claiming" :loading="claiming" @click="claimAccount">
                 {{ claiming ? '获取中…' : '从 OpenDota 获取' }}
-              </button>
+              </NButton>
             </div>
             <p v-if="claimErr" class="alert" style="margin: 10px 0 0">{{ claimErr }}</p>
             <p v-if="claimMsg" class="muted" style="margin: 10px 0 0; font-size: 12px">
               {{ claimMsg }}
             </p>
-            <p class="muted" style="font-size: 11px; margin: 8px 0 0">
-              数字 ID 是 Dota2 个人资料页那串 9 位数字。它只证明"这个账号存在且有公开数据"，
-              不能证明"这是你的账号"——所以徽章会显示「归属未验证」。
-            </p>
           </div>
           <div style="padding: 16px 0 12px; border-bottom: 1px dashed var(--line)">
-            <div class="field-label" style="margin-bottom: 8px">手动填写段位</div>
+            <div class="field-label" style="margin-bottom: 8px">
+              手动填写段位
+              <HelpTip
+                title="填了天梯分还要选段位吗？"
+                :steps="[
+                  '① 填了天梯分就不用再选段位——系统按分数折算勋章与星级（每 154 分一星，5420 分以上为冠绝）',
+                  '② 手选段位和天梯分对不上时以天梯分为准，保存后自动修正',
+                ]"
+                note="天梯分本身只作展示参考；当前段位来自 Steam / OpenDota 同步时，这里会锁住不让手填。"
+              />
+            </div>
             <div class="rank-form">
-              <select v-model.number="rankForm.medal" class="input" :disabled="derivedRank !== null">
-                <option v-for="(name, index) in MEDALS" :key="name" :value="index + 1">
-                  {{ name }}
-                </option>
-              </select>
-              <select
-                v-if="rankForm.medal !== 8"
-                v-model.number="rankForm.star"
-                class="input"
+              <NSelect
+                v-model:value="rankForm.medal"
+                :options="medalOptions"
                 :disabled="derivedRank !== null"
-              >
-                <option v-for="s in 5" :key="s" :value="s">{{ s }} 星</option>
-              </select>
+                size="medium"
+              />
+              <NSelect
+                v-if="rankForm.medal !== 8"
+                v-model:value="rankForm.star"
+                :options="starOptions"
+                :disabled="derivedRank !== null"
+                size="medium"
+              />
               <span v-else class="muted" style="font-size: 12px; text-align: center">
                 冠绝无星级
               </span>
-              <input
-                v-model.number="rankForm.mmr"
-                class="input mono"
-                type="number"
-                min="0"
-                max="20000"
+              <NInputNumber
+                v-model:value="rankForm.mmr"
+                class="mono"
+                :min="0"
+                :max="20000"
+                :show-button="false"
                 placeholder="天梯分（选填）"
+                size="medium"
               />
-              <button class="btn" type="button" :disabled="rankSaving" @click="saveRank">
+              <NButton :disabled="rankSaving" :loading="rankSaving" @click="saveRank">
                 {{ rankSaving ? '保存中…' : '保存段位' }}
-              </button>
+              </NButton>
             </div>
           </div>
 
           <p v-if="rankErr" class="alert" style="margin: 10px 0 0">{{ rankErr }}</p>
           <p v-if="rankMsg" class="muted" style="margin: 10px 0 0; font-size: 12px">{{ rankMsg }}</p>
-          <p class="muted" style="font-size: 12px; margin: 8px 0 0">
-            填了天梯分就<b>不用再选段位</b>——系统会按分数自动折算勋章与星级（每 154 分一星，
-            5420 分以上为冠绝）。如果手选的段位和天梯分对不上，<b>以天梯分为准</b>，
-            保存后自动修正为对应段位。天梯分本身只作展示参考。
-          </p>
-
-          <p class="muted" style="font-size: 12px; margin: 16px 0 0">
-            说明：Steam 登录只是跳转到 Steam 官方页面确认身份，本站接触不到你的密码。
-            如果你不想绑定，手动填写段位同样可用——只是会显示"未验证"标记。
-          </p>
         </section>
       </div>
 
       <!-- 资料 -->
       <section class="card section">
-        <h2 class="card-title">资料</h2>
+        <h2 class="card-title">
+          资料
+          <HelpTip
+            title="哪些能改？"
+            :steps="[
+              '① 显示名、QQ、简介随时可以改',
+              '② 用户名不可修改——它是登录凭据',
+              '③ 评分与段位由系统和管理员维护，不接受自行填写',
+            ]"
+          />
+        </h2>
 
         <div
           class="grid"
@@ -506,21 +736,26 @@ async function save() {
         >
           <label class="field" style="margin: 0">
             <span class="field-label">显示名</span>
-            <input v-model="profile.displayName" class="input" maxlength="32" />
+            <NInput v-model:value="profile.displayName" :maxlength="32" size="medium" />
           </label>
           <label class="field" style="margin: 0">
             <span class="field-label">QQ（选填，仅管理员可见）</span>
-            <input v-model="profile.qqNumber" class="input" maxlength="12" placeholder="例如 123456789" />
+            <NInput
+              v-model:value="profile.qqNumber"
+              :maxlength="12"
+              placeholder="例如 123456789"
+              size="medium"
+            />
           </label>
         </div>
 
         <label class="field" style="margin: 14px 0 0">
           <span class="field-label">简介</span>
-          <input
-            v-model="profile.bio"
-            class="input"
-            maxlength="280"
+          <NInput
+            v-model:value="profile.bio"
+            :maxlength="280"
             placeholder="一句话介绍你的打法，会显示在玩家档案上"
+            size="medium"
           />
         </label>
 
@@ -528,35 +763,120 @@ async function save() {
         <p v-if="profileSaved" class="muted" style="margin-top: 14px">资料已保存。</p>
 
         <div style="margin-top: 16px; display: flex; align-items: center; gap: 14px">
-          <button class="btn btn-primary" type="button" :disabled="profileSaving" @click="saveProfile">
+          <NButton type="primary" :disabled="profileSaving" :loading="profileSaving" @click="saveProfile">
             {{ profileSaving ? '保存中…' : '保存资料' }}
-          </button>
-          <span class="muted" style="font-size: 12px">
-            用户名不可修改（它是登录凭据）；评分与段位由系统和管理员维护，不接受自行填写。
-          </span>
+          </NButton>
+        </div>
+      </section>
+
+      <!-- 卡片外观：材质 / 边框 / 特效，独立成板块 -->
+      <section id="card-style" class="card section">
+        <h2 class="card-title">
+          卡片外观
+          <HelpTip
+            wide
+            title="这些皮肤会出现在哪？"
+            :steps="[
+              '① 报名名单里的玩家卡就是这张，别人看到的是你自己选的那套',
+              '② 材质、边框、特效可以任意组合，点了就自动保存',
+              '③ 只影响外观：评分、段位、位置与分队结果一律不变',
+            ]"
+            note="特效是纯 CSS 动画，只动 transform / opacity；系统开启「减少动态效果」时会自动静止。触屏上没有 3D 倾斜，别再给卡片加抖动。"
+          />
+        </h2>
+
+        <CardStudio
+          :player="previewPlayer"
+          :model-value="cardSkin"
+          :saving="cardSkinSaving"
+          :status="cardSkinStatus"
+          @update:model-value="onCardSkinChange"
+        />
+      </section>
+
+      <!-- 账号安全 -->
+      <section class="card section">
+        <h2 class="card-title">
+          账号安全
+          <HelpTip
+            title="改完密码会怎样？"
+            :steps="[
+              '① 其他设备会被强制下线，这台保持登录',
+              '② 密码只存 PBKDF2 哈希，忘了只能重设，找不回来',
+            ]"
+            note="改密码不会动评分、报名和已生成的阵容。"
+          />
+        </h2>
+
+        <div
+          class="grid"
+          style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px"
+        >
+          <label class="field" style="margin: 0">
+            <span class="field-label">当前密码</span>
+            <NInput
+              v-model:value="pwd.current"
+              type="password"
+              show-password-on="click"
+              placeholder="当前密码"
+              :input-props="{ autocomplete: 'current-password' }"
+              size="medium"
+            />
+          </label>
+          <label class="field" style="margin: 0">
+            <span class="field-label">
+              新密码
+              <HelpTip title="密码要求" :steps="['至少 10 位', '两次输入要一致']" />
+            </span>
+            <NInput
+              v-model:value="pwd.next"
+              type="password"
+              show-password-on="click"
+              placeholder="至少 10 位"
+              :input-props="{ autocomplete: 'new-password' }"
+              size="medium"
+            />
+          </label>
+          <label class="field" style="margin: 0">
+            <span class="field-label">再输一次新密码</span>
+            <NInput
+              v-model:value="pwd.confirm"
+              type="password"
+              show-password-on="click"
+              placeholder="再输一次"
+              :input-props="{ autocomplete: 'new-password' }"
+              size="medium"
+            />
+          </label>
+        </div>
+
+        <p v-if="pwdError" class="alert" style="margin-top: 14px">{{ pwdError }}</p>
+        <p v-if="pwdMsg" class="muted" style="margin-top: 14px">{{ pwdMsg }}</p>
+
+        <div style="margin-top: 16px; display: flex; align-items: center; gap: 14px">
+          <NButton type="primary" :disabled="pwdSaving" :loading="pwdSaving" @click="changePassword">
+            {{ pwdSaving ? '提交中…' : '修改密码' }}
+          </NButton>
         </div>
       </section>
 
       <!-- 位置偏好 -->
       <section class="card section">
-        <h2 class="card-title">位置偏好</h2>
-        <p class="muted" style="margin: 0 0 18px; font-size: 13px">
-          志愿顺序决定分队时你被安排的位置。填写得越完整，分组结果越贴近你的实际水平——
-          只填一个位置的话，队伍里必然有人打不上本命位。
-        </p>
+        <h2 class="card-title">
+          位置偏好
+          <HelpTip
+            wide
+            title="志愿和熟练度怎么用？"
+            :steps="[
+              '① 志愿顺序决定分队时你被安排的位置；只填一个位置，队伍里就必然有人打不上本命位',
+              '② 熟练度是你在这个位置的真实水平：100 = 完全胜任，0 = 勉强能顶',
+              '③ 契合度 = 志愿基准（第一志愿 100，之后每降一档 −20）+ 熟练度修正（±25）',
+            ]"
+            note="熟练度只影响分队时的位置契合度，不影响 WARROOM 评分。建议填 3–5 个位置；保存后下次生成阵容才生效，已公布的阵容不会变。"
+          />
+        </h2>
 
-        <div
-          style="
-            display: grid;
-            grid-template-columns: minmax(150px, 1.2fr) 140px minmax(160px, 1fr);
-            gap: 16px;
-            padding: 0 12px 8px;
-            font-size: 11px;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            color: var(--muted);
-          "
-        >
+        <div class="pos-head">
           <span>位置</span>
           <span>志愿顺序</span>
           <span>熟练度 0–100</span>
@@ -566,11 +886,12 @@ async function save() {
           <div v-for="slot in slots" :key="slot.position" class="pos-row">
             <div class="pos-name">{{ POSITION_NAMES[slot.position] }}</div>
 
-            <select v-model.number="slot.rank" class="input pos-select">
-              <option v-for="rank in rankOptions(slot)" :key="rank" :value="rank">
-                {{ rank === 0 ? '不打' : `第 ${rank} 志愿` }}
-              </option>
-            </select>
+            <NSelect
+              v-model:value="slot.rank"
+              :options="rankSelectOptions(slot)"
+              class="pos-select"
+              size="medium"
+            />
 
             <div class="pos-prof">
               <input
@@ -592,41 +913,15 @@ async function save() {
           志愿顺序必须从第 1 志愿开始连续填写，不能跳档。
         </p>
 
-        <div
-          class="muted"
-          style="
-            margin-top: 16px;
-            padding: 12px 14px;
-            border-left: 2px solid var(--line-strong);
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 0 6px 6px 0;
-            font-size: 12px;
-            line-height: 1.9;
-          "
-        >
-          <div style="color: var(--text); margin-bottom: 4px">滑条上的数字是什么意思？</div>
-          <p style="margin: 0 0 6px">
-            <strong>熟练度</strong>是你在这个位置的真实水平：<b>100</b> 表示完全胜任、可以放心交给你，
-            <b>0</b> 表示勉强能顶、尽量别安排。它只影响分队时的位置契合度，不影响你的 WARROOM 评分。
-          </p>
-          <p style="margin: 0 0 6px">
-            契合度 = 志愿基准（第一志愿 100，之后每降一档 −20）+ 熟练度修正（<code>±25</code>）。
-            所以「第二志愿但熟练度 100」的人（契合 100）会排在「第一志愿但熟练度 0」的人（契合 75）前面——
-            志愿是偏好，熟练度才是你实际能不能打。
-          </p>
-          <p style="margin: 0">
-            填 <b>3–5 个位置</b>最好：只填一个位置时，一旦同位置的人报多了，队伍里必然有人要打不熟的位置。
-          </p>
-        </div>
         <p v-if="error" class="alert" style="margin-top: 16px">{{ error }}</p>
         <p v-if="saved" class="muted" style="margin-top: 16px">
           已保存。下次生成阵容时生效——已发布的阵容不会因为改偏好而变化。
         </p>
 
         <div style="margin-top: 18px; display: flex; gap: 10px; align-items: center">
-          <button class="btn btn-primary" type="button" :disabled="!canSave" @click="save">
+          <NButton type="primary" :disabled="!canSave" :loading="saving" @click="save">
             {{ saving ? '保存中…' : '保存位置偏好' }}
-          </button>
+          </NButton>
           <span class="muted" style="font-size: 12px">
             已选 {{ chosen.length }} 个位置
           </span>

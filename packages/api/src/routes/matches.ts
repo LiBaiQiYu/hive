@@ -3,8 +3,15 @@ import { z } from 'zod';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { requireAdmin } from '../guard';
-import { balanceTeams, type BalancePlayer, type BalanceResult } from '../algorithms/team-balancing';
-import { MATCH_SIZE } from '../services/roster';
+import {
+  balanceTeams,
+  computePositionFit,
+  CONFLICT_THRESHOLD,
+  type BalancePlayer,
+  type BalanceResult,
+} from '../algorithms/team-balancing';
+import { MATCH_SIZE, TEAM_SIZE } from '../services/roster';
+import { recomputeEventRatings } from '../services/rating';
 import { loadEvent } from './events';
 
 export const adminMatchRoutes = new Hono<AppEnv>();
@@ -250,7 +257,7 @@ async function loadLineup(env: Env, matchId: string) {
     }>();
 
   const members = await env.DB.prepare(
-    `SELECT tm.team_id AS teamId, tm.user_id AS userId, u.display_name AS displayName,
+    `SELECT tm.id, tm.team_id AS teamId, tm.user_id AS userId, u.display_name AS displayName,
             tm.assigned_position AS position, tm.position_fit_score AS fitScore,
             tm.effective_rating_snapshot AS effectiveRating, tm.is_substitute AS isSubstitute
        FROM team_members tm JOIN users u ON u.id = tm.user_id
@@ -258,6 +265,7 @@ async function loadLineup(env: Env, matchId: string) {
   )
     .bind(matchId)
     .all<{
+      id: string;
       teamId: string;
       userId: string;
       displayName: string;
@@ -369,6 +377,200 @@ adminMatchRoutes.post('/generate', async (c) => {
 adminMatchRoutes.get('/:id/lineup', async (c) => {
   requireAdmin(c);
   return c.json({ data: await loadLineup(c.env, c.req.param('id')) });
+});
+
+/* ==========================================================================
+ * 拖拽换人：整份提交，不做"逐次 PATCH 单个位置"
+ *
+ * 为什么整份提交：一次拖拽往往同时改动两个人的位置（A→B、B→A）。
+ * 逐条提交会在中间态出现"两队各 4 人"或"同一位置站两个人"，
+ * 这个中间态会被唯一索引拒绝，也会被其它读请求看到。
+ * ========================================================================== */
+const lineupMoveSchema = z.object({
+  teamMemberId: z.string().min(1),
+  toSide: z.enum(['RADIANT', 'DIRE']),
+  toPosition: z.number().int().min(1).max(5),
+});
+
+const lineupPatchSchema = z.object({
+  /** 乐观锁：客户端读到的版本号，不一致说明别人先改过了 */
+  version: z.number().int().nonnegative(),
+  moves: z.array(lineupMoveSchema).min(1).max(10),
+});
+
+interface LineupMemberRow {
+  id: string;
+  teamId: string;
+  userId: string;
+  teamSide: 'RADIANT' | 'DIRE';
+  position: number;
+  fitScore: number;
+  systemRating: number;
+  adminAdjustment: number;
+  effectiveRating: number;
+  isSubstitute: number;
+  createdAt: number;
+}
+
+adminMatchRoutes.patch('/:id/lineup', async (c) => {
+  requireAdmin(c);
+  const env = c.env;
+
+  const match = await env.DB.prepare(
+    `SELECT id, event_id AS eventId, status, version FROM matches WHERE id = ?`,
+  )
+    .bind(c.req.param('id'))
+    .first<{ id: string; eventId: string; status: string; version: number }>();
+  if (!match) throw new ApiError('NOT_FOUND', '比赛不存在');
+  if (match.status !== 'DRAFT') {
+    throw new ApiError('CONFLICT', `阵容已发布（${match.status}），不能再调整；需要改动请重新生成`);
+  }
+
+  const parsed = lineupPatchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+  if (parsed.data.version !== match.version) {
+    throw new ApiError('CONFLICT', '阵容已被其他人修改，请刷新后重试');
+  }
+
+  const teams = await env.DB.prepare(`SELECT id, side FROM teams WHERE match_id = ?`)
+    .bind(match.id)
+    .all<{ id: string; side: 'RADIANT' | 'DIRE' }>();
+  const teamBySide = new Map((teams.results ?? []).map((team) => [team.side, team.id]));
+  if (teamBySide.size !== 2) throw new ApiError('CONFLICT', '阵容数据不完整（队伍缺失）');
+
+  const rows = await env.DB.prepare(
+    `SELECT id, team_id AS teamId, user_id AS userId, team_side AS teamSide,
+            assigned_position AS position, position_fit_score AS fitScore,
+            system_rating_snapshot AS systemRating, admin_adjustment_snapshot AS adminAdjustment,
+            effective_rating_snapshot AS effectiveRating, is_substitute AS isSubstitute,
+            created_at AS createdAt
+       FROM team_members WHERE match_id = ?`,
+  )
+    .bind(match.id)
+    .all<LineupMemberRow>();
+
+  const members = rows.results ?? [];
+  const byId = new Map(members.map((member) => [member.id, member]));
+
+  // ---- 应用 moves（只改内存，校验通过后再落库） ----
+  for (const move of parsed.data.moves) {
+    const member = byId.get(move.teamMemberId);
+    if (!member) {
+      throw new ApiError('VALIDATION_FAILED', '有 move 指向不属于这场比赛的队员');
+    }
+    member.teamId = teamBySide.get(move.toSide) ?? member.teamId;
+    member.teamSide = move.toSide;
+    member.position = move.toPosition;
+  }
+
+  // ---- 校验不变量：每边 5 人，位置 1..5 各一个 ----
+  for (const side of ['RADIANT', 'DIRE'] as const) {
+    const lineup = members.filter((m) => m.teamSide === side && m.isSubstitute === 0);
+    if (lineup.length !== TEAM_SIZE) {
+      throw new ApiError('CONFLICT', `${side} 需要正好 ${TEAM_SIZE} 人，当前 ${lineup.length} 人`);
+    }
+    const positions = new Set(lineup.map((m) => m.position));
+    if (positions.size !== TEAM_SIZE) {
+      throw new ApiError('CONFLICT', `${side} 有重复位置（同一个位置站了两个人）`);
+    }
+  }
+
+  // ---- 位置变了，契合度必须跟着重算，否则覆盖度统计是假的 ----
+  // 取值口径必须和生成阵容时一致：当前档案 > 报名快照 > 报名时填的主位置
+  // （直接用 player_positions 会让"报名时选了位置但没填档案"的人全部变成 10 分）
+  const registrations = await env.DB.prepare(
+    `SELECT user_id AS userId, position_snapshot AS positionSnapshot,
+            position_preference AS fallbackPosition
+       FROM registrations WHERE event_id = ?`,
+  )
+    .bind(match.eventId)
+    .all<{ userId: string; positionSnapshot: string | null; fallbackPosition: number | null }>();
+
+  const regByUser = new Map((registrations.results ?? []).map((row) => [row.userId, row]));
+  const withPositions = await attachPositions(
+    env,
+    members.map((member) => ({
+      userId: member.userId,
+      displayName: '',
+      rating: member.effectiveRating,
+      systemRating: member.systemRating,
+      adjustment: member.adminAdjustment,
+      positionSnapshot: regByUser.get(member.userId)?.positionSnapshot ?? null,
+      fallbackPosition: regByUser.get(member.userId)?.fallbackPosition ?? null,
+    })),
+  );
+  const positionsByUser = new Map(withPositions.map((player) => [player.userId, player.positions]));
+
+  for (const member of members) {
+    if (member.isSubstitute === 0) {
+      member.fitScore = computePositionFit(
+        positionsByUser.get(member.userId) ?? [],
+        member.position as 1 | 2 | 3 | 4 | 5,
+      );
+    }
+  }
+
+  // ---- 重算两队总分 / 均分 / 位置覆盖 ----
+  const aggregates = (['RADIANT', 'DIRE'] as const).map((side) => {
+    const lineup = members.filter((m) => m.teamSide === side && m.isSubstitute === 0);
+    const total = lineup.reduce((sum, m) => sum + m.effectiveRating, 0);
+    const conflictFree = lineup.filter((m) => m.fitScore >= CONFLICT_THRESHOLD).length;
+    return {
+      side,
+      teamId: teamBySide.get(side) as string,
+      total,
+      average: Math.round(total / TEAM_SIZE),
+      coverageBp: Math.round((conflictFree / TEAM_SIZE) * 10000),
+    };
+  });
+  const gap = Math.abs((aggregates[0]?.total ?? 0) - (aggregates[1]?.total ?? 0));
+
+  const now = Date.now();
+
+  /**
+   * 落库用"删了重插"而不是逐条 UPDATE：
+   * (team_id, assigned_position) 上有唯一索引，A→2 / B→1 这种互换无论先改谁都会
+   * 撞上中间态。batch 是事务，删+插之间不会被读到。
+   */
+  const statements = [
+    env.DB.prepare(`DELETE FROM team_members WHERE match_id = ?`).bind(match.id),
+    ...members.map((member) =>
+      env.DB.prepare(
+        `INSERT INTO team_members (id, team_id, match_id, user_id, team_side, assigned_position,
+           position_fit_score, system_rating_snapshot, admin_adjustment_snapshot,
+           effective_rating_snapshot, is_substitute, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(
+        member.id,
+        member.teamId,
+        match.id,
+        member.userId,
+        member.teamSide,
+        member.position,
+        member.fitScore,
+        member.systemRating,
+        member.adminAdjustment,
+        member.effectiveRating,
+        member.isSubstitute,
+        member.createdAt,
+      ),
+    ),
+    ...aggregates.map((team) =>
+      env.DB.prepare(
+        `UPDATE teams SET total_rating = ?, average_rating = ?, position_coverage_bp = ?, updated_at = ?
+          WHERE id = ?`,
+      ).bind(team.total, team.average, team.coverageBp, now, team.teamId),
+    ),
+    env.DB.prepare(
+      `UPDATE matches SET version = version + 1, rating_gap = ?, updated_at = ? WHERE id = ?`,
+    ).bind(gap, now, match.id),
+  ];
+
+  await env.DB.batch(statements);
+
+  return c.json({ data: await loadLineup(env, match.id) });
 });
 
 /* ==========================================================================
@@ -509,7 +711,11 @@ adminMatchRoutes.post('/:id/result', async (c) => {
     ),
   ]);
 
-  return c.json({ data: await loadLineup(env, match.id) });
+  // 录入结果会改变出勤口径（这场变成 COMPLETED，赛事可能整体完成）：
+  // 立刻重算该赛事所有相关玩家的评分，否则出勤那 100 分要等管理员手动重算才动
+  const recomputed = await recomputeEventRatings(env, match.eventId);
+
+  return c.json({ data: { ...(await loadLineup(env, match.id)), recomputedRatings: recomputed } });
 });
 
 /* ==========================================================================

@@ -1,18 +1,37 @@
 /* ==========================================================================
    玩家卡片
    —— 3D 倾斜 + 视差层 + 跟随指针的光斑
-   皮肤扩展点：所有视觉都走 --skin-* 变量，后续加背景 / 边框 / 材质时
-   只需要写 [data-skin='xxx'] { --skin-*: ... }，组件本身不用改。
+   材质 / 边框 / 特效在 styles-skins.css 里用 [data-material] [data-frame]
+   [data-effect] 覆盖下面这些 --skin-* 变量；组件本身不认识任何皮肤。
    ========================================================================== */
 
 .pcard {
+  /* 外观令牌：材质文件负责覆盖，这里只给"原味"的深色默认值 */
   --skin-bg: linear-gradient(160deg, #1c2231 0%, #0f131b 100%);
   --skin-border: rgba(201, 162, 39, 0.34);
   --skin-glow: rgba(201, 162, 39, 0.22);
   --skin-foil: rgba(255, 255, 255, 0.07);
   --skin-text: var(--text);
+  --skin-muted: var(--muted);
+  --skin-accent: var(--gold-2);
+  --skin-accent-2: var(--gold);
+  --skin-divider: rgba(255, 255, 255, 0.07);
+  --skin-radius: 14px;
+  --skin-border-width: 1px;
+  --skin-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px var(--skin-border),
+    0 0 28px -6px var(--skin-glow);
+  --skin-name-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+  --skin-frame-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 34%);
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  /* 材质纹理层（像素网格、拉丝纹…），没定义就是空 */
+  --skin-tex: none;
 
-  perspective: 900px;
+  /* 760px 比 900px 的透视更"近"，倾斜时近大远小更明显 */
+  perspective: 760px;
   min-height: 232px;
   position: relative;
 }
@@ -22,8 +41,8 @@
   height: 100%;
   min-height: 232px;
   padding: 16px 16px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--skin-border);
+  border-radius: var(--skin-radius);
+  border: var(--skin-border-width) solid var(--skin-border);
   background: var(--skin-bg);
   color: var(--skin-text);
   /* 倾斜由指针驱动，回中由 transition 完成；带一点回弹更有"卡片被放下"的手感 */
@@ -42,10 +61,7 @@
     transform 90ms linear,
     box-shadow 200ms ease,
     border-color 200ms ease;
-  box-shadow:
-    0 18px 40px rgba(0, 0, 0, 0.45),
-    0 0 0 1px var(--skin-border),
-    0 0 28px -6px var(--skin-glow);
+  box-shadow: var(--skin-shadow);
 }
 
 /* 跟随指针的柔光 */
@@ -67,16 +83,108 @@
   opacity: 1;
 }
 
+/* 装饰层的裁切盒：.pcard-inner 是 preserve-3d，overflow 在里面不裁子元素，
+   所以圆角裁切必须交给这一层（transform 让它自成平面组，子元素一律被裁）。
+   内容层（名字/数据）不在里面，仍然保留 translateZ 的浮起感。 */
+.pcard-deco {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+/* 材质纹理 + 边框特效的公共图层 */
+.pcard-fx {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+  background-image: var(--skin-tex);
+  background-size: var(--skin-tex-size, auto);
+  background-repeat: var(--skin-tex-repeat, repeat);
+  background-position: var(--skin-tex-pos, 0 0);
+}
+
+/* 程序化卡面（金色 / 像素）的 canvas：铺满裁切盒 */
+.pcard-surface {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* 全息贴纸组件当卡片背景用：铺满裁切盒，圆角跟随卡片 */
+.pcard-holo {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* 全息卡不加遮罩：贴纸的色相和亮度就是卖点。
+   可读性靠"白色字 + 1px 深色描边（四向投影模拟）+ 外发光"，
+   这样无论文字压在深色还是接近白色的切面上都能拉开对比。 */
+.pcard[data-material='holo'] .pcard-head,
+.pcard[data-material='holo'] .pcard-medal,
+.pcard[data-material='holo'] .pcard-stats,
+.pcard[data-material='holo'] .pcard-bio,
+.pcard[data-material='holo'] .pcard-foot {
+  text-shadow:
+    1px 0 1px rgba(0, 0, 0, 0.85),
+    -1px 0 1px rgba(0, 0, 0, 0.85),
+    0 1px 1px rgba(0, 0, 0, 0.85),
+    0 -1px 1px rgba(0, 0, 0, 0.85),
+    0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+/* 全息卡的徽章自带底色太透，压在亮切面上会糊；给一层深色衬底 */
+.pcard[data-material='holo'] .pcard-badge {
+  background: rgba(4, 9, 16, 0.62);
+}
+
+.pcard[data-material='holo'] .badge-idle {
+  color: #dfe9f7;
+}
+
+/* 视差层：材质在这里再叠 1~2 层同款图案，随卡片角度错位，
+   产生"图案有厚度、在卡面下面"的错觉。没有材质用它时是空的。 */
+.pcard-depth {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+  transform: translateZ(3px);
+}
+
+.pcard-depth::before,
+.pcard-depth::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-repeat: no-repeat;
+  background-size: cover;
+  transition: transform 140ms ease-out;
+}
+
+/* 只在悬停时才提升合成层：名单页一屏十几张卡，常驻 will-change 会白占显存 */
+.pcard.is-active .pcard-depth::before,
+.pcard.is-active .pcard-depth::after {
+  will-change: transform;
+}
+
 /* 内描边 + 顶部高光：廉价但有效的"材质感" */
 .pcard-frame {
   position: absolute;
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent 34%);
+  box-shadow: var(--skin-frame-shadow);
+  background: var(--skin-frame-bg);
   transform: translateZ(1px);
 }
 
@@ -104,7 +212,7 @@
   font-size: 17px;
   letter-spacing: 0.06em;
   line-height: 1.3;
-  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.5);
+  text-shadow: var(--skin-name-shadow);
 }
 
 .pcard-badge {
@@ -151,20 +259,20 @@
   font-family: var(--display);
   font-size: 13px;
   letter-spacing: 0.1em;
-  color: var(--gold-2);
+  color: var(--skin-accent);
 }
 
 .medal-star {
   display: inline-flex;
   gap: 2px;
-  color: var(--gold);
+  color: var(--skin-accent-2);
   font-size: 9px;
   letter-spacing: 0;
 }
 
 .medal-none {
   font-size: 12px;
-  color: var(--muted);
+  color: var(--skin-muted);
   letter-spacing: 0.06em;
 }
 
@@ -174,7 +282,7 @@
   gap: 6px;
   margin: 12px 0 0;
   padding: 10px 0 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--skin-divider);
   transform: translateZ(16px);
 }
 
@@ -182,13 +290,13 @@
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--skin-muted);
 }
 
 .pcard-stats dd {
   margin: 2px 0 0;
   font-size: 15px;
-  color: var(--gold-2);
+  color: var(--skin-accent);
   font-variant-numeric: tabular-nums;
 }
 
@@ -196,7 +304,7 @@
   margin: 12px 0 0;
   font-size: 12px;
   line-height: 1.7;
-  color: var(--muted);
+  color: var(--skin-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -229,7 +337,7 @@
 }
 
 .pcard-steam {
-  color: var(--muted);
+  color: var(--skin-muted);
   max-width: 60%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -237,36 +345,9 @@
 }
 
 /* ---------------------------------------------------------------- 浅色 */
-
-:root[data-theme='light'] .pcard {
-  --skin-bg: linear-gradient(160deg, #ffffff 0%, #f4f1ec 100%);
-  --skin-border: rgba(27, 32, 51, 0.12);
-  --skin-glow: rgba(179, 38, 30, 0.16);
-  --skin-foil: rgba(179, 38, 30, 0.08);
-}
-
-:root[data-theme='light'] .pcard-name {
-  text-shadow: none;
-  color: #1b2033;
-}
-
-:root[data-theme='light'] .pcard-stats {
-  border-top-color: rgba(27, 32, 51, 0.1);
-}
-
-:root[data-theme='light'] .pcard-frame {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 0 0 1px rgba(27, 32, 51, 0.04);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent 34%);
-}
-
-:root[data-theme='light'] .pcard.is-active .pcard-inner {
-  box-shadow:
-    0 16px 32px rgba(27, 32, 51, 0.14),
-    0 0 0 1px var(--skin-border),
-    0 0 24px -8px var(--skin-glow);
-}
+/* 材质自己的颜色由 styles-skins.css 决定，这样金卡在浅色主题下仍然是金卡。
+   注意不要把 --skin-frame-bg / --skin-name-shadow 写在这里的 .pcard 上：
+   那会盖掉深色材质（像素 / 赤铜）自带的深色高光，等于给它们糊一层白雾。 */
 
 :root[data-theme='light'] .badge-info {
   color: #33507f;
@@ -283,6 +364,10 @@
   }
   .pcard-glare {
     display: none;
+  }
+  .pcard-depth::before,
+  .pcard-depth::after {
+    transform: none !important;
   }
 }
 

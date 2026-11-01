@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import HolographicSticker from './HolographicSticker.vue';
+import { normalizeCardSkin, type CardSkin } from '../lib/cards';
+import { renderMetalFrame } from '../lib/metal';
+import { renderPixelFrame } from '../lib/pixel';
+import { renderPsiFrame } from '../lib/psi';
 
 export interface PlayerCardData {
   userId: string;
@@ -12,6 +17,8 @@ export interface PlayerCardData {
   rating: number | null;
   verification: string;
   personaName: string | null;
+  /** 玩家自己选的皮肤；老接口没有这个字段时按默认皮肤渲染 */
+  skin?: CardSkin | null;
 }
 
 const props = withDefaults(defineProps<{ player: PlayerCardData; index?: number }>(), {
@@ -55,6 +62,9 @@ const mmrLabel = computed(() =>
   props.player.declaredMmr === null ? '—' : String(props.player.declaredMmr),
 );
 
+/** 皮肤只影响视觉：材质 / 边框 / 特效都是 CSS 变量，组件本身不认识具体皮肤 */
+const skin = computed(() => normalizeCardSkin(props.player.skin));
+
 /* ---------------------------------------------------------------- 3D 倾斜 */
 
 const board = ref<HTMLElement | null>(null);
@@ -74,8 +84,8 @@ function onPointerMove(event: PointerEvent) {
   const py = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
 
   tilt.value = {
-    rx: (0.5 - py) * 16,
-    ry: (px - 0.5) * 20,
+    rx: (0.5 - py) * 22,
+    ry: (px - 0.5) * 26,
     mx: px * 100,
     my: py * 100,
     active: true,
@@ -91,7 +101,61 @@ const cardStyle = computed(() => ({
   '--ry': `${tilt.value.ry.toFixed(2)}deg`,
   '--mx': `${tilt.value.mx}%`,
   '--my': `${tilt.value.my}%`,
+  // 归一化到 -1..1：材质贴图用它做视差位移，指针在中心时正好是 0
+  '--px': `${((tilt.value.mx - 50) / 50).toFixed(3)}`,
+  '--py': `${((tilt.value.my - 50) / 50).toFixed(3)}`,
 }));
+
+/* ---------------------------------------------------------------- 程序化卡面 */
+const surfaceCanvas = ref<HTMLCanvasElement | null>(null);
+
+let surfaceRaf = 0;
+let surfaceObserver: ResizeObserver | null = null;
+
+/** 按当前倾角重绘一帧卡面：金色走金属光照，像素走像素网格 */
+function paintSurface() {
+  const canvas = surfaceCanvas.value;
+  if (!canvas) return;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight;
+  if (!w || !h) return;
+  const opts = { tiltX: (tilt.value.mx - 50) / 50, tiltY: (tilt.value.my - 50) / 50 };
+  if (skin.value.material === 'gold') renderMetalFrame(canvas, w, h, opts);
+  else if (skin.value.material === 'pixel') renderPixelFrame(canvas, w, h, opts);
+  else if (skin.value.material === 'psi') renderPsiFrame(canvas, w, h, opts);
+}
+
+function scheduleSurface() {
+  if (surfaceRaf) return;
+  surfaceRaf = requestAnimationFrame(() => {
+    surfaceRaf = 0;
+    paintSurface();
+  });
+}
+
+watch(
+  () => [skin.value.material, tilt.value.mx, tilt.value.my],
+  () => {
+    // canvas 是 v-if 出来的：挂载后要重新 observe，才能拿到第一帧的尺寸
+    const canvas = surfaceCanvas.value;
+    if (canvas && surfaceObserver) surfaceObserver.observe(canvas);
+    scheduleSurface();
+  },
+  { flush: 'post' },
+);
+
+onMounted(() => {
+  surfaceObserver = new ResizeObserver(scheduleSurface);
+  if (board.value) surfaceObserver.observe(board.value);
+  if (surfaceCanvas.value) surfaceObserver.observe(surfaceCanvas.value);
+  scheduleSurface();
+});
+
+onBeforeUnmount(() => {
+  if (surfaceRaf) cancelAnimationFrame(surfaceRaf);
+  surfaceObserver?.disconnect();
+  surfaceObserver = null;
+});
 </script>
 
 <template>
@@ -100,14 +164,44 @@ const cardStyle = computed(() => ({
     class="pcard"
     :class="[`pcard-${verification.tone}`, { 'is-active': tilt.active }]"
     :style="cardStyle"
-    :data-skin="'basic'"
+    :data-material="skin.material"
+    :data-frame="skin.frame"
     @pointermove="onPointerMove"
     @pointerleave="onPointerLeave"
   >
     <div class="pcard-inner">
-      <!-- 光斑：跟着指针走，卡片"反光"的那一下是廉价但有效的立体感来源 -->
-      <div class="pcard-glare" aria-hidden="true" />
-      <div class="pcard-frame" aria-hidden="true" />
+      <!-- 装饰层统一包在 .pcard-deco 里：它自带圆角裁切。
+           .pcard-inner 是 preserve-3d，overflow:hidden 在 3D 上下文里不生效，
+           直接放这里的话，倾斜时贴图/光斑会溢出卡片轮廓（踩过）。 -->
+      <div class="pcard-deco" aria-hidden="true">
+        <!-- 金色/像素：canvas 程序化渲染（金属光照 / 像素网格），随倾斜重绘 -->
+        <canvas
+          v-if="
+            skin.material === 'gold' || skin.material === 'pixel' || skin.material === 'psi'
+          "
+          ref="surfaceCanvas"
+          class="pcard-surface"
+        />
+        <!-- 全息走独立组件：五层贴纸结构（底板/薄膜/切面/高光/树脂）自带一套 -->
+        <HolographicSticker
+          v-if="skin.material === 'holo'"
+          surface
+          :rim="false"
+          :interactive="true"
+          :intensity="0.95"
+          :tilt-x="(tilt.mx - 50) / 50"
+          :tilt-y="(tilt.my - 50) / 50"
+        />
+        <template v-if="skin.material !== 'holo'">
+          <!-- 材质纹理 + 边框/特效的公共图层；纯装饰，不参与布局 -->
+          <div class="pcard-fx" />
+          <!-- 视差层：材质把自己的图案再画一两层，随卡片角度错位移动 -->
+          <div class="pcard-depth" />
+        </template>
+        <!-- 光斑：跟着指针走，卡片"反光"的那一下是廉价但有效的立体感来源 -->
+        <div class="pcard-glare" />
+        <div class="pcard-frame" />
+      </div>
 
       <header class="pcard-head">
         <h3 class="pcard-name">{{ props.player.displayName }}</h3>

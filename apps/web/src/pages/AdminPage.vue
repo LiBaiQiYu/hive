@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
+import { NButton, NDatePicker, NInput, NSelect, useMessage } from 'naive-ui';
+import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 
 const router = useRouter();
@@ -8,13 +10,30 @@ const events = ref<EventView[]>([]);
 const loading = ref(true);
 const creating = ref(false);
 const error = ref('');
+const message = useMessage();
 
+/** 日期用毫秒时间戳存：NDatePicker 给的就是 number，省掉字符串来回转 */
 const form = ref({
   title: '',
   capacity: 20,
-  closesAt: '',
-  startsAt: '',
+  closesAt: null as number | null,
+  startsAt: null as number | null,
 });
+
+const capacityOptions = [10, 20, 30].map((value) => ({
+  label: `${value} 人 · ${value / 10} 场`,
+  value,
+}));
+
+interface Dashboard {
+  members: { active: number; admins: number; newThisMonth: number };
+  events: { ongoing: number; total: number; openNow: number };
+  registrations: { thisMonth: number };
+  pendingPublish: number;
+  jobs: { pending: number; running: number; dead: number; failed: number };
+}
+
+const dashboard = ref<Dashboard | null>(null);
 
 onMounted(async () => {
   await refresh();
@@ -23,7 +42,12 @@ onMounted(async () => {
 async function refresh() {
   loading.value = true;
   try {
-    events.value = await api<EventView[]>('/events');
+    const [eventList, stats] = await Promise.all([
+      api<EventView[]>('/events'),
+      api<Dashboard>('/admin/dashboard').catch(() => null),
+    ]);
+    events.value = eventList;
+    dashboard.value = stats;
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
   } finally {
@@ -31,11 +55,9 @@ async function refresh() {
   }
 }
 
-/** datetime-local 给的是本地时间字符串，统一转成带时区的 ISO */
-function toIso(local: string): string | undefined {
-  if (!local) return undefined;
-  const date = new Date(local);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+/** 时间统一转成带时区的 ISO；null 表示没填 */
+function toIso(ms: number | null): string | undefined {
+  return ms ? new Date(ms).toISOString() : undefined;
 }
 
 async function create() {
@@ -51,7 +73,8 @@ async function create() {
         startsAt: toIso(form.value.startsAt),
       },
     });
-    form.value = { title: '', capacity: 20, closesAt: '', startsAt: '' };
+    form.value = { title: '', capacity: 20, closesAt: null, startsAt: null };
+    message.success('赛事已创建');
     void router.push(`/admin/events/${created.id}`);
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '创建失败';
@@ -65,48 +88,119 @@ async function create() {
   <div class="container">
     <div class="section-head">
       <h1 class="section-title">管理后台</h1>
-      <div style="display: flex; gap: 10px; align-items: center">
-        <RouterLink to="/admin/ratings" class="btn btn-ghost">评分管理</RouterLink>
-        <RouterLink to="/admin/invites" class="btn btn-ghost">邀请码管理</RouterLink>
-        <span class="muted" style="font-size: 13px">赛事组织</span>
+      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+        <NButton size="small" @click="router.push('/admin/members')">成员</NButton>
+        <NButton size="small" @click="router.push('/admin/jobs')">队列</NButton>
+        <NButton size="small" @click="router.push('/admin/audit')">审计</NButton>
+        <NButton size="small" @click="router.push('/admin/ratings')">评分</NButton>
+        <NButton size="small" @click="router.push('/admin/invites')">邀请码</NButton>
       </div>
     </div>
 
     <p v-if="error" class="alert">{{ error }}</p>
+
+    <!-- 概览 -->
+    <section v-if="dashboard" class="admin-stats">
+      <div class="admin-stat">
+        <div class="stat-label">成员</div>
+        <div class="admin-stat-value mono">{{ dashboard.members.active }}</div>
+        <div class="muted" style="font-size: 11px">
+          {{ dashboard.members.admins }} 名管理员 · 本月新增 {{ dashboard.members.newThisMonth }}
+        </div>
+      </div>
+      <div class="admin-stat">
+        <div class="stat-label">赛事</div>
+        <div class="admin-stat-value mono">{{ dashboard.events.total }}</div>
+        <div class="muted" style="font-size: 11px">
+          报名中 {{ dashboard.events.openNow }} · 进行中 {{ dashboard.events.ongoing }}
+        </div>
+      </div>
+      <div class="admin-stat">
+        <div class="stat-label">本月报名</div>
+        <div class="admin-stat-value mono">{{ dashboard.registrations.thisMonth }}</div>
+        <div class="muted" style="font-size: 11px">按报名时间统计</div>
+      </div>
+      <div class="admin-stat" :class="{ 'admin-stat-warn': dashboard.pendingPublish > 0 }">
+        <div class="stat-label">待发布</div>
+        <div class="admin-stat-value mono">{{ dashboard.pendingPublish }}</div>
+        <div class="muted" style="font-size: 11px">
+          {{ dashboard.pendingPublish > 0 ? '已封盘但还没发布阵容' : '没有积压' }}
+        </div>
+      </div>
+      <div
+        class="admin-stat"
+        :class="{ 'admin-stat-warn': dashboard.jobs.dead > 0 }"
+        style="cursor: pointer"
+        @click="router.push('/admin/jobs')"
+      >
+        <div class="stat-label">后台任务</div>
+        <div class="admin-stat-value mono">{{ dashboard.jobs.pending }}</div>
+        <div class="muted" style="font-size: 11px">
+          {{ dashboard.jobs.dead > 0 ? `${dashboard.jobs.dead} 个已判死` : '队列正常' }}
+        </div>
+      </div>
+    </section>
 
     <section class="card">
       <h2 class="card-title">新建赛事</h2>
       <form class="admin-form" @submit.prevent="create">
         <label class="field" style="margin: 0">
           <span class="field-label">赛事名称</span>
-          <input v-model="form.title" class="input" placeholder="HIVE 第 01 期周末内战" required />
+          <NInput
+            v-model:value="form.title"
+            placeholder="HIVE 第 01 期周末内战"
+            :maxlength="64"
+            size="medium"
+          />
         </label>
         <label class="field" style="margin: 0">
-          <span class="field-label">目标人数（10 的倍数）</span>
-          <select v-model.number="form.capacity" class="input">
-            <option :value="10">10 人 · 1 场</option>
-            <option :value="20">20 人 · 2 场</option>
-            <option :value="30">30 人 · 3 场</option>
-          </select>
+          <span class="field-label">
+            目标人数
+            <HelpTip
+              title="目标人数怎么填？"
+              :steps="[
+                '① 必须是 10 的整数倍：20 = 2 场 × 10 人',
+                '② 它是目标人数，不是座位数；报名期不生成比赛',
+              ]"
+              note="封盘时按 floor(已确认 / 10) 切场，余下的人进候补；人数卡在两档之间时要显式选开局策略。"
+            />
+          </span>
+          <NSelect v-model:value="form.capacity" :options="capacityOptions" size="medium" />
         </label>
         <label class="field" style="margin: 0">
           <span class="field-label">报名截止</span>
-          <input v-model="form.closesAt" class="input" type="datetime-local" />
+          <NDatePicker
+            v-model:value="form.closesAt"
+            type="datetime"
+            clearable
+            size="medium"
+            format="yyyy-MM-dd HH:mm"
+            time-picker-format="HH:mm"
+            placeholder="选择日期时间"
+          />
         </label>
         <label class="field" style="margin: 0">
           <span class="field-label">开赛时间</span>
-          <input v-model="form.startsAt" class="input" type="datetime-local" />
+          <NDatePicker
+            v-model:value="form.startsAt"
+            type="datetime"
+            clearable
+            size="medium"
+            format="yyyy-MM-dd HH:mm"
+            time-picker-format="HH:mm"
+            placeholder="选择日期时间"
+          />
         </label>
-        <button class="btn btn-primary" type="submit" :disabled="creating">
+        <NButton type="primary" attr-type="submit" :disabled="creating" :loading="creating">
           {{ creating ? '创建中…' : '创建' }}
-        </button>
+        </NButton>
       </form>
     </section>
 
     <section class="section">
       <div class="section-head">
         <h2 class="section-title">全部赛事</h2>
-        <button class="btn btn-ghost" type="button" @click="refresh">刷新</button>
+        <NButton @click="refresh">刷新</NButton>
       </div>
 
       <div v-if="loading" class="empty">加载中…</div>

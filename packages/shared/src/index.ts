@@ -99,8 +99,79 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(72),
 });
 
+/**
+ * 修改密码：新密码规则与注册保持一致（≥10 位）。
+ * "新旧密码不能相同"放在路由里判断——它要和当前密码比对，不属于单字段校验。
+ */
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(72),
+  newPassword: z.string().min(10, '密码至少 10 位').max(72),
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+
+/* ==========================================================================
+ * 玩家卡片外观（纯展示偏好，不参与评分 / 分队 / 快照）
+ *
+ * 这三份清单必须与 migrations/0004_card_skin.sql 的 CHECK 一致：
+ * SQL 是唯一真源，这里只是给它一个类型化的出口。两者漂移时
+ * packages/api/src/card-skin.test.ts 会直接失败。
+ * ========================================================================== */
+
+/** 材质：卡片底板的质感，basic = 改造前的默认外观 */
+export const CARD_MATERIALS = [
+  'basic',
+  'pixel',
+  'acrylic',
+  'sparkle',
+  'holo',
+  'gold',
+  'psi',
+] as const;
+/** 边框：描边样式 */
+export const CARD_FRAMES = [
+  'none',
+  'hairline',
+  'double',
+  'corners',
+  'bevel',
+  'frost',
+  'spark',
+  'arc',
+] as const;
+
+export type CardMaterial = (typeof CARD_MATERIALS)[number];
+export type CardFrame = (typeof CARD_FRAMES)[number];
+
+export const cardSkinSchema = z.object({
+  material: z.enum(CARD_MATERIALS),
+  frame: z.enum(CARD_FRAMES),
+});
+
+export type CardSkin = z.infer<typeof cardSkinSchema>;
+
+export const DEFAULT_CARD_SKIN: CardSkin = {
+  material: 'basic',
+  frame: 'hairline',
+};
+
+/**
+ * 把数据库里的两列收成一个对象。老数据 / 脏数据一律回落到默认值——
+ * 卡片外观不值得为了一条脏记录把整个报名名单打挂。
+ */
+export function toCardSkin(input: {
+  material?: string | null;
+  frame?: string | null;
+}): CardSkin {
+  const pick = <T extends string>(list: readonly T[], value: string | null | undefined, fallback: T): T =>
+    list.includes(value as T) ? (value as T) : fallback;
+  return {
+    material: pick(CARD_MATERIALS, input.material, DEFAULT_CARD_SKIN.material),
+    frame: pick(CARD_FRAMES, input.frame, DEFAULT_CARD_SKIN.frame),
+  };
+}
 
 /* ==========================================================================
  * 常量

@@ -43,8 +43,10 @@
     "head_sampling_rate": 1
   },
   "upload_source_maps": true,
-  // 生产环境关闭 workers.dev 备用域名：避免出现绕过 Cookie / CORS 预期的第二入口
-  "workers_dev": false,
+  // 生产环境原本关闭 workers.dev 备用域名：避免出现绕过 Cookie / CORS 预期的第二入口。
+  // 2026-10-31 临时打开：还没有自定义域名，先用 hive.<account>.workers.dev 联调。
+  // 拿到域名后改回 false，并解开下面的 routes。
+  "workers_dev": true,
   "preview_urls": false,
 
   // --- 绑定：D1 （唯一数据源） ---
@@ -100,13 +102,15 @@
   // 非敏感配置。业务代码通过 env.* 读取，禁止在代码中硬编码这些值
   "vars": {
     "APP_ENV": "production",
-    "APP_ORIGIN": "https://hive.example.com",
+    // 还没有自定义域名，先用 workers.dev 联调；拿到域名后两处一起改
+    "APP_ORIGIN": "https://hive.carloswhitea1e.workers.dev",
     // Steam OpenID 的 realm 必须与 return_to 同源，且与 Cookie 域一致
-    "STEAM_OPENID_REALM": "https://hive.example.com",
+    "STEAM_OPENID_REALM": "https://hive.carloswhitea1e.workers.dev",
     "SESSION_TTL_DAYS": 14,
     "SESSION_IDLE_TIMEOUT_HOURS": 72,
     "ADMIN_ADJUSTMENT_LIMIT": 150,
-    "RATING_ALGO_VERSION": "warroom-v1",
+    // 注意：评分算法版本是代码常量（packages/api/src/algorithms/rating.ts 的 ALGO_VERSION），
+    // 不在这里配置——配置一份、代码一份，迟早对不上。
     // 免费版每请求 CPU 上限 10ms。实测边界：单次 PBKDF2 ≈95ns/次迭代，
     // 100,000 次刚好贴满 10ms，105,000 次必撞 1102；取 50,000 次（≈4.8ms）留一半余量。
     // 实测方法与数据见 docs/SMOKE-TEST.md「实测记录」。
@@ -162,7 +166,6 @@
         "SESSION_TTL_DAYS": 3,
         "SESSION_IDLE_TIMEOUT_HOURS": 12,
         "ADMIN_ADJUSTMENT_LIMIT": 150,
-        "RATING_ALGO_VERSION": "warroom-v1",
         "PASSWORD_PBKDF2_ITERATIONS": 50000,
         "REGISTRATION_REQUIRE_INVITE": "true",
         "AUTO_FINALIZE_ODD": "false",

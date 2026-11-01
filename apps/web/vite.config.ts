@@ -6,6 +6,14 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // 组件库单独成块：它的版本很少变，缓存收益比塞进主包高
+        manualChunks: {
+          naive: ['naive-ui'],
+        },
+      },
+    },
   },
   server: {
     port: 5173,

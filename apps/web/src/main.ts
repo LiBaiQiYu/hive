@@ -6,6 +6,9 @@ import './styles-me.css';
 import './styles-admin.css';
 import './styles-theme.css';
 import './styles-card.css';
+import './styles-skins.css';
+import './styles-ui.css';
+import './styles-hero.css';
 import { loadMe } from './lib/session';
 import { session } from './lib/session';
 import { initTheme } from './lib/theme';
@@ -14,10 +17,18 @@ import EventsPage from './pages/EventsPage.vue';
 import EventDetailPage from './pages/EventDetailPage.vue';
 import LoginPage from './pages/LoginPage.vue';
 import MePage from './pages/MePage.vue';
-import AdminPage from './pages/AdminPage.vue';
-import AdminEventPage from './pages/AdminEventPage.vue';
-import AdminInvitesPage from './pages/AdminInvitesPage.vue';
-import AdminRatingsPage from './pages/AdminRatingsPage.vue';
+import LeaderboardPage from './pages/LeaderboardPage.vue';
+import RecordsPage from './pages/RecordsPage.vue';
+import MatchPage from './pages/MatchPage.vue';
+
+// 后台是少数人用的重页面（日期选择器等组件很占体积），按需加载
+const AdminPage = () => import('./pages/AdminPage.vue');
+const AdminEventPage = () => import('./pages/AdminEventPage.vue');
+const AdminInvitesPage = () => import('./pages/AdminInvitesPage.vue');
+const AdminRatingsPage = () => import('./pages/AdminRatingsPage.vue');
+const AdminMembersPage = () => import('./pages/AdminMembersPage.vue');
+const AdminJobsPage = () => import('./pages/AdminJobsPage.vue');
+const AdminAuditPage = () => import('./pages/AdminAuditPage.vue');
 
 const router = createRouter({
   history: createWebHistory(),
@@ -25,23 +36,43 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomePage },
     { path: '/events', name: 'events', component: EventsPage },
     { path: '/events/:id', name: 'event-detail', component: EventDetailPage },
-    { path: '/me', name: 'me', component: MePage },
+    { path: '/me', name: 'me', component: MePage, meta: { auth: true } },
+    { path: '/leaderboard', name: 'leaderboard', component: LeaderboardPage },
+    { path: '/records', name: 'records', component: RecordsPage },
+    { path: '/matches/:id', name: 'match', component: MatchPage },
     { path: '/login', name: 'login', component: LoginPage },
     { path: '/admin', name: 'admin', component: AdminPage, meta: { admin: true } },
     { path: '/admin/events/:id', name: 'admin-event', component: AdminEventPage, meta: { admin: true } },
     { path: '/admin/invites', name: 'admin-invites', component: AdminInvitesPage, meta: { admin: true } },
     { path: '/admin/ratings', name: 'admin-ratings', component: AdminRatingsPage, meta: { admin: true } },
+    { path: '/admin/members', name: 'admin-members', component: AdminMembersPage, meta: { admin: true } },
+    { path: '/admin/jobs', name: 'admin-jobs', component: AdminJobsPage, meta: { admin: true } },
+    { path: '/admin/audit', name: 'admin-audit', component: AdminAuditPage, meta: { admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   scrollBehavior: () => ({ top: 0 }),
 });
 
-// 服务端已经用 requireAdmin 兜底，这里只是避免非管理员看到空页面
-router.beforeEach((to) => {
+// 服务端已经用 requireAdmin 兜底，这里只是避免非管理员看到空页面。
+// 必须先等会话拉回来再判断，否则直接打开 /admin 会因为 session 还没到而弹回登录页。
+router.beforeEach(async (to) => {
+  if (!session.ready) await loadMe();
   if (to.meta.admin && session.me?.user.role !== 'ADMIN') {
     return { path: '/login' };
   }
+  // 「我的」需要登录：未登录直接送登录页，避免停在只有一行「请先登录」的半空白页
+  if (to.meta.auth && !session.me) {
+    return { path: '/login' };
+  }
   return true;
+});
+
+// 会话在服务端失效时（api 层广播 401），把用户送回登录页；
+// session.me 由 lib/session.ts 监听同一个事件清空，两边各管各的，不互相 import。
+window.addEventListener('hive:unauthorized', () => {
+  if (router.currentRoute.value.path !== '/login') {
+    void router.replace('/login');
+  }
 });
 
 // 首屏就把会话拉回来：导航栏的登录态不该等到用户点"我的"才显示

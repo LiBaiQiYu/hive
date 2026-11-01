@@ -3,12 +3,8 @@ import { z } from 'zod';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { requireAdmin } from '../guard';
-import {
-  ALGO_VERSION,
-  adjustmentLimit,
-  computeEffective,
-  computeRating,
-} from '../algorithms/rating';
+import { ALGO_VERSION, adjustmentLimit, computeEffective } from '../algorithms/rating';
+import { recomputeUserRating } from '../services/rating';
 
 export const adminRatingRoutes = new Hono<AppEnv>();
 
@@ -74,47 +70,6 @@ adminRatingRoutes.get('/players/:id/history', async (c) => {
   return c.json({ data: { history: rows.results ?? [] } });
 });
 
-/** 汇总一个玩家的评分输入（缺数据的分项在算法里按 0 计并拉低置信度） */
-export async function collectInput(env: AppEnv['Bindings'], userId: string) {
-  const stats = await env.DB.prepare(
-    `SELECT rank_tier AS rankTier, declared_mmr AS declaredMmr, rank_source AS rankSource,
-            career_matches AS careerMatches
-       FROM player_stats WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .first<{
-      rankTier: number | null;
-      declaredMmr: number | null;
-      rankSource: string | null;
-      careerMatches: number;
-    }>();
-
-  // 出勤：报名过且赛事已结束 vs 真正上过场（正选，不含临时替补）
-  const attendance = await env.DB.prepare(
-    `SELECT
-       (SELECT count(*) FROM registrations r JOIN events e ON e.id = r.event_id
-         WHERE r.user_id = ?1 AND r.status = 'CONFIRMED'
-           AND e.status IN ('COMPLETED')) AS registered,
-       (SELECT count(*) FROM team_members tm JOIN matches m ON m.id = tm.match_id
-         WHERE tm.user_id = ?1 AND tm.is_substitute = 0 AND m.status = 'COMPLETED') AS played`,
-  )
-    .bind(userId)
-    .first<{ registered: number; played: number }>();
-
-  return {
-    rankTier: stats?.rankTier ?? null,
-    /**
-     * MMR 只在"玩家自己申报"时才参与计算。
-     * 一旦段位来自 OpenDota / 管理员设定，它就是权威值——否则会出现
-     * "同步了超凡 1 星，却按之前手填的 5799 分算"的错配。
-     */
-    declaredMmr: stats?.rankSource === 'SELF_REPORTED' ? (stats.declaredMmr ?? null) : null,
-    careerMatches: stats?.careerMatches ?? 0,
-    communityRegistered: attendance?.registered ?? 0,
-    communityPlayed: attendance?.played ?? 0,
-  };
-}
-
 /**
  * POST /api/admin/ratings/recompute
  *
@@ -133,75 +88,21 @@ adminRatingRoutes.post('/recompute', async (c) => {
     : await env.DB.prepare(`SELECT id FROM users WHERE status = 'ACTIVE'`).all<{ id: string }>();
 
   const now = Date.now();
-  let updated = 0;
   const results: Array<{ userId: string; system: number; effective: number; confidenceBp: number }> = [];
 
   for (const user of users.results ?? []) {
-    const input = await collectInput(env, user.id);
-    const rating = computeRating(input);
-
-    const current = await env.DB.prepare(
-      `SELECT admin_adjustment AS adjustment FROM player_ratings WHERE user_id = ?`,
-    )
-      .bind(user.id)
-      .first<{ adjustment: number }>();
-
-    // 没有评分行就补一条（历史账号可能缺）
-    if (!current) {
-      await env.DB.prepare(
-        `INSERT INTO player_ratings (id, user_id, system_rating, admin_adjustment, effective_rating,
-           confidence_bp, algorithm_version, computed_at, updated_at)
-         VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)`,
-      )
-        .bind(
-          newId(now),
-          user.id,
-          rating.system,
-          rating.system,
-          rating.confidenceBp,
-          ALGO_VERSION,
-          now,
-          now,
-        )
-        .run();
-    } else {
-      const effective = computeEffective(rating.system, current.adjustment);
-      await env.DB.prepare(
-        `UPDATE player_ratings
-            SET system_rating = ?, effective_rating = ?, confidence_bp = ?,
-                breakdown_json = ?, algorithm_version = ?, computed_at = ?, updated_at = ?
-          WHERE user_id = ?`,
-      )
-        .bind(
-          rating.system,
-          effective,
-          rating.confidenceBp,
-          JSON.stringify({ components: rating.components, estimatedMmr: rating.estimatedMmr }),
-          ALGO_VERSION,
-          now,
-          now,
-          user.id,
-        )
-        .run();
-    }
-
-    updated += 1;
-    results.push({
-      userId: user.id,
-      system: rating.system,
-      effective: computeEffective(rating.system, current?.adjustment ?? 0),
-      confidenceBp: rating.confidenceBp,
-    });
+    const rating = await recomputeUserRating(env, user.id);
+    results.push({ userId: user.id, ...rating });
   }
 
   await env.DB.prepare(
     `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, after_json, request_id, created_at)
      VALUES (?, ?, 'ADMIN', 'rating.recompute', 'player_ratings', ?, ?, ?)`,
   )
-    .bind(newId(now), adminId, JSON.stringify({ updated, version: ALGO_VERSION }), c.get('requestId') ?? null, now)
+    .bind(newId(now), adminId, JSON.stringify({ updated: results.length, version: ALGO_VERSION }), c.get('requestId') ?? null, now)
     .run();
 
-  return c.json({ data: { updated, algorithmVersion: ALGO_VERSION, results } });
+  return c.json({ data: { updated: results.length, algorithmVersion: ALGO_VERSION, results } });
 });
 
 /**

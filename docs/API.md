@@ -36,7 +36,7 @@
 | POST | `/api/auth/login` | `{identifier, password}`，`identifier` 可为用户名或邮箱 |
 | POST | `/api/auth/logout` | 撤销当前会话 |
 | GET | `/api/auth/session` | 当前会话 + 用户 + 评分摘要 |
-| POST | `/api/auth/password` | `{currentPassword, newPassword}`，撤销其他所有会话 |
+| POST | `/api/auth/password` | `{currentPassword, newPassword}`；新密码 ≥10 位、不得与旧密码相同；成功后**撤销其他所有会话**，当前设备保持登录 |
 | GET | `/api/auth/steam/start` | 302 跳转 Steam；写 `hive_steam_state` Cookie |
 | GET | `/api/auth/steam/callback` | Steam 回调，服务端反向校验后绑定，302 回 `/me` |
 | DELETE | `/api/auth/steam` | 解绑（存在进行中赛事报名时返回 `CONFLICT`） |
@@ -47,13 +47,14 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好 |
+| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp}`，老数据为 `null` |
 | PATCH | `/api/me` | `{displayName?, bio?, qqNumber?}` |
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
+| GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
 | GET | `/api/players` | 玩家列表，`?query=&position=&sort=rating|name&page=` |
 | GET | `/api/players/:id` | 公开档案：段位、位置、英雄池 Top 10、近期战绩、评分构成 |
 | POST | `/api/me/steam/sync` | 投递同步任务，返回 `202 {queued: true}` |
-| GET | `/api/leaderboard` | `?sort=rating\|wins\|mvp`，默认 `rating`；含 `winRateBp`、`mvpCount`，详见 §9 |
+| GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`（默认 `rating`）；返回 `{rank, user, effective, wins, losses, played, winRateBp}`。`mvp` 排序暂不提供——`match_player_stats` 还没有数据 |
 | POST | `/api/me/game-account/claim` | `{accountId: 109902856}` 声明式绑定：先查 OpenDota 确认账号存在，写入 `provider=DOTA_ACCOUNT_ID`、`verification=CLAIMED` |
 | DELETE | `/api/me/game-account` | 解绑；已有进行中报名时返回 `CONFLICT` |
 | PUT | `/api/me/rank` | `{rankTier?, declaredMmr?}` 手动填写段位，写 `rank_source=SELF_REPORTED` |
@@ -112,11 +113,11 @@
 | --- | --- | --- |
 | POST | `/api/admin/matches/generate` | `{eventId, matchNo?, playerIds?, seed?}` → 创建 `DRAFT` 场次与两队 |
 | GET | `/api/admin/matches/:id/lineup` | 编辑器数据：两队、每人评分/位置/契合度、总分差、位置覆盖、`version` |
-| PATCH | `/api/admin/matches/:id/lineup` | `{version, moves: [{teamMemberId, toSide, toPosition}]}` |
+| PATCH | `/api/admin/matches/:id/lineup` | `{version, moves: [{teamMemberId, toSide, toPosition}]}`；整份提交、`version` 不符返回 `CONFLICT`；只允许 `DRAFT`；服务端重算契合度与两队总分并 `version+1` |
 | POST | `/api/admin/matches/:id/regenerate` | `{seed}`，仅 `DRAFT`；`version` 不变，`generation_seed` 更新 |
 | POST | `/api/admin/matches/:id/publish` | 校验 10 人 / 位次唯一 / 两侧各 5 人 → 冻结快照 → `PUBLISHED` |
 | POST | `/api/admin/matches/:id/void` | 流局，`VOID` |
-| GET | `/api/matches/:id` | 公开阵容（发布后可见），含 `ratingGap` |
+| GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度 |
 
 `PATCH lineup` 的响应必须带实时汇总，前端不用自己算：
 
@@ -150,10 +151,10 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/matches/:id/result` | `{dotaMatchId}` 入队 `MATCH_IMPORT`；或 `{radiantWin, durationSeconds}` 手工录入 |
-| GET | `/api/admin/jobs` | outbox 健康：`PENDING` / `RUNNING` / `DEAD` 计数、最近错误、重试分布 |
-| POST | `/api/admin/jobs/:id/retry` | 把 `DEAD` 任务重置为 `PENDING` |
-| GET | `/api/admin/audit-logs` | `?actorId=&entityType=&from=&to=` |
+| POST | `/api/admin/matches/:id/result` | `{dotaMatchId}` 入队 `MATCH_IMPORT`；或 `{radiantWin, durationSeconds}` 手工录入。录入后**自动重算该赛事所有相关玩家的评分**（出勤口径变了） |
+| GET | `/api/admin/jobs` | outbox 健康：`summary`（各状态计数）、`byKind`（类型×状态）、最近 50 条任务（含 `lastError`） |
+| POST | `/api/admin/jobs/:id/retry` | 把 `DEAD` / `FAILED` 任务重置为 `PENDING`（`attempts` 归零、清空错误） |
+| GET | `/api/admin/audit-logs` | `?actorId=&entityType=&action=&from=&to=&limit=`；返回 `entries` + 过滤候选 `actions` / `entityTypes` |
 
 **邀请码（管理员）**
 
@@ -169,15 +170,17 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/dashboard` | 赛事/玩家/报名/待发布场次汇总 |
+| GET | `/api/admin/dashboard` | `{members:{active,admins,newThisMonth}, events:{ongoing,total,openNow}, registrations:{thisMonth}, pendingPublish, jobs:{pending,running,dead,failed}, recentEvents}` |
 | POST | `/api/admin/events` | 创建赛事（`title, capacity, registrationOpensAt, startsAt`） |
-| PATCH | `/api/admin/events/:id` | 编辑 |
+| PATCH | `/api/admin/events/:id` | 编辑 `{title?, summary?, capacity?, registrationOpensAt?, registrationClosesAt?, startsAt?}`，至少一个字段；时间字段传 `null` 表示清空。容量须为 10 的整数倍且不低于已确认人数；**报名关闭后容量与赛程不可改**（`CONFLICT`），标题/简介仍可改 |
 | POST | `/api/admin/events/:id/transition` | `{to: "REGISTRATION_OPEN" \| "REGISTRATION_CLOSED" \| "COMPLETED" \| "ARCHIVED" \| "CANCELLED"}` |
 | GET | `/api/admin/events/:id/registrations` | 含评分、位置分布统计、候补队列 |
-| POST | `/api/admin/events/:id/registrations/:rid/promote` | 候补转正 |
-| PATCH | `/api/admin/users/:id/role` | 授予/撤销管理员（写审计） |
+| POST | `/api/admin/events/:id/registrations/:rid/promote` | 候补转正：置 `CONFIRMED` 并清空 `waitlist_position`，同一 batch 内把剩余候补重排为 1..n；正选已满、非候补、赛事已发布时返回 `CONFLICT` |
+| PATCH | `/api/admin/users/:id/role` | `{role: "PLAYER" \| "ADMIN"}`；不能改自己的角色，也不能把最后一名管理员降级（`CONFLICT`），写审计 `user.role` |
 
 状态流转是白名单表，非法流转返回 `CONFLICT`，且每次流转写 `audit_logs`（`event.transition`，前后状态）。
+转到 `COMPLETED` 时会自动重算该赛事所有报名者与上场者的评分（"报名且赛事已结束"才计入出勤）。
+编辑赛事与候补转正同样落审计：`event.update`（改前/改后全字段）、`registration.promote`（候补位次 → 正选）。
 
 ## 9. 聚合与列表接口（首页 / 战绩 / 排行榜）
 
@@ -185,8 +188,8 @@
 | --- | --- | --- |
 | GET | `/api/stats/summary` | 首页四宫格：`{members, totalMatches, monthRegistrations, topPlayer}` |
 | GET | `/api/matches` | `?eventId=&page=` 近期对局，按 `scheduled_at` 倒序；公开 |
-| GET | `/api/me/matches` | 战绩页「我的对局」，含本人 KDA 与当场评分 |
-| GET | `/api/leaderboard` | `?sort=rating\|wins\|mvp&limit=` |
+| GET | `/api/me/matches` | 战绩页「我的对局」：`{summary:{played,wins,losses,winRateBp}, matches:[{matchId,eventTitle,side,won,durationSeconds,playedAt}]}`。只算正选出场且比赛已结束有胜负的场次，**不含 KDA**（那要等对局导入） |
+| GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`，公开；胜场由 `team_members` + `matches.radiant_win` 现算，不依赖 `match_player_stats` |
 
 ```json
 { "data": [

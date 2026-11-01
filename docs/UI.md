@@ -200,3 +200,74 @@
 1. **数字全部来自接口**（`GET /api/players/:id` 的 `rating` 对象），前端只做格式化，**不允许在展示层重算或四舍五入后再拼接**——否则浮窗上的分和数据库里的分迟早对不上。
 2. **修正原因的可见性**：本人与管理员可见完整原因；其他玩家只看到"管理员修正 +50"，看不到原因。原因里可能写着"水平明显虚高"，公开等于当众评价。
 3. **快照要单独说明**：浮窗里注明"报名与分队时会冻结当时的评分，之后调整不影响已公布的阵容"。这句话能省掉 90% 的争议。
+
+## 9. 提示信息统一机制（`HelpTip`）
+
+全站只有一种"说明性文字"的呈现方式：**标题旁边的「?」，点开/悬停展开浮窗**（标题 + 步骤 + 虚线备注）。
+不再往页面里塞整段的灰色说明——它们会把真正要看的数据挤到屏幕外。
+
+| 项 | 规则 |
+| --- | --- |
+| 收进浮窗 | 规则、算法、身份验证方式、"为什么这么设计"这类**静态**文字 |
+| 留在页面 | 随数据变化的警告（人数不匹配、报名已关闭、志愿跳档）与操作反馈（错误/成功/toast） |
+| 挂载位置 | 章节标题 `h1.section-title`、卡片标题 `.card-title`、字段标签 `.field-label`；都没有时补一行小标题，不新造样式 |
+| 组件 | `apps/web/src/components/HelpTip.vue`；样式在 `styles-theme.css` 的 `.help / .help-pop`，深色浅色各一套 |
+| 写法 | `<HelpTip title="…" :steps="['① …','② …']" note="…" />`；长内容加 `wide`（400px）；需要链接/加粗时用默认插槽 |
+| 交互 | hover 或键盘聚焦展开；`Esc` 收起；展开前按视口宽度收敛 `--pop-shift`，贴边也不会被切掉 |
+
+约束：浮窗是绝对定位，祖先不能有 `overflow: hidden`（当前 `.card` 没有）。若以后给卡片加裁切，必须把浮窗改成 `position: fixed` 或走 Teleport。
+评分卡的浮窗文案要与**当前算法**一致（v2 = 段位 900 + 出勤 100）；§8 里那五项是早期 PRD 的概念，未实现。
+
+### 10.1 HolographicSticker（全息贴纸组件）
+
+pps/web/src/components/HolographicSticker.vue，五层结构：ase 深色金属底板 / oil 虹彩薄膜 / acets 微晶切面 / sheen 镜面高光带 / 
+im 金属外框 / gloss 树脂柔光。层与层全部 position: absolute，组件自带 order-radius + overflow: hidden。
+
+| prop | 默认 | 说明 |
+| --- | --- | --- |
+| intensity | 0.9 | 0..1，薄膜与切面的整体不透明度 |
+| interactive | true | 跟随鼠标改反射中心与高光角度 |
+| 
+im | true | 是否画金属外框（当卡片背景时关掉，用卡片自己的描边） |
+| 
+adius | 14 | 圆角，可传数字或 '50%' |
+| surface | false | 铺满父容器（卡片背景用法） |
+
+CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity / --foil-radius，默认值在组件 <style scoped> 顶部。
+
+用法：
+
+`ue
+<!-- 卡片背景 -->
+<HolographicSticker surface :rim=false :intensity=0.95 />
+<!-- 独立徽章 -->
+<HolographicSticker :radius='50%'><span class=badge-text>TI 2023</span></HolographicSticker>
+`
+
+## 10. 玩家卡片皮肤（材质 / 边框）
+
+玩家卡不是固定皮肤：每个账号在「我的 → 卡片外观」里自选材质 + 边框，报名名单里所有人看到的就是他自己选的那套。
+两个维度是**正交**的，一共 6 × 8 = 48 种组合。
+
+| 维度 | 取值 | 负责什么 |
+| --- | --- | --- |
+| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 | 底色、纹理、字色（正文、次要文字、强调色三个令牌一起给）；`gold` / `pixel` / `psi` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts`），随倾斜重绘 |
+| `frame` 边框 | `hairline` 发丝线 / `none` 无边 / `double` 双线 / `corners` 四角 / `bevel` 浮雕 / `frost` 霜线 / `spark` 电光 / `arc` 雷纹 | 前三档纯 CSS；`frost`/`spark`/`arc` 是**逐帧动画 WebP**（透明底，480×398 ≈ 卡片 2x，`background-size: 100% 100%`，卡片换尺寸也不错位），由 `apps/web/scripts/make_border_anims.py` 生成 |
+
+> 特效（流光 / 星尘 / 扫描 / 呼吸）已整条下线（迁移 0007 删 `users.card_effect`）：卡片不再输出 `data-effect`，选择器里也没有这一栏。
+
+实现约定：
+
+1. **组件不认识皮肤**。`PlayerCard` 只输出 `data-material` / `data-frame` 两个属性，样式全在 `styles-skins.css` 里换 CSS 变量（`--skin-bg` `--skin-text` `--skin-accent` `--skin-muted` `--skin-divider` `--skin-radius` `--skin-shadow` `--skin-tex` `--skin-tex-size` `--skin-tex-repeat` …）。
+2. **两种材质用生成的 SVG 贴图**：`apps/web/src/assets/card-sparkle.svg`（碎钻晶面 + 星点）与 `card-gold.svg`（流动金箔）。CSS 渐变再做不出参考图里的不规则碎面，就用固定种子的脚本生成后当成静态资源提交；改纹理只需要重跑生成脚本。其余材质仍是纯 CSS 渐变。
+3. **材质自带配色，不随主题翻转**。金卡在浅色主题下仍然是金卡；`basic` 与 `acrylic` 才跟随深浅主题各写一套。因此**不要**在 `:root[data-theme='light'] .pcard` 上写 `--skin-frame-bg` 这类材质令牌——那会给深色材质糊一层白雾（踩过）。
+4. **语义色要单独照顾亮色材质**：`sparkle` / `holo` / `gold` 上的 `badge-*` 与"正选/候补"会压深一档，否则浅底绿字看不清。
+5. **视差层（闪耀 / 全息 / 金色）**：`PlayerCard` 额外渲染一个 `.pcard-depth`，材质在里面用 `::before` / `::after` 再画 1~2 层同款图案，位移量取自指针归一化值 `--px` / `--py`（-1..1），每层方向和幅度不同（如闪耀：晶面层 −18px、星点层 +30px）。卡片倾斜时图案之间互相错位，就有了"图案有厚度"的错觉；指针离开即归位。
+   - 全息的微晶切面是**程序化渲染**的：`apps/web/src/lib/holo.ts` 里每个三角面带一个扰动法线，用半程向量算镜面强度、用倾斜量 + 法线朝向算衍射色相，canvas 逐帧重画；所以倾斜时颜色真的从蓝紫滑到黄绿（同一张贴纸在不同角度的照片就是这样），不是贴图平移。色相同时写回 `--foil-hue`，金属外框跟着一起变色。
+   - 全息是五层结构（`HolographicSticker`）：深色金属底板 / 虹彩薄膜 / 微晶切面 / 金属外框 / 透明树脂。切面与高光带按 `--px` / `--py` 以不同幅度位移。
+   - 金色的"反光"是两道错速滑动的镜面亮带（亮带紧跟一条暗带）+ 跟着指针的聚光 + 底边压暗，配上错位的金箔副本才有折射感。
+   - 注意：`.pcard-depth` 带 `transform`，自成层叠上下文，**不要在它的伪元素上用 `mix-blend-mode`**（只会和透明底混合，等于白写）；`will-change` 也只在 `.is-active` 时挂，避免名单页十几张卡常驻合成层。
+6. **边框动画图**：`frost`/`spark`/`arc` 由 `apps/web/scripts/make_border_anims.py` 生成（480×398 透明 WebP，循环 1s/5s/1s）。`prefers-reduced-motion` 下退回静态描边，不加载动画帧。
+7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
+   `packages/api/src/card-skin.test.ts` 会比对迁移 SQL 与 shared 清单，漏改一侧直接红。
+8. **存储**：`users.card_material / card_frame`，两个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame }`，整份提交，不写审计、不重算评分、不冻快照。

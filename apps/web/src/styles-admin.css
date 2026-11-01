@@ -33,6 +33,22 @@
   border-bottom: none;
 }
 
+/* 窄屏：表格内边距收紧，避免把页面撑出横向滚动条 */
+@media (max-width: 560px) {
+  .table {
+    font-size: 12px;
+  }
+
+  .table th {
+    padding: 7px 6px;
+    letter-spacing: 0.08em;
+  }
+
+  .table td {
+    padding: 8px 6px;
+  }
+}
+
 .table tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
@@ -75,17 +91,225 @@
   align-items: end;
 }
 
+/* 后台概览：五张小卡 */
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.admin-stat {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  transition: border-color 0.16s ease;
+}
+
+.admin-stat:hover {
+  border-color: var(--line-strong);
+}
+
+/* 有积压/判死任务时描边变琥珀色，扫一眼就能注意到 */
+.admin-stat-warn {
+  border-color: rgba(234, 176, 60, 0.55);
+}
+
+.admin-stat-value {
+  margin: 6px 0 4px;
+  font-size: 26px;
+  line-height: 1.1;
+  color: var(--gold-2);
+}
+
+/* 审计日志展开后的 JSON 块 */
+.audit-json {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 赛事编辑条：标签在上、控件在下，整体换行。
+   不能把标签文字和控件塞进同一个行内 label——flex 收缩时 CJK 标签会在字符间
+   折行跑到控件上方，几个字段的控件基线就错开了（见 .toolbar 的 align-items: center）。 */
+.event-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+
+.event-edit > .field {
+  flex: 0 0 auto; /* 不收缩：宁可整块字段换行，也别把标签文字挤断 */
+  margin: 0;
+}
+
+/* 日期选择器吃掉剩余宽度：窄屏先缩它，避免把「保存」挤到下一行 */
+.event-edit > .field-date {
+  flex: 1 1 190px;
+  min-width: 160px;
+}
+
+/* ==========================================================================
+   场次手风琴：一场一张卡，阵容抽屉长在对应场次里
+   —— 列表常驻、只展开一场，多场比赛的状态一眼可见，也不会出现两份同时可拖拽的阵容
+   ========================================================================== */
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.match-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    var(--surface);
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}
+
+.match-item:hover {
+  border-color: var(--line-strong);
+}
+
+.match-item.is-open {
+  border-color: var(--line-strong);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
 .match-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 14px;
 }
 
-.match-row:last-child {
-  border-bottom: none;
+/* 左边整块可点：场次号 + 状态 + 摘要 + 结果 */
+.match-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 2px 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.match-toggle:focus-visible {
+  outline: 1px solid var(--line-strong);
+  outline-offset: 4px;
+}
+
+.match-chevron {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition:
+    transform 0.18s ease,
+    color 0.18s ease;
+}
+
+.match-item.is-open .match-chevron {
+  transform: rotate(90deg);
+  color: var(--gold-2);
+}
+
+.match-no {
+  color: var(--text);
+  transition: color 0.15s ease;
+}
+
+.match-toggle:hover .match-no,
+.match-item.is-open .match-no {
+  color: var(--gold-2);
+}
+
+.match-meta {
+  font-size: 12px;
+}
+
+.match-result {
+  font-size: 12px;
+  color: var(--gold-2);
+}
+
+.match-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* 窄屏换行后仍贴右边，别缩在行首 */
+  margin-left: auto;
+}
+
+.match-drawer {
+  padding: 4px 14px 16px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.07);
+  animation: drawer-in 0.18s ease both;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.drawer-loading {
+  padding: 14px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.drawer-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--display);
+  letter-spacing: 0.14em;
+  font-size: 15px;
+  color: var(--gold-2);
+}
+
+.drawer-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .lineup-preview {
@@ -100,5 +324,521 @@
 @media (max-width: 760px) {
   .admin-form {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   评分管理：玩家评分表
+   —— 顶部概览条 + 玩家单元格 + 行内两个独立动作 + 展开式调整/历史面板
+   ========================================================================== */
+
+.page-back {
+  margin-bottom: 6px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.back-link svg {
+  width: 14px;
+  height: 14px;
+}
+
+.back-link:hover {
+  color: var(--gold-2);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.ratings-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px 20px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.ratings-heading {
+  min-width: 0;
+}
+
+.ratings-lead {
+  margin: 7px 0 0;
+  max-width: 62em;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--muted);
+}
+
+.ratings-head-actions {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.ratings-head-actions .n-button {
+  --n-icon-size: 15px;
+}
+
+.ratings-message {
+  margin: 0 0 14px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* 概览条：三块等宽的小卡，和表格同宽但对齐在顶部 */
+.rating-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.rating-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.rating-stat-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.rating-stat-value {
+  font-family: var(--display);
+  font-size: 18px;
+  line-height: 1.2;
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.rating-stat-value small {
+  margin-left: 1px;
+  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.ratings-card {
+  padding: 4px 14px 8px;
+}
+
+.ratings-scroll {
+  overflow-x: auto;
+}
+
+.ratings-table {
+  min-width: 860px;
+}
+
+.ratings-table th {
+  padding: 10px 12px;
+}
+
+.ratings-table td {
+  padding: 12px;
+  vertical-align: middle;
+}
+
+.ratings-table .col-actions {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rating-row.is-open td {
+  background: rgba(201, 162, 39, 0.05);
+}
+
+/* 玩家单元格：首字母圆形头像 + 昵称/账号两行 */
+.player-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.player-avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: rgba(212, 173, 51, 0.12);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  color: var(--gold-2);
+  font-family: var(--display);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+}
+
+.player-id {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.player-name {
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-handle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.player-handle .tag {
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.effective-score {
+  font-family: var(--display);
+  font-size: 17px;
+  line-height: 1.2;
+  color: var(--gold-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.delta-pos {
+  color: var(--radiant);
+}
+
+.delta-neg {
+  color: var(--dire);
+}
+
+/* 置信度：一条细进度条 + 百分比，0% 时只剩底槽，不会误读成空表 */
+.confidence {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confidence-track {
+  width: 48px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+  flex: none;
+}
+
+.confidence-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-2));
+  transition: width 0.3s ease;
+}
+
+.confidence-text {
+  min-width: 34px;
+  text-align: right;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 行内动作：两个独立按钮，8px 间距；历史按钮降一档，不再和调整糊成一串字 */
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rating-action.n-button {
+  --n-height: 30px;
+  --n-icon-size: 13px;
+  white-space: nowrap;
+}
+
+.rating-action-history.n-button {
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+.rating-action-history.n-button:hover {
+  color: var(--gold-2);
+  border-color: var(--line-strong);
+  background-color: rgba(201, 162, 39, 0.08);
+}
+
+.rating-action-history.n-button:active {
+  background-color: rgba(201, 162, 39, 0.12);
+}
+
+.rating-action.is-active.n-button {
+  color: var(--gold-2);
+  border-color: var(--line-strong);
+  background-color: rgba(201, 162, 39, 0.14);
+}
+
+.rating-action.is-active.n-button:hover {
+  background-color: rgba(201, 162, 39, 0.2);
+}
+
+.btn-icon {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* 展开的编辑/历史面板不是数据行：去掉 hover 底色和外层单元格内边距 */
+.panel-row td {
+  padding: 0 12px 14px;
+}
+
+.panel-row:hover td,
+:root[data-theme='light'] .table tbody tr.panel-row:hover td {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- 调整面板 */
+
+.adjust-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 2px 0 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.adjust-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+}
+
+.adjust-title {
+  color: var(--gold-2);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.adjust-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.adjust-body {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.adjust-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.adjust-field .field-label {
+  margin: 0;
+}
+
+.adjust-field-grow {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.adjust-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+.adjust-preview-label {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+}
+
+.adjust-preview-old {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.adjust-preview-new {
+  color: var(--gold-2);
+  font-family: var(--display);
+  font-size: 19px;
+  line-height: 1.2;
+}
+
+.preview-arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+  flex: none;
+}
+
+.adjust-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------------------------------------------------------------- 历史面板 */
+
+.history-panel {
+  margin: 2px 0 4px;
+  padding: 12px 14px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.history-title {
+  color: var(--text);
+  font-size: 13px;
+  letter-spacing: 0.03em;
+}
+
+.history-title .muted {
+  font-size: 12px;
+}
+
+.history-empty {
+  padding: 4px 0 10px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.history-table {
+  font-size: 12.5px;
+}
+
+.history-table th {
+  padding: 6px 10px;
+  font-size: 10.5px;
+}
+
+.history-table td {
+  padding: 9px 10px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.history-table tr:hover td {
+  background: transparent;
+}
+
+.history-reason {
+  min-width: 180px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.delta-arrow {
+  margin: 0 6px;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------- 浅色修正 */
+
+:root[data-theme='light'] .back-link:hover {
+  background: rgba(179, 38, 30, 0.06);
+}
+
+:root[data-theme='light'] .confidence-track {
+  background: rgba(27, 32, 51, 0.1);
+}
+
+:root[data-theme='light'] .rating-row.is-open td {
+  background: rgba(179, 38, 30, 0.04);
+}
+
+:root[data-theme='light'] .rating-action-history.n-button:hover {
+  background-color: rgba(179, 38, 30, 0.06);
+}
+
+:root[data-theme='light'] .rating-action-history.n-button:active {
+  background-color: rgba(179, 38, 30, 0.1);
+}
+
+:root[data-theme='light'] .rating-action.is-active.n-button {
+  background-color: rgba(179, 38, 30, 0.1);
+}
+
+:root[data-theme='light'] .rating-action.is-active.n-button:hover {
+  background-color: rgba(179, 38, 30, 0.14);
+}
+
+:root[data-theme='light'] .history-table td {
+  border-bottom-color: rgba(27, 32, 51, 0.09);
+}
+
+:root[data-theme='light'] .rating-stat {
+  background: #ffffff;
+}
+
+/* 深色主题的 primary 是金底，白字对比度只有 2:1 左右；换成深墨色才读得清 */
+:root[data-theme='dark'] .ratings-head-actions .n-button--primary-type,
+:root[data-theme='dark'] .adjust-actions .n-button--primary-type {
+  color: #221a04;
+}
+
+@media (max-width: 700px) {
+  .ratings-head-actions {
+    width: 100%;
+  }
+
+  .ratings-head-actions .n-button {
+    flex: 1;
   }
 }

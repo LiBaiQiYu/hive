@@ -34,6 +34,120 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* 系统分构成：段位 / 出勤两条，带比例条 */
+.rating-break {
+  margin-top: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rating-break-title {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.rating-break-row {
+  display: grid;
+  grid-template-columns: 62px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.rating-break-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.rating-break-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.rating-break-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold), var(--gold-2));
+  transition: width 0.4s ease;
+}
+
+.rating-break-score {
+  font-size: 13px;
+  color: var(--gold-2);
+  white-space: nowrap;
+}
+
+.rating-break-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+:root[data-theme='light'] .rating-break-bar {
+  background: rgba(27, 32, 51, 0.08);
+}
+
+/* 战绩页：四宫格统计 */
+.record-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.record-stat {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.record-value {
+  margin-top: 6px;
+  font-size: 24px;
+  line-height: 1.1;
+  color: var(--gold-2);
+}
+
+@media (max-width: 700px) {
+  .record-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 评分调整记录：第一行是时间/修正/结果/操作人，原因单独占一整行 */
+.rating-history-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px 12px;
+  padding: 7px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 12px;
+}
+
+.rating-history-row:last-child {
+  border-bottom: none;
+}
+
+.rating-history-reason {
+  flex: 1 1 100%;
+  color: var(--text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .rating-history-row {
+    gap: 2px 8px;
+  }
+}
+
 /* 折叠说明：不用 JS，键盘与读屏都能用 */
 .explainer {
   margin-top: 16px;
@@ -96,6 +210,17 @@
 
 /* 位置编辑器 */
 
+.pos-head {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.2fr) 140px minmax(160px, 1fr);
+  gap: 16px;
+  padding: 0 12px 8px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .pos-list {
   display: flex;
   flex-direction: column;
@@ -144,5 +269,28 @@
   }
   .rating-split {
     grid-template-columns: 1fr;
+  }
+}
+
+/* 窄屏：三列排不下，改成「名字 + 志愿」一行、「熟练度」占满下一行 */
+@media (max-width: 560px) {
+  .pos-head,
+  .pos-row {
+    grid-template-columns: minmax(0, 1fr) 92px;
+    row-gap: 8px;
+    gap: 8px;
+  }
+
+  .pos-head span:nth-child(2) {
+    text-align: right;
+  }
+
+  .pos-head span:nth-child(3),
+  .pos-row .pos-prof {
+    grid-column: 1 / -1;
+  }
+
+  .pos-select {
+    justify-self: end;
   }
 }

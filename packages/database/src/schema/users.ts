@@ -67,6 +67,21 @@ export const users = sqliteTable(
      * D1 仍然强制执行，只是 Drizzle 的类型层不知道它。
      */
     inviteCodeId: text('invite_code_id'),
+    /**
+     * 卡片外观（纯展示，见迁移 0004）。枚举值与 @hive/shared 的
+     * CARD_MATERIALS / CARD_FRAMES / CARD_EFFECTS 保持一致；
+     * 不一致时 packages/api 的 card-skin 测试会直接失败。
+     */
+    cardMaterial: text('card_material', {
+      enum: ['basic', 'pixel', 'acrylic', 'sparkle', 'holo', 'gold', 'psi'],
+    })
+      .notNull()
+      .default('basic'),
+    cardFrame: text('card_frame', {
+      enum: ['none', 'hairline', 'double', 'corners', 'bevel', 'frost', 'spark', 'arc'],
+    })
+      .notNull()
+      .default('hairline'),
   },
   (t) => [
     uniqueIndex('ux_users_username').on(t.username),

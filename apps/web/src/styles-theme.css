@@ -42,10 +42,6 @@
   box-shadow: 0 1px 12px rgba(27, 32, 51, 0.05);
 }
 
-:root[data-theme='light'] .brand-name {
-  color: #b3261e;
-}
-
 :root[data-theme='light'] .nav-link {
   color: #4a5265;
 }
@@ -219,9 +215,9 @@
   color: #8e1b15;
 }
 
-/* ③ 用白色 alpha 画的分隔线：在浅底上等于隐形（表格、场次行、阵容槽位） */
+/* ③ 用白色 alpha 画的分隔线：在浅底上等于隐形（表格、场次抽屉、阵容槽位） */
 :root[data-theme='light'] .table td,
-:root[data-theme='light'] .match-row,
+:root[data-theme='light'] .match-drawer,
 :root[data-theme='light'] .slot,
 :root[data-theme='light'] .id-row,
 :root[data-theme='light'] .pos-row {
@@ -278,8 +274,14 @@
 /* 卡片描边在浅色下需要实一点，否则一整页都是"浮着的白色方块" */
 :root[data-theme='light'] .card,
 :root[data-theme='light'] .stat,
+:root[data-theme='light'] .match-item,
 :root[data-theme='light'] .team {
   border-color: rgba(27, 32, 51, 0.1);
+}
+
+/* 展开的场次卡：浅色下用淡投影，深色那套 28% 黑会像一块脏印 */
+:root[data-theme='light'] .match-item.is-open {
+  box-shadow: 0 8px 22px rgba(27, 32, 51, 0.08);
 }
 
 /* ==========================================================================
@@ -324,8 +326,7 @@ select.input {
   color: var(--gold-2);
 }
 
-:root[data-theme='light'] .card-title,
-:root[data-theme='light'] .brand-name {
+:root[data-theme='light'] .card-title {
   color: #b3261e;
 }
 
@@ -479,6 +480,19 @@ select.input {
   flex: none;
 }
 
+/* 挂在字段标签、卡片标题后面时，父级已经是 flex + gap，别再叠 10px */
+.field-label .help,
+.card-title .help,
+.ratings-heading .help {
+  margin-left: 0;
+  flex: none;
+}
+
+/* 长内容（评分算法这类）用宽版，避免一行只有十几个字 */
+.help-pop-wide {
+  width: 400px;
+}
+
 .help:hover,
 .help:focus-visible {
   background: rgba(179, 38, 30, 0.1);
@@ -505,20 +519,21 @@ select.input {
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
   opacity: 0;
   visibility: hidden;
-  transform: translateX(-50%) translateY(-6px);
+  pointer-events: none;
+  /* 由 HelpTip 在展开前算出的水平内收量，避免贴边被切掉 */
+  transform: translateX(calc(-50% + var(--pop-shift, 0px))) translateY(-6px);
   transition:
     opacity 0.16s ease,
     transform 0.16s ease,
     visibility 0.16s;
-  pointer-events: none;
 }
 
-/* 箭头 */
+/* 箭头：始终指向「?」，跟着浮窗一起水平内收 */
 .help-pop::before {
   content: '';
   position: absolute;
   top: -6px;
-  left: 50%;
+  left: calc(50% - var(--pop-shift, 0px));
   width: 10px;
   height: 10px;
   margin-left: -5px;
@@ -533,7 +548,18 @@ select.input {
 .help:focus-within .help-pop {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(0);
+  transform: translateX(calc(-50% + var(--pop-shift, 0px))) translateY(0);
+  /* 展开后允许鼠标移进浮窗，也才能点里面的链接 */
+  pointer-events: auto;
+}
+
+.help-pop a {
+  color: var(--gold-2);
+  text-decoration: none;
+}
+
+.help-pop a:hover {
+  text-decoration: underline;
 }
 
 .help-pop b {
@@ -591,4 +617,30 @@ select.input {
   width: 100%;
   padding-left: 12px;
   padding-right: 12px;
+}
+
+/* 窄屏：帮助浮窗改成底部弹层（fixed + 左右各留 12px），
+   绝对定位的 320px 浮窗在 390 宽视口里无论怎么居中都会把页面撑宽。 */
+@media (max-width: 560px) {
+  .help-pop,
+  .help-pop-wide {
+    position: fixed;
+    top: auto;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: translateY(8px);
+  }
+
+  .help:hover .help-pop,
+  .help:focus .help-pop,
+  .help:focus-within .help-pop {
+    transform: translateY(0);
+  }
+
+  .help-pop::before {
+    display: none;
+  }
 }

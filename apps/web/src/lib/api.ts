@@ -36,6 +36,11 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     | null;
 
   if (!response.ok) {
+    // 会话在服务端失效（过期 / 别处登出）时，前端内存里可能还留着旧会话。
+    // 这里只广播事件，清状态和跳转交给 session / router 处理，避免循环依赖。
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent('hive:unauthorized'));
+    }
     throw new ApiError(
       payload?.error?.code ?? 'INTERNAL',
       payload?.error?.message ?? `请求失败（${response.status}）`,
@@ -45,6 +50,8 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 }
 
 /* ------------------------------------------------------------------ 类型 */
+
+import type { CardSkin } from './cards';
 
 export interface EventView {
   id: string;
@@ -63,6 +70,22 @@ export interface EventView {
   startsAt: number | null;
 }
 
+/** 评分构成里的一项（段位 / 社区出勤） */
+export interface RatingComponent {
+  key: 'RANK' | 'COMMUNITY' | string;
+  weight: number;
+  /** 0..1 */
+  value: number;
+  score: number;
+  basis: string;
+}
+
+export interface RatingBreakdown {
+  components: RatingComponent[];
+  estimatedMmr: number | null;
+  attendanceBp: number | null;
+}
+
 export interface Rating {
   system: number;
   adjustment: number;
@@ -70,6 +93,8 @@ export interface Rating {
   confidenceBp: number;
   uncertainty: number;
   algorithmVersion: string;
+  /** 评分构成；老数据没有 breakdown_json 时为 null */
+  breakdown: RatingBreakdown | null;
 }
 
 export interface Me {
@@ -82,6 +107,8 @@ export interface Me {
     role: 'PLAYER' | 'ADMIN';
   };
   rating: Rating | null;
+  /** 玩家自己选的卡片外观（材质 / 边框 / 特效） */
+  cardSkin: CardSkin;
   positions: { position: number; rank: number; proficiency: number }[];
   gameAccount: {
     provider: string;

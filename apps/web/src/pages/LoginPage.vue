@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { NButton, NInput, useMessage } from 'naive-ui';
+import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api } from '../lib/api';
 import { loadMe } from '../lib/session';
 
@@ -8,6 +10,7 @@ const router = useRouter();
 const mode = ref<'login' | 'register'>('login');
 const submitting = ref(false);
 const error = ref('');
+const message = useMessage();
 
 const loginForm = ref({ identifier: '', password: '' });
 const registerForm = ref({
@@ -24,6 +27,7 @@ async function submitLogin() {
   try {
     await api('/auth/login', { method: 'POST', body: loginForm.value });
     await loadMe();
+    message.success('登录成功');
     void router.push('/');
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '登录失败';
@@ -38,6 +42,7 @@ async function submitRegister() {
   try {
     await api('/auth/register', { method: 'POST', body: registerForm.value });
     await loadMe();
+    message.success('账号已创建，欢迎加入');
     void router.push('/events');
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '注册失败';
@@ -52,6 +57,16 @@ async function submitRegister() {
     <section class="card">
       <h1 class="section-title" style="margin-bottom: 18px">
         {{ mode === 'login' ? '登录 HIVE' : '加入 HIVE' }}
+        <HelpTip
+          v-if="mode === 'register'"
+          title="邀请制"
+          :steps="[
+            '① 邀请码由管理员在群里发放，默认一码一人',
+            '② 用户名注册后不可修改，它是登录凭据',
+            '③ Steam 绑定是可选的，之后也可以手动填段位',
+          ]"
+          note="不绑定 Steam 同样能参与分队：手动填写的段位也计入评分，只是归属会显示「未验证」。"
+        />
       </h1>
 
       <div class="nav-links" style="margin-bottom: 20px">
@@ -80,62 +95,87 @@ async function submitRegister() {
       <form v-if="mode === 'login'" @submit.prevent="submitLogin">
         <label class="field">
           <span class="field-label">用户名或邮箱</span>
-          <input v-model="loginForm.identifier" class="input" autocomplete="username" required />
+          <NInput
+            v-model:value="loginForm.identifier"
+            :input-props="{ autocomplete: 'username' }"
+            placeholder="例如 byc1030"
+            size="large"
+          />
         </label>
         <label class="field">
           <span class="field-label">密码</span>
-          <input
-            v-model="loginForm.password"
-            class="input"
+          <NInput
+            v-model:value="loginForm.password"
             type="password"
-            autocomplete="current-password"
-            required
+            show-password-on="click"
+            placeholder="输入密码"
+            :input-props="{ autocomplete: 'current-password' }"
+            size="large"
+            @keyup.enter="submitLogin"
           />
         </label>
-        <button class="btn btn-primary" type="submit" :disabled="submitting" style="width: 100%">
+        <NButton type="primary" attr-type="submit" :disabled="submitting" :loading="submitting" block>
           {{ submitting ? '登录中…' : '登录' }}
-        </button>
+        </NButton>
       </form>
 
       <form v-else @submit.prevent="submitRegister">
         <label class="field">
           <span class="field-label">邀请码</span>
-          <input
-            v-model="registerForm.inviteCode"
-            class="input"
+          <NInput
+            v-model:value="registerForm.inviteCode"
             placeholder="由管理员在群里发放"
-            required
+            size="large"
           />
         </label>
         <label class="field">
-          <span class="field-label">用户名（3-24 位，小写字母/数字/下划线）</span>
-          <input v-model="registerForm.username" class="input" autocomplete="username" required />
+          <span class="field-label">
+            用户名
+            <HelpTip
+              title="用户名规则"
+              :steps="['3–24 位，只能用小写字母、数字、下划线', '注册后不可修改——它是登录凭据', '显示名可以随时改，用户名不行']"
+            />
+          </span>
+          <NInput
+            v-model:value="registerForm.username"
+            placeholder="3-24 位，小写字母 / 数字 / 下划线"
+            :input-props="{ autocomplete: 'username' }"
+            size="large"
+          />
         </label>
         <label class="field">
           <span class="field-label">显示名</span>
-          <input v-model="registerForm.displayName" class="input" required />
+          <NInput
+            v-model:value="registerForm.displayName"
+            placeholder="群里怎么称呼你"
+            :maxlength="32"
+            size="large"
+          />
         </label>
         <label class="field">
           <span class="field-label">邮箱</span>
-          <input v-model="registerForm.email" class="input" type="email" required />
+          <NInput v-model:value="registerForm.email" placeholder="you@example.com" size="large" />
         </label>
         <label class="field">
-          <span class="field-label">密码（至少 10 位）</span>
-          <input
-            v-model="registerForm.password"
-            class="input"
+          <span class="field-label">
+            密码
+            <HelpTip
+              title="密码要求"
+              :steps="['至少 10 位', '服务端只存 PBKDF2 哈希，本站看不到明文']"
+            />
+          </span>
+          <NInput
+            v-model:value="registerForm.password"
             type="password"
-            autocomplete="new-password"
-            minlength="10"
-            required
+            show-password-on="click"
+            placeholder="至少 10 位"
+            :input-props="{ autocomplete: 'new-password' }"
+            size="large"
           />
         </label>
-        <button class="btn btn-primary" type="submit" :disabled="submitting" style="width: 100%">
+        <NButton type="primary" attr-type="submit" :disabled="submitting" :loading="submitting" block>
           {{ submitting ? '注册中…' : '创建账号' }}
-        </button>
-        <p class="muted" style="font-size: 12px; margin-top: 14px">
-          HIVE 采用邀请制。Steam 绑定是可选的——你也可以稍后在个人档案里手动填写段位。
-        </p>
+        </NButton>
       </form>
     </section>
   </div>

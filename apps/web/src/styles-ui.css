@@ -1,0 +1,215 @@
+/* ==========================================================================
+   接入 Naive UI 之后的尺寸与动效补丁
+   组件负责交互，这里只补"和 HIVE 现有布局/手感对齐"的部分。
+   ========================================================================== */
+
+/* 表单里的组件应该撑满容器：默认宽度会让下拉框缩成一小块 */
+.field .n-input,
+.field .n-input-number,
+.field .n-base-selection,
+.field .n-date-picker,
+.rank-form .n-select,
+.rank-form .n-input-number,
+.pos-row .n-base-selection {
+  width: 100%;
+}
+
+/* 位置偏好那一列原本给原生 select 留了 140px，Naive 的下拉同样需要占满 */
+.pos-row .n-select {
+  width: 100%;
+  min-width: 0;
+}
+
+/* 邀请码那一列：长得像链接的"复制"按钮，用 Naive 的 text 按钮 + 主题变量染色 */
+.code-copy {
+  --n-text-color: var(--gold-2);
+  --n-text-color-hover: var(--gold);
+  --n-text-color-pressed: var(--gold);
+  --n-text-color-focus: var(--gold-2);
+  font-size: 13px;
+  padding: 0;
+  height: auto;
+}
+
+/* ---------------------------------------------------------------- 顶栏 */
+
+/* 主题切换：一个圆按钮里叠两个图标，切换时交叉旋转淡出淡入 */
+.theme-toggle-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.theme-toggle {
+  position: relative;
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+}
+
+.theme-toggle svg {
+  position: absolute;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  transition:
+    transform 0.38s cubic-bezier(0.34, 1.4, 0.64, 1),
+    opacity 0.24s ease;
+}
+
+.theme-toggle .icon-sun {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+.theme-toggle .icon-moon {
+  opacity: 0;
+  transform: rotate(-80deg) scale(0.5);
+}
+
+.theme-toggle.is-light .icon-sun {
+  opacity: 0;
+  transform: rotate(80deg) scale(0.5);
+}
+
+.theme-toggle.is-light .icon-moon {
+  opacity: 1;
+  transform: rotate(0deg) scale(1);
+}
+
+/* 用户名下拉的触发器：名字 + 小箭头。
+   Naive 的按钮内容层默认 line-height: 1，中文字形和 y/g 的下伸部分会被
+   按钮的 overflow:hidden 切掉，所以这里把行高和高度都显式放开。 */
+.user-chip.n-button {
+  height: 34px;
+  padding: 0 12px;
+}
+
+.user-chip .n-button__content {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  line-height: 1.35;
+  font-size: 15px;
+}
+
+.user-name {
+  font-size: 15px;
+  line-height: 1.35;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-caret {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  opacity: 0.65;
+  transition: transform 0.2s ease;
+}
+
+/* 悬停时箭头稍微下压，暗示"这里可以展开" */
+.user-chip:hover .user-caret {
+  transform: translateY(1px);
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- 阵容拖拽 */
+
+.slot-draggable {
+  cursor: grab;
+}
+
+.slot-draggable:active {
+  cursor: grabbing;
+}
+
+/* 拖拽进行中：所有可落点都描一圈虚线，明确"这里能放" */
+.slot-dragover {
+  outline: 1px dashed var(--gold);
+  outline-offset: -2px;
+  background: rgba(212, 173, 51, 0.06);
+}
+
+.slot-empty {
+  opacity: 0.55;
+}
+
+:root[data-theme='light'] .slot-dragover {
+  background: rgba(179, 38, 30, 0.05);
+}
+
+/* ---------------------------------------------------------------- 路由切换 */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active,
+  .page-leave-active {
+    transition: none;
+  }
+}
+
+/* ---------------------------------------------------------------- 交互反馈 */
+
+/* 卡片：悬停时描边亮起，暗示"这是可以点/关注的区块" */
+.card {
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.card:hover {
+  border-color: var(--line-strong);
+}
+
+/* 表格行 */
+.table tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+/* 按钮按下时下沉 1px，点击感更明确 */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn {
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.08s ease;
+}
+
+/* 键盘操作时给一个明确的焦点环（鼠标点击不触发） */
+.btn:focus-visible,
+.nav-link:focus-visible,
+.help:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+/* 输入框聚焦时的过渡，避免"啪"一下变色 */
+.n-input,
+.n-base-selection {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
+}

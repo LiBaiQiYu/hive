@@ -1,0 +1,767 @@
+/* ==========================================================================
+   卡片皮肤：材质 / 边框
+   ---------------------------------------------------------------------------
+   两个正交维度，全部通过属性选择器换 CSS 变量，卡片结构完全不改：
+
+     <article class="pcard" data-material="gold" data-frame="double">
+
+   约定：
+   - 材质负责"底色 + 纹理 + 字色"，可以在深/浅主题下都保持自己的样子
+     （金卡在浅色主题里还是金卡，不会退化成一张白纸）；
+   - 边框只改描边（--skin-border-width 与 .pcard-frame 的装饰），不动底色；
+   - 动效敏感 / 触屏用户在 prefers-reduced-motion 下一律静止。
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- 材质 */
+
+/* 原味：深色跟随主题（浅色下的值是浅底白卡） */
+[data-material='basic'] {
+  --skin-bg: linear-gradient(160deg, #1c2231 0%, #0f131b 100%);
+  --skin-border: rgba(201, 162, 39, 0.34);
+  --skin-glow: rgba(201, 162, 39, 0.22);
+  --skin-foil: rgba(255, 255, 255, 0.07);
+}
+
+:root[data-theme='light'] [data-material='basic'] {
+  --skin-bg: linear-gradient(160deg, #ffffff 0%, #f4f1ec 100%);
+  --skin-border: rgba(27, 32, 51, 0.12);
+  --skin-glow: rgba(179, 38, 30, 0.16);
+  --skin-foil: rgba(179, 38, 30, 0.08);
+  --skin-divider: rgba(27, 32, 51, 0.1);
+  --skin-name-shadow: none;
+  --skin-frame-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent 34%);
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 0 0 1px rgba(27, 32, 51, 0.04);
+  --skin-shadow:
+    0 16px 32px rgba(27, 32, 51, 0.14),
+    0 0 0 1px var(--skin-border),
+    0 0 24px -8px var(--skin-glow);
+}
+
+/* 像素：8-bit 网格 + 硬边 + 块状投影，两种主题下都保持深蓝 */
+[data-material='pixel'] {
+  --skin-bg: #0d1526;
+  /* 像素面由 canvas 逐格渲染（lib/pixel.ts），不再铺静态网格贴图 */
+  --skin-tex: none;
+  --skin-border: #63a4ff;
+  --skin-glow: rgba(99, 164, 255, 0.5);
+  --skin-foil: rgba(160, 215, 255, 0.16);
+  --skin-text: #e9f2ff;
+  --skin-muted: #9fb6d8;
+  --skin-accent: #8fd4ff;
+  --skin-accent-2: #ffd166;
+  --skin-divider: rgba(140, 200, 255, 0.26);
+  --skin-radius: 3px;
+  --skin-border-width: 2px;
+  --skin-name-shadow: 2px 2px 0 rgba(0, 0, 0, 0.7);
+  --skin-shadow:
+    4px 4px 0 rgba(0, 0, 0, 0.55),
+    0 0 26px -6px var(--skin-glow);
+}
+
+/* 亚克力（PMMA，真实光学）：
+   - 折射率 n≈1.49 → 正对反射率只有 ~3.9%，所以卡面几乎全透，只有掠射角才亮；
+   - 透光率 ~92%、吸收极低 → 背景原样透过来，只带一层极淡的冷色；
+   - 磨砂面把背景揉成雾面，但边缘会"亮起来"（光在板内全反射后从边棱出射）；
+   - 板有厚度：前后两个表面各有一个反射像，后像更大更淡、位移也更明显；
+   - 边棱光程不同 → 极淡的青/品红色散，用 1px 偏移的描边模拟。 */
+[data-material='acrylic'] {
+  /* 无色的磨砂板：几乎不染色，只靠雾度和边缘的厚度感区分 */
+  --skin-bg: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.075) 0%,
+    rgba(255, 255, 255, 0.028) 52%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  --skin-tex: none;
+  --skin-border: rgba(255, 255, 255, 0.42);
+  --skin-glow: rgba(225, 240, 255, 0.3);
+  --skin-foil: rgba(255, 255, 255, 0.18);
+  --skin-divider: rgba(255, 255, 255, 0.2);
+  --skin-frame-bg: none;
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 0 34px rgba(255, 255, 255, 0.07);
+  --skin-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 0 30px -10px var(--skin-glow);
+}
+
+/* 磨砂透射：模糊 + 轻微提亮/饱和。透光率 92% 的板子不该压暗背景 */
+.pcard[data-material='acrylic'] .pcard-inner {
+  backdrop-filter: blur(14px) saturate(1.2) brightness(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2) brightness(1.04);
+}
+
+/* 亚克力很亮，正文需要一点暗边才压得住（不是遮罩，只作用在字形上） */
+.pcard[data-material='acrylic'] .pcard-head,
+.pcard[data-material='acrylic'] .pcard-medal,
+.pcard[data-material='acrylic'] .pcard-stats,
+.pcard[data-material='acrylic'] .pcard-bio,
+.pcard[data-material='acrylic'] .pcard-foot {
+  text-shadow: 0 1px 2px rgba(6, 10, 20, 0.45);
+}
+
+/* 板体：顶部一层极淡的乳白（表面雾度），不带任何冷色 */
+.pcard[data-material='acrylic'] .pcard-fx {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, transparent 30%);
+}
+
+/* 前后两个表面的反射像：前表面小而锐，后表面大而淡且位移更大（视差≈板厚） */
+.pcard[data-material='acrylic'] .pcard-fx::before,
+.pcard[data-material='acrylic'] .pcard-fx::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* 光照在磨砂面上的两团朦胧光晕：内圈紧一点、外圈更大更淡，
+   位移略不同（前表面 / 后表面），所以晃动时像光在雾面里散开、有厚度。 */
+.pcard[data-material='acrylic'] .pcard-fx::before {
+  background: radial-gradient(
+    circle at var(--mx, 50%) var(--my, 50%),
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(255, 255, 255, 0.12) 24%,
+    rgba(255, 255, 255, 0.04) 46%,
+    transparent 66%
+  );
+}
+
+.pcard[data-material='acrylic'] .pcard-fx::after {
+  background: radial-gradient(
+    circle at calc(var(--mx, 50%) + 6%) calc(var(--my, 50%) + 4%),
+    rgba(240, 248, 255, 0.14) 0%,
+    rgba(230, 242, 255, 0.06) 34%,
+    transparent 72%
+  );
+}
+
+/* 表面微瑕：几处很淡的指印 + 极细划痕 —— 真实亚克力不会完美无瑕 */
+.pcard[data-material='acrylic'] .pcard-depth::before {
+  opacity: 1;
+  background-image:
+    radial-gradient(30% 18% at 22% 34%, rgba(255, 255, 255, 0.05), transparent 70%),
+    radial-gradient(24% 14% at 76% 62%, rgba(255, 255, 255, 0.045), transparent 70%),
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 9px);
+}
+
+/* 磨砂颗粒：喷砂面是细小的随机颗粒，不是纯色 —— 这一层让它"有材质" */
+.pcard[data-material='acrylic'] .pcard-depth::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('./assets/card-frost.svg');
+  background-size: 400px 400px;
+  opacity: 0.24;
+  pointer-events: none;
+}
+
+/* 轻微透视：边缘一圈很淡的压暗 + 高光，像隔着一层薄板看东西时的镜头边缘 */
+.pcard[data-material='acrylic'] .pcard-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(125% 105% at 50% 50%, transparent 58%, rgba(255, 255, 255, 0.05) 100%),
+    radial-gradient(125% 105% at 50% 50%, transparent 74%, rgba(0, 0, 0, 0.05) 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+:root[data-theme='light'] [data-material='acrylic'] {
+  --skin-bg: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.6) 0%,
+    rgba(226, 238, 255, 0.45) 48%,
+    rgba(255, 255, 255, 0.34) 100%
+  );
+  --skin-border: rgba(255, 255, 255, 0.92);
+  --skin-glow: rgba(90, 130, 210, 0.22);
+  --skin-foil: rgba(255, 255, 255, 0.5);
+  --skin-divider: rgba(27, 32, 51, 0.14);
+  --skin-name-shadow: none;
+  --skin-frame-bg: none;
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(160, 185, 220, 0.35),
+    inset 0 0 18px rgba(255, 255, 255, 0.5),
+    1px 0 0 rgba(120, 190, 255, 0.16),
+    -1px 0 0 rgba(255, 140, 220, 0.12);
+  --skin-shadow:
+    0 14px 28px rgba(27, 32, 51, 0.14),
+    0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 24px -8px var(--skin-glow);
+}
+
+/* 闪耀：碎钻银白——生成的碎玻璃晶面 + 星点，深字 */
+[data-material='sparkle'] {
+  --skin-bg:
+    radial-gradient(120% 90% at 22% 6%, rgba(255, 255, 255, 0.95), transparent 55%),
+    linear-gradient(155deg, #e9eef6 0%, #b3bfd0 36%, #dfe6f0 62%, #9dabbd 100%);
+  --skin-tex: url('./assets/card-sparkle.svg');
+  --skin-tex-size: cover;
+  --skin-tex-repeat: no-repeat;
+  --skin-border: rgba(255, 255, 255, 0.9);
+  --skin-glow: rgba(210, 225, 245, 0.6);
+  --skin-foil: rgba(255, 255, 255, 0.6);
+  --skin-text: #1b2230;
+  --skin-muted: #4f5a6b;
+  --skin-accent: #2b3d58;
+  --skin-accent-2: #7a5c14;
+  --skin-divider: rgba(27, 32, 51, 0.16);
+  --skin-name-shadow: none;
+  --skin-radius: 12px;
+  --skin-shadow:
+    0 16px 30px rgba(30, 40, 60, 0.26),
+    0 0 24px -10px var(--skin-glow);
+}
+
+/* 全息：材质本身只是"配色 + 可读性"层。
+   真正的贴纸质感在 components/HolographicSticker.vue 里（五层结构），
+   卡片只在 material==='holo' 时把它铺进 .pcard-deco。 */
+[data-material='holo'] {
+  --skin-bg: linear-gradient(160deg, #0d1824 0%, #0a121c 45%, #0e1a26 100%);
+  /* 贴纸组件自己画薄膜/切面，这里不再重复铺纹理 */
+  --skin-tex: none;
+  --skin-border: rgba(205, 222, 240, 0.5);
+  --skin-glow: rgba(140, 220, 255, 0.4);
+  --skin-foil: rgba(255, 255, 255, 0.22);
+  --skin-text: #ffffff;
+  --skin-muted: #e8f1ff;
+  --skin-accent: #b6ffe2;
+  --skin-accent-2: #ffc9f7;
+  --skin-divider: rgba(225, 240, 255, 0.4);
+  --skin-name-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 12px rgba(0, 0, 0, 0.7);
+  --skin-radius: 12px;
+  --skin-border-width: 2px;
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -4px 12px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(190, 210, 232, 0.25),
+    inset 0 0 18px rgba(120, 200, 255, 0.12);
+  --skin-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.5),
+    0 0 30px -10px var(--skin-glow);
+}
+
+/* 金色：流动金箔——生成的熔金波纹贴图 + 斜向高光，深字 */
+[data-material='gold'] {
+  /* 首帧/降级底色：canvas 还没画出来时的金属暗底，避免闪一块浅黄 */
+  --skin-bg: linear-gradient(160deg, #4a3410 0%, #2a1d08 100%);
+  /* 金属面由 canvas 实时渲染（lib/metal.ts），这里不再铺静态贴图 */
+  --skin-tex: none;
+  --skin-border: rgba(255, 244, 200, 0.95);
+  --skin-glow: rgba(240, 200, 90, 0.6);
+  /* 金属的高光已经在 canvas 里按 Fresnel 算过了；这层再盖一层白会糊成珍珠纸 */
+  --skin-foil: rgba(255, 245, 210, 0.1);
+  --skin-text: #2a1d05;
+  --skin-muted: #6d5722;
+  --skin-accent: #5a3d05;
+  --skin-accent-2: #8a6a1f;
+  --skin-divider: rgba(90, 61, 5, 0.22);
+  --skin-name-shadow: none;
+  /* 金属的"厚度"来自上下两道边缘光：顶边反光、底边压暗 */
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 253, 230, 0.95),
+    inset 0 -3px 9px rgba(105, 66, 0, 0.35),
+    inset 0 0 0 1px rgba(255, 240, 180, 0.45);
+  --skin-shadow:
+    0 18px 34px rgba(60, 40, 0, 0.32),
+    0 0 26px -8px var(--skin-glow);
+}
+
+/* 灵能：破碎色散——深靛底 + 碎晶 + 棱镜光刃，整片色相随倾斜位移（lib/psi.ts） */
+[data-material='psi'] {
+  --skin-bg: linear-gradient(160deg, #0a0c1c 0%, #0d1030 55%, #07060f 100%);
+  --skin-tex: none;
+  --skin-border: rgba(196, 176, 255, 0.9);
+  --skin-glow: rgba(150, 120, 255, 0.55);
+  --skin-foil: rgba(200, 220, 255, 0.14);
+  --skin-text: #f0f3ff;
+  --skin-muted: #b9c3e8;
+  --skin-accent: #9df3ff;
+  --skin-accent-2: #ff9df2;
+  --skin-divider: rgba(180, 200, 255, 0.28);
+  --skin-name-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.9),
+    0 0 14px rgba(120, 90, 255, 0.6);
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(235, 230, 255, 0.35),
+    inset 0 -4px 12px rgba(10, 8, 30, 0.6),
+    inset 0 0 0 1px rgba(170, 150, 255, 0.28),
+    inset 0 0 22px rgba(130, 110, 255, 0.18);
+  --skin-shadow:
+    0 18px 36px rgba(0, 0, 0, 0.55),
+    0 0 32px -10px var(--skin-glow);
+}
+
+/* 灵能卡的文字：亮底碎晶上要立得住，加一圈冷色描边 */
+.pcard[data-material='psi'] .pcard-head,
+.pcard[data-material='psi'] .pcard-medal,
+.pcard[data-material='psi'] .pcard-stats,
+.pcard[data-material='psi'] .pcard-bio,
+.pcard[data-material='psi'] .pcard-foot {
+  text-shadow:
+    1px 0 1px rgba(6, 4, 20, 0.9),
+    -1px 0 1px rgba(6, 4, 20, 0.9),
+    0 1px 1px rgba(6, 4, 20, 0.9),
+    0 -1px 1px rgba(6, 4, 20, 0.9),
+    0 0 12px rgba(90, 70, 200, 0.5);
+}
+
+/* ---------------------------------------------------------------- 视差层 */
+/* 同款图案再叠一层，位移方向和幅度都跟底纹不同：转动卡片时图案之间互相错位，
+   看起来就像图案分了好几层、卡面有厚度。指针回到中心时 --px/--py 为 0，一切归位。
+   注意不要在这几层上用 mix-blend-mode —— .pcard-depth 有 transform，
+   自成层叠上下文，混合只会和透明底混，等于白写。 */
+
+[data-material='sparkle'] .pcard-depth::before {
+  opacity: 0.62;
+  background-image: url('./assets/card-sparkle.svg');
+  transform: translate3d(calc(var(--px, 0) * -18px), calc(var(--py, 0) * -18px), 0) scale(1.12);
+}
+
+[data-material='sparkle'] .pcard-depth::after {
+  opacity: 0.85;
+  background-image:
+    radial-gradient(1.8px 1.8px at 18% 26%, #fff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 38% 66%, #fff, transparent 60%),
+    radial-gradient(1.9px 1.9px at 57% 20%, #fff, transparent 60%),
+    radial-gradient(1.5px 1.5px at 73% 58%, #fff, transparent 60%),
+    radial-gradient(1.7px 1.7px at 88% 34%, #fff, transparent 60%),
+    radial-gradient(1.4px 1.4px at 30% 86%, #fff, transparent 60%);
+  transform: translate3d(calc(var(--px, 0) * 30px), calc(var(--py, 0) * 30px), 0);
+}
+
+
+/* 亮色材质上的语义色要压深，否则绿/黄徽章在浅底上糊成一片 */
+.pcard[data-material='sparkle'] .pcard-badge,
+.pcard[data-material='gold'] .pcard-badge {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.pcard[data-material='sparkle'] .badge-ok,
+.pcard[data-material='gold'] .badge-ok {
+  color: #1c6b3a;
+}
+
+.pcard[data-material='sparkle'] .badge-info,
+.pcard[data-material='gold'] .badge-info {
+  color: #2c4a78;
+}
+
+.pcard[data-material='sparkle'] .badge-warn,
+.pcard[data-material='gold'] .badge-warn {
+  color: #8a5600;
+}
+
+.pcard[data-material='sparkle'] .badge-idle,
+.pcard[data-material='gold'] .badge-idle {
+  color: #4a4f5c;
+}
+
+/* 亮色材质上的"正选/候补"同样要换深浅 */
+.pcard[data-material='sparkle'] .pcard-confirmed,
+.pcard[data-material='gold'] .pcard-confirmed {
+  color: #1c6b3a;
+}
+
+.pcard[data-material='sparkle'] .pcard-wait,
+.pcard[data-material='gold'] .pcard-wait {
+  color: #8a5600;
+}
+
+/* ---------------------------------------------------------------- 边框 */
+
+[data-frame='none'] {
+  --skin-border-width: 0px;
+  --skin-frame-shadow: none;
+  --skin-frame-bg: none;
+}
+
+[data-frame='hairline'] {
+  --skin-border-width: 1px;
+}
+
+/* 双线：外圈粗、内圈细，内圈靠 .pcard-frame 的伪元素画 */
+[data-frame='double'] {
+  --skin-border-width: 2px;
+}
+
+.pcard[data-frame='double'] .pcard-frame::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid var(--skin-border);
+  border-radius: calc(var(--skin-radius) - 4px);
+  opacity: 0.85;
+}
+
+/* 四角：细长的 L 形护角，从角尖向里渐隐，角尖再点一颗小亮星；
+   内侧留白，不做整圈描边，视觉上比原来的"两条短杠"更收敛也更贵气 */
+[data-frame='corners'] {
+  --skin-border-width: 0px;
+  --skin-frame-bg: none;
+  --skin-frame-shadow: none;
+}
+
+.pcard[data-frame='corners'] .pcard-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.92;
+  background:
+    /* 四条长臂：从角上往内渐隐 */
+    linear-gradient(90deg, var(--skin-border), transparent) left 11px top 10px / 36px 1.5px no-repeat,
+    linear-gradient(180deg, var(--skin-border), transparent) left 10px top 11px / 1.5px 36px no-repeat,
+    linear-gradient(270deg, var(--skin-border), transparent) right 11px top 10px / 36px 1.5px no-repeat,
+    linear-gradient(180deg, var(--skin-border), transparent) right 10px top 11px / 1.5px 36px no-repeat,
+    linear-gradient(90deg, var(--skin-border), transparent) left 11px bottom 10px / 36px 1.5px no-repeat,
+    linear-gradient(0deg, var(--skin-border), transparent) left 10px bottom 11px / 1.5px 36px no-repeat,
+    linear-gradient(270deg, var(--skin-border), transparent) right 11px bottom 10px / 36px 1.5px no-repeat,
+    linear-gradient(0deg, var(--skin-border), transparent) right 10px bottom 11px / 1.5px 36px no-repeat,
+    /* 角尖的小亮星 */
+    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) left 8.5px top 8.5px / 7px 7px
+      no-repeat,
+    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) right 8.5px top 8.5px / 7px 7px
+      no-repeat,
+    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) left 8.5px bottom 8.5px / 7px 7px
+      no-repeat,
+    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) right 8.5px bottom 8.5px / 7px 7px
+      no-repeat;
+}
+
+/* 浮雕：受光边（上/左）提亮、背光边（下/右）压暗，再叠一层斜向的面光，
+   看起来像一块被压出来的板，而不是加粗的描边 */
+[data-frame='bevel'] {
+  --skin-border-width: 1px;
+  --skin-frame-bg: none;
+  --skin-frame-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.62),
+    inset 1.5px 0 0 rgba(255, 255, 255, 0.24),
+    inset 0 -1.5px 0 rgba(0, 0, 0, 0.42),
+    inset -1.5px 0 0 rgba(0, 0, 0, 0.26),
+    inset 0 6px 12px -6px rgba(255, 255, 255, 0.34),
+    inset 0 -10px 16px -8px rgba(0, 0, 0, 0.46),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* 内圈再压一道浅台阶：内板像是从底板上"浮"起来一层，浮雕感更强 */
+.pcard[data-frame='bevel'] .pcard-frame::before {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: calc(var(--skin-radius) - 3px);
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.26),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+
+.pcard[data-frame='bevel'] .pcard-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    /* 斜向面光：左上受光、右下入影 */
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.18) 0%,
+      rgba(255, 255, 255, 0.05) 30%,
+      transparent 52%,
+      rgba(0, 0, 0, 0.12) 80%,
+      rgba(0, 0, 0, 0.2) 100%
+    ),
+    /* 内圈一道极细的高光线，模拟板材倒角的第二阶 */
+    radial-gradient(115% 100% at 50% 50%, transparent 62%, rgba(255, 255, 255, 0.07) 100%);
+}
+
+/* 霜线 / 电光 / 雷纹：逐帧动画版本（透明 WebP）。
+   帧图由 apps/web/scripts/make_border_anims.py 生成，按卡片 2x 尺寸（560×464），
+   background-size: 100% 100% 铺满 —— 卡片换尺寸也不会错位。
+   动效逻辑与 Steam 物品边框一致：导轨常亮 + 光团沿边巡游 + 粒子随机闪烁。 */
+[data-frame='frost'],
+[data-frame='spark'],
+[data-frame='arc'] {
+  --skin-border-width: 0px;
+  --skin-frame-bg: none;
+  --skin-frame-shadow: none;
+}
+
+.pcard[data-frame='frost'] .pcard-frame {
+  background: url('./assets/card-frame-frost.webp') center / 100% 100% no-repeat;
+}
+
+.pcard[data-frame='spark'] .pcard-frame {
+  background: url('./assets/card-frame-spark.webp') center / 100% 100% no-repeat;
+  box-shadow: 0 0 18px rgba(80, 200, 255, 0.3);
+}
+
+.pcard[data-frame='arc'] .pcard-frame {
+  background: url('./assets/card-frame-arc.webp') center / 100% 100% no-repeat;
+  box-shadow: 0 0 18px rgba(255, 180, 80, 0.22);
+}
+
+/* 动效敏感用户：换成静态描边，不加载动画帧 */
+@media (prefers-reduced-motion: reduce) {
+  .pcard[data-frame='frost'] .pcard-frame,
+  .pcard[data-frame='spark'] .pcard-frame,
+  .pcard[data-frame='arc'] .pcard-frame {
+    background: none;
+    box-shadow:
+      0 0 0 1px rgba(200, 230, 255, 0.6),
+      inset 0 0 10px rgba(180, 220, 255, 0.2);
+  }
+}
+
+/* ==========================================================================
+   外观设置面板（我的 → 卡片外观）
+   ========================================================================== */
+
+.skin-studio {
+  display: grid;
+  grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.skin-preview {
+  position: sticky;
+  top: 84px;
+}
+
+.skin-preview-note {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.skin-controls {
+  min-width: 0;
+}
+
+.skin-group + .skin-group {
+  margin-top: 20px;
+}
+
+.skin-group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 9px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold-2);
+}
+
+.skin-group-head .skin-group-hint {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.skin-swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  gap: 10px;
+}
+
+.skin-swatch {
+  display: block;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.skin-swatch:hover {
+  background-color: rgba(127, 127, 127, 0.08);
+}
+
+.skin-swatch.is-active {
+  border-color: var(--gold);
+  background-color: rgba(201, 162, 39, 0.1);
+}
+
+.skin-swatch:focus-visible {
+  outline: 1px solid var(--gold-2);
+  outline-offset: 2px;
+}
+
+.skin-swatch-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+/* 色片：材质用真实底色，边框用示意色 */
+.skin-chip {
+  position: relative;
+  display: block;
+  height: 40px;
+  border: var(--skin-border-width, 1px) solid var(--skin-border, var(--line));
+  border-radius: 8px;
+  background: var(--skin-bg, var(--surface-2));
+  overflow: hidden;
+}
+
+.skin-chip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: var(--skin-tex, none);
+  background-size: var(--skin-tex-size, auto);
+  background-repeat: var(--skin-tex-repeat, repeat);
+}
+
+/* 全息色片：薄膜 + 一层切面，缩略图里也能看出碎钻结构 */
+.skin-chip[data-material='holo']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('./assets/card-holo-facets.svg') center / cover no-repeat;
+  opacity: 0.85;
+}
+
+/* 像素色片：卡面是 canvas 逐格画的，色片这里用 CSS 网格示意即可 */
+.skin-chip[data-material='pixel'] {
+  background-image:
+    repeating-linear-gradient(0deg, rgba(120, 190, 255, 0.22) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(90deg, rgba(120, 190, 255, 0.22) 0 1px, transparent 1px 5px);
+}
+
+/* 灵能色片：一条棱镜渐变示意碎晶分光 */
+.skin-chip[data-material='psi'] {
+  background-image: linear-gradient(
+    118deg,
+    rgba(120, 240, 255, 0.85) 0%,
+    rgba(170, 140, 255, 0.9) 32%,
+    rgba(255, 150, 240, 0.85) 58%,
+    rgba(24, 16, 60, 0.9) 82%
+  );
+}
+
+/* 边框色片：统一的深色底，只演示描边 */
+.skin-chip--frame {
+  --skin-bg: var(--surface-2);
+  --skin-border: var(--gold);
+}
+
+.skin-chip[data-frame='none'] {
+  border-color: rgba(127, 127, 127, 0.4);
+  border-style: dashed;
+}
+
+.skin-chip[data-frame='hairline'] {
+  border-width: 2px;
+  border-color: var(--gold);
+}
+
+.skin-chip[data-frame='double'] {
+  border-width: 2px;
+  border-color: var(--gold);
+  box-shadow:
+    inset 0 0 0 3px var(--surface-2),
+    inset 0 0 0 4px var(--gold);
+}
+
+.skin-chip[data-frame='corners'] {
+  border-color: rgba(127, 127, 127, 0.14);
+  /* 和卡片同款：细长护角 + 角尖亮星 */
+  background-image:
+    linear-gradient(90deg, var(--gold), transparent),
+    linear-gradient(180deg, var(--gold), transparent),
+    linear-gradient(270deg, var(--gold), transparent),
+    linear-gradient(180deg, var(--gold), transparent),
+    linear-gradient(90deg, var(--gold), transparent),
+    linear-gradient(0deg, var(--gold), transparent),
+    linear-gradient(270deg, var(--gold), transparent),
+    linear-gradient(0deg, var(--gold), transparent);
+  background-repeat: no-repeat;
+  background-size:
+    13px 1.5px,
+    1.5px 13px,
+    13px 1.5px,
+    1.5px 13px,
+    13px 1.5px,
+    1.5px 13px,
+    13px 1.5px,
+    1.5px 13px;
+  background-position:
+    left 5px top 5px,
+    left 5px top 5px,
+    right 5px top 5px,
+    right 5px top 5px,
+    left 5px bottom 5px,
+    left 5px bottom 5px,
+    right 5px bottom 5px,
+    right 5px bottom 5px;
+}
+
+.skin-chip[data-frame='bevel'] {
+  border-color: rgba(127, 127, 127, 0.22);
+  background-image: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.16),
+    transparent 50%,
+    rgba(0, 0, 0, 0.16)
+  );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 1px 0 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    inset -1px 0 0 rgba(0, 0, 0, 0.26);
+}
+
+.skin-chip[data-frame='frost'] {
+  border-color: rgba(236, 248, 255, 0.65);
+  box-shadow: 0 0 6px rgba(170, 220, 255, 0.45);
+}
+
+.skin-chip[data-frame='spark'] {
+  border-color: rgba(120, 220, 255, 0.9);
+  box-shadow:
+    0 0 8px rgba(80, 200, 255, 0.6),
+    inset 0 0 6px rgba(80, 200, 255, 0.4);
+}
+
+.skin-chip[data-frame='arc'] {
+  border-color: transparent;
+  background-image: url('./assets/card-frame-arc.svg');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+}
+
+/* 窄屏：预览和选项上下堆叠，否则两列会把页面撑宽 */
+@media (max-width: 760px) {
+  .skin-studio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .skin-preview {
+    position: static;
+  }
+}

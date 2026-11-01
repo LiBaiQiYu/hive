@@ -1,13 +1,20 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ApiError, newId } from '@hive/shared';
+import { ApiError, cardSkinSchema, newId, toCardSkin } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { requireUser } from '../guard';
 import { explainRejection, normalizePositions } from '../services/positions';
-import { collectInput } from './admin-ratings';
-import { ALGO_VERSION, computeEffective, computeRating, rankTierFromMmr } from '../algorithms/rating';
+import { recomputeUserRating } from '../services/rating';
+import { rankTierFromMmr } from '../algorithms/rating';
 
 export const meRoutes = new Hono<AppEnv>();
+
+/** player_ratings.breakdown_json 的形状（由 services/rating.ts 写入） */
+interface RatingBreakdown {
+  components: Array<{ key: string; weight: number; value: number; score: number; basis: string }>;
+  estimatedMmr: number | null;
+  attendanceBp: number | null;
+}
 
 /* --------------------------------------------------------------------------
  * GET /api/me —— 档案 + 评分 + 位置偏好 + 账号绑定状态
@@ -18,16 +25,22 @@ meRoutes.get('/', async (c) => {
 
   const user = await env.DB.prepare(
     `SELECT id, username, display_name AS displayName, role, status,
-            qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt
+            qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt,
+            card_material AS cardMaterial, card_frame AS cardFrame
        FROM users WHERE id = ?`,
   )
     .bind(userId)
-    .first();
+    .first<{
+      cardMaterial: string;
+      cardFrame: string;
+      [key: string]: unknown;
+    }>();
 
   const rating = await env.DB.prepare(
     `SELECT system_rating AS system, admin_adjustment AS adjustment,
             effective_rating AS effective, confidence_bp AS confidenceBp,
-            algorithm_version AS algorithmVersion, updated_at AS updatedAt
+            algorithm_version AS algorithmVersion, breakdown_json AS breakdownJson,
+            computed_at AS computedAt, updated_at AS updatedAt
        FROM player_ratings WHERE user_id = ?`,
   )
     .bind(userId)
@@ -37,8 +50,25 @@ meRoutes.get('/', async (c) => {
       effective: number;
       confidenceBp: number;
       algorithmVersion: string;
+      breakdownJson: string | null;
+      computedAt: number | null;
       updatedAt: number;
     }>();
+
+  /**
+   * 评分构成（段位 / 出勤各占多少）——数据一直在 breakdown_json 里躺着，
+   * 以前只写不读，玩家只能看到一个孤零零的总分。解析失败就当作没有，
+   * 不能让一条脏 JSON 把整个档案接口打成 500。
+   */
+  let breakdown: RatingBreakdown | null = null;
+  if (rating?.breakdownJson) {
+    try {
+      const parsed = JSON.parse(rating.breakdownJson) as RatingBreakdown;
+      if (parsed && Array.isArray(parsed.components)) breakdown = parsed;
+    } catch {
+      breakdown = null;
+    }
+  }
 
   const positions = await env.DB.prepare(
     `SELECT position, preference_rank AS rank, proficiency
@@ -76,12 +106,23 @@ meRoutes.get('/', async (c) => {
       careerMatches: number;
     }>();
 
+  if (!user) throw new ApiError('NOT_FOUND', '账号不存在');
+  const { cardMaterial, cardFrame, ...profile } = user;
+
   return c.json({
     data: {
-      user,
+      user: profile,
+      cardSkin: toCardSkin({ material: cardMaterial, frame: cardFrame }),
       rating: rating
         ? {
-            ...rating,
+            system: rating.system,
+            adjustment: rating.adjustment,
+            effective: rating.effective,
+            confidenceBp: rating.confidenceBp,
+            algorithmVersion: rating.algorithmVersion,
+            computedAt: rating.computedAt,
+            updatedAt: rating.updatedAt,
+            breakdown,
             // 不确定度用于 UI 显示 ±N：置信度越低，展示区间越宽
             uncertainty: Math.round(300 * (1 - rating.confidenceBp / 10000)),
           }
@@ -89,6 +130,103 @@ meRoutes.get('/', async (c) => {
       positions: positions.results ?? [],
       gameAccount: account ?? null,
       stats: stats ?? null,
+    },
+    meta: { requestId: c.get('requestId') },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * GET /api/me/rating-history —— 自己的评分调整记录
+ *
+ * rating_adjustments 是 append-only 的：管理员每次修正都留痕，
+ * 玩家有权看到"谁、什么时候、为什么"改了自己的分。
+ * ------------------------------------------------------------------------ */
+meRoutes.get('/rating-history', async (c) => {
+  const userId = requireUser(c);
+
+  const rows = await c.env.DB.prepare(
+    `SELECT ra.id, ra.old_adjustment AS oldAdjustment, ra.new_adjustment AS newAdjustment,
+            ra.old_effective AS oldEffective, ra.new_effective AS newEffective,
+            ra.reason, ra.created_at AS createdAt, u.display_name AS operatorName
+       FROM rating_adjustments ra
+       LEFT JOIN users u ON u.id = ra.operator_id
+      WHERE ra.user_id = ?
+      ORDER BY ra.created_at DESC
+      LIMIT 50`,
+  )
+    .bind(userId)
+    .all();
+
+  return c.json({ data: { history: rows.results ?? [] }, meta: { requestId: c.get('requestId') } });
+});
+
+/* --------------------------------------------------------------------------
+ * GET /api/me/matches —— 我的对局（战绩页）
+ *
+ * 只统计"正选出场 + 比赛已结束且有胜负"的场次：
+ * 候补没上场不算，流局（VOID）不算。
+ * 胜负由 team_side 与 matches.radiant_win 现算，不依赖 match_player_stats。
+ * ------------------------------------------------------------------------ */
+meRoutes.get('/matches', async (c) => {
+  const userId = requireUser(c);
+  const limitRaw = Number.parseInt(c.req.query('limit') ?? '', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+
+  const rows = await c.env.DB.prepare(
+    `SELECT m.id AS matchId, m.match_no AS matchNo, m.radiant_win AS radiantWin,
+            m.duration_seconds AS durationSeconds, m.completed_at AS completedAt,
+            m.scheduled_at AS scheduledAt,
+            e.id AS eventId, e.title AS eventTitle,
+            tm.team_side AS side
+       FROM team_members tm
+       JOIN matches m ON m.id = tm.match_id
+       JOIN events e ON e.id = m.event_id
+      WHERE tm.user_id = ? AND tm.is_substitute = 0
+        AND m.status = 'COMPLETED' AND m.radiant_win IS NOT NULL
+      ORDER BY COALESCE(m.completed_at, m.scheduled_at, m.created_at) DESC
+      LIMIT ?`,
+  )
+    .bind(userId, limit)
+    .all<{
+      matchId: string;
+      matchNo: number;
+      radiantWin: number;
+      durationSeconds: number | null;
+      completedAt: number | null;
+      scheduledAt: number | null;
+      eventId: string;
+      eventTitle: string;
+      side: 'RADIANT' | 'DIRE';
+    }>();
+
+  const matches = (rows.results ?? []).map((row) => {
+    const won =
+      (row.side === 'RADIANT' && row.radiantWin === 1) ||
+      (row.side === 'DIRE' && row.radiantWin === 0);
+    return {
+      matchId: row.matchId,
+      matchNo: row.matchNo,
+      eventId: row.eventId,
+      eventTitle: row.eventTitle,
+      side: row.side,
+      won,
+      durationSeconds: row.durationSeconds,
+      playedAt: row.completedAt ?? row.scheduledAt,
+    };
+  });
+
+  const wins = matches.filter((match) => match.won).length;
+  const played = matches.length;
+
+  return c.json({
+    data: {
+      summary: {
+        played,
+        wins,
+        losses: played - wins,
+        winRateBp: played > 0 ? Math.round((wins / played) * 10000) : null,
+      },
+      matches,
     },
     meta: { requestId: c.get('requestId') },
   });
@@ -205,6 +343,31 @@ meRoutes.patch('/', async (c) => {
     .first();
 
   return c.json({ data: { user }, meta: { requestId: c.get('requestId') } });
+});
+
+/* --------------------------------------------------------------------------
+ * PUT /api/me/card-skin —— 卡片外观（材质 / 边框 / 特效）
+ *
+ * 整份提交而不是逐项 PATCH：皮肤是"材质 + 边框"两件套，只改一半的语义没有意义；
+ * 而且玩家每次点选都是"换一套"，整份写回最省心。
+ * 这两个值只影响展示，不写审计、不重算评分、不进快照。
+ * ------------------------------------------------------------------------ */
+meRoutes.put('/card-skin', async (c) => {
+  const userId = requireUser(c);
+  const parsed = cardSkinSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '皮肤参数不合法', parsed.error.flatten().fieldErrors);
+  }
+
+  const { material, frame } = parsed.data;
+  await c.env.DB.prepare(
+    `UPDATE users SET card_material = ?, card_frame = ?, updated_at = ?
+      WHERE id = ?`,
+  )
+    .bind(material, frame, Date.now(), userId)
+    .run();
+
+  return c.json({ data: { cardSkin: parsed.data }, meta: { requestId: c.get('requestId') } });
 });
 
 /* --------------------------------------------------------------------------
@@ -350,31 +513,7 @@ meRoutes.post('/game-account/claim', async (c) => {
   }
 
   // 立刻按新数据重算，否则"拉了段位但分数没变"会让人以为失败
-  const rating = computeRating(await collectInput(env, userId));
-  const current = await env.DB.prepare(
-    `SELECT admin_adjustment AS adjustment FROM player_ratings WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .first<{ adjustment: number }>();
-  const effective = computeEffective(rating.system, current?.adjustment ?? 0);
-
-  await env.DB.prepare(
-    `UPDATE player_ratings
-        SET system_rating = ?, effective_rating = ?, confidence_bp = ?, breakdown_json = ?,
-            algorithm_version = ?, computed_at = ?, updated_at = ?
-      WHERE user_id = ?`,
-  )
-    .bind(
-      rating.system,
-      effective,
-      rating.confidenceBp,
-      JSON.stringify({ components: rating.components, estimatedMmr: rating.estimatedMmr }),
-      ALGO_VERSION,
-      now,
-      now,
-      userId,
-    )
-    .run();
+  const rating = await recomputeUserRating(env, userId);
 
   return c.json({
     data: {
@@ -383,7 +522,7 @@ meRoutes.post('/game-account/claim', async (c) => {
       rankTier,
       careerMatches,
       hiddenData: rankTier === null,
-      rating: { system: rating.system, effective, confidenceBp: rating.confidenceBp },
+      rating,
       note:
         rankTier === null
           ? '这个账号没有公开段位（对方可在 Dota2 设置里开启「公开比赛数据」），只能手动填写段位'
@@ -461,40 +600,14 @@ meRoutes.put('/rank', async (c) => {
   }
 
   // 立刻重算：不重算的话"填了段位但分数没变"会让人以为没保存成功
-  const input = await collectInput(env, userId);
-  const rating = computeRating(input);
-
-  const current = await env.DB.prepare(
-    `SELECT admin_adjustment AS adjustment FROM player_ratings WHERE user_id = ?`,
-  )
-    .bind(userId)
-    .first<{ adjustment: number }>();
-  const effective = computeEffective(rating.system, current?.adjustment ?? 0);
-
-  await env.DB.prepare(
-    `UPDATE player_ratings
-        SET system_rating = ?, effective_rating = ?, confidence_bp = ?, breakdown_json = ?,
-            algorithm_version = ?, computed_at = ?, updated_at = ?
-      WHERE user_id = ?`,
-  )
-    .bind(
-      rating.system,
-      effective,
-      rating.confidenceBp,
-      JSON.stringify({ components: rating.components, estimatedMmr: rating.estimatedMmr }),
-      ALGO_VERSION,
-      now,
-      now,
-      userId,
-    )
-    .run();
+  const rating = await recomputeUserRating(env, userId);
 
   return c.json({
     data: {
       rankTier,
       declaredMmr: declaredMmr,
       derivedFromMmr,
-      rating: { system: rating.system, effective, confidenceBp: rating.confidenceBp },
+      rating,
       note: derivedFromMmr
         ? '段位已按天梯分自动折算；段位为自报，绑定 Steam 后可验证'
         : '段位为自报，徽章会显示"自报"；绑定 Steam 后可以验证',

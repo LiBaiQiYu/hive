@@ -11,6 +11,11 @@ import { meRoutes } from './routes/me';
 import { adminInviteRoutes } from './routes/admin-invites';
 import { adminRatingRoutes } from './routes/admin-ratings';
 import { steamRoutes } from './routes/steam-auth';
+import { leaderboardRoutes } from './routes/leaderboard';
+import { adminDashboardRoutes } from './routes/admin-dashboard';
+import { adminUserRoutes } from './routes/admin-users';
+import { adminJobRoutes } from './routes/admin-jobs';
+import { adminAuditRoutes } from './routes/admin-audit';
 import { readSession } from './session';
 
 const app = new Hono<AppEnv>();
@@ -34,7 +39,12 @@ app.use('/api/*', async (c, next) => {
       throw new ApiError('FORBIDDEN', `缺少 ${CSRF_HEADER} 请求头`);
     }
     const origin = c.req.header('origin');
-    if (origin && origin !== new URL(c.req.url).origin) {
+    // 除请求自身 origin 外也信任 APP_ORIGIN：`wrangler dev --remote` 下 Worker 跑在边缘，
+    // 看到的 request.url 是生产域名，而浏览器发来的 Origin 是 http://127.0.0.1:8787，
+    // 只比 request.url 会把 remote 模式下的登录全部挡成 403。
+    const allowed = new Set([new URL(c.req.url).origin]);
+    if (c.env.APP_ORIGIN) allowed.add(c.env.APP_ORIGIN);
+    if (origin && !allowed.has(origin)) {
       throw new ApiError('FORBIDDEN', '请求来源不合法');
     }
   }
@@ -65,6 +75,11 @@ app.route('/api/admin/invite-codes', adminInviteRoutes);
 app.route('/api/admin/ratings', adminRatingRoutes);
 app.route('/api/admin/matches', adminMatchRoutes);
 app.route('/api/matches', publicMatchRoutes);
+app.route('/api/leaderboard', leaderboardRoutes);
+app.route('/api/admin/dashboard', adminDashboardRoutes);
+app.route('/api/admin/users', adminUserRoutes);
+app.route('/api/admin/jobs', adminJobRoutes);
+app.route('/api/admin/audit-logs', adminAuditRoutes);
 
 app.get('/api/health', (c) =>
   c.json({

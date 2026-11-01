@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import { NButton, NDatePicker, NInput, NInputNumber, useMessage } from 'naive-ui';
+import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 
 interface InviteCode {
@@ -20,8 +22,9 @@ const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
 const message = ref('');
+const toast = useMessage();
 
-const form = ref({ label: '', maxUses: 1, expiresAt: '' });
+const form = ref({ label: '', maxUses: 1, expiresAt: null as number | null });
 
 async function refresh() {
   loading.value = true;
@@ -40,10 +43,9 @@ async function refresh() {
 
 onMounted(refresh);
 
-function toIso(local: string): string | undefined {
-  if (!local) return undefined;
-  const date = new Date(local);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+/** 毫秒时间戳 → ISO；null 表示不设过期 */
+function toIso(ms: number | null): string | undefined {
+  return ms ? new Date(ms).toISOString() : undefined;
 }
 
 async function create() {
@@ -60,10 +62,12 @@ async function create() {
       },
     });
     message.value = `已生成 ${created.code}`;
-    form.value = { label: '', maxUses: 1, expiresAt: '' };
+    toast.success(`已生成 ${created.code}`);
+    form.value = { label: '', maxUses: 1, expiresAt: null };
     await refresh();
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '生成失败';
+    toast.error(error.value);
   } finally {
     busy.value = false;
   }
@@ -100,8 +104,6 @@ function statusOf(code: InviteCode): { text: string; tag: string } {
   if (code.maxUses !== 0 && code.usedCount >= code.maxUses) return { text: '已用尽', tag: 'tag-other' };
   return { text: '可用', tag: 'tag-confirmed' };
 }
-
-const availableCodes = computed(() => codes.value.filter((c) => statusOf(c).text === '可用'));
 </script>
 
 <template>
@@ -121,33 +123,66 @@ const availableCodes = computed(() => codes.value.filter((c) => statusOf(c).text
     <p v-if="message" class="muted" style="margin: 0 0 14px">{{ message }}</p>
 
     <section class="card">
-      <h2 class="card-title">生成新码</h2>
+      <h2 class="card-title">
+        生成新码
+        <HelpTip
+          title="邀请码怎么用？"
+          :steps="[
+            '① 默认一码一人，可以限制可用次数与过期时间',
+            '② 字符集去掉了 I / L / O / U，手抄到 QQ 里不会和 1 / 0 搞混',
+          ]"
+          note="生成后把码发给对方即可；撤销只阻断后续使用，已注册的账号不受影响。"
+        />
+      </h2>
       <form class="admin-form" @submit.prevent="create">
         <label class="field" style="margin: 0">
           <span class="field-label">备注（给谁用的）</span>
-          <input v-model="form.label" class="input" placeholder="例如：老王 / 群内公共码" maxlength="40" />
+          <NInput
+            v-model:value="form.label"
+            placeholder="例如：老王 / 群内公共码"
+            :maxlength="40"
+            size="medium"
+          />
         </label>
         <label class="field" style="margin: 0">
           <span class="field-label">可用次数（0 = 不限）</span>
-          <input v-model.number="form.maxUses" class="input" type="number" min="0" max="1000" />
+          <NInputNumber
+            v-model:value="form.maxUses"
+            :min="0"
+            :max="1000"
+            :show-button="false"
+            size="medium"
+          />
         </label>
         <label class="field" style="margin: 0">
           <span class="field-label">过期时间（可选）</span>
-          <input v-model="form.expiresAt" class="input" type="datetime-local" />
+          <NDatePicker
+            v-model:value="form.expiresAt"
+            type="datetime"
+            clearable
+            format="yyyy-MM-dd HH:mm"
+            time-picker-format="HH:mm"
+            placeholder="不填则永久有效"
+            size="medium"
+          />
         </label>
-        <button class="btn btn-primary" type="submit" :disabled="busy">
+        <NButton type="primary" attr-type="submit" :disabled="busy" :loading="busy">
           {{ busy ? '生成中…' : '生成' }}
-        </button>
+        </NButton>
       </form>
-      <p class="muted" style="font-size: 12px; margin: 12px 0 0">
-        默认一码一人。字符集去掉了 I / L / O / U，手抄到 QQ 里不会和 1 / 0 搞混。
-      </p>
     </section>
 
     <section class="section">
       <div class="section-head">
-        <h2 class="section-title">全部邀请码</h2>
-        <button class="btn btn-ghost" type="button" :disabled="busy" @click="refresh">刷新</button>
+        <h2 class="section-title">
+          全部邀请码
+          <HelpTip
+            title="撤销是什么意思？"
+            :steps="['① 撤销后这个码不能再被使用', '② 已经用它注册的账号不受影响']"
+            note="点邀请码本身可以复制。用完的码会显示「已用尽」，不会自动消失。"
+          />
+        </h2>
+        <NButton :disabled="busy" @click="refresh">刷新</NButton>
       </div>
 
       <div v-if="loading" class="empty">加载中…</div>
@@ -168,22 +203,9 @@ const availableCodes = computed(() => codes.value.filter((c) => statusOf(c).text
           <tbody>
             <tr v-for="code in codes" :key="code.id">
               <td>
-                <button
-                  type="button"
-                  class="mono"
-                  style="
-                    background: none;
-                    border: none;
-                    color: var(--gold-2);
-                    cursor: pointer;
-                    padding: 0;
-                    font: inherit;
-                  "
-                  :title="'点击复制'"
-                  @click="copy(code.code)"
-                >
+                <NButton text class="mono code-copy" :title="'点击复制'" @click="copy(code.code)">
                   {{ code.code }}
-                </button>
+                </NButton>
               </td>
               <td class="muted">{{ code.label ?? '—' }}</td>
               <td class="num mono">
@@ -194,24 +216,19 @@ const availableCodes = computed(() => codes.value.filter((c) => statusOf(c).text
               </td>
               <td class="muted">{{ formatDate(code.createdAt) }}</td>
               <td style="text-align: right">
-                <button
+                <NButton
                   v-if="code.revokedAt === null"
-                  class="btn btn-ghost"
-                  type="button"
+                  size="small"
                   :disabled="busy"
                   @click="revoke(code)"
                 >
                   撤销
-                </button>
+                </NButton>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
-
-      <p class="muted" style="font-size: 12px; margin-top: 12px">
-        当前有 {{ availableCodes.length }} 个可用码。撤销后已注册的账号不受影响，只阻断后续使用。
-      </p>
     </section>
   </div>
 </template>

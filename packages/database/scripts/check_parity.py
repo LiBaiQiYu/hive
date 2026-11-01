@@ -48,7 +48,8 @@ STATEMENT = re.compile(
     r"|ALTER TABLE (\w+) RENAME TO (\w+)"
     r"|DROP TABLE (?:IF EXISTS )?(\w+)"
     r"|DROP INDEX (?:IF EXISTS )?(\w+)"
-    r"|CREATE (?:UNIQUE )?INDEX (\w+) ON (\w+)",
+    r"|CREATE (?:UNIQUE )?INDEX (\w+) ON (\w+)"
+    r"|ALTER TABLE (\w+) DROP COLUMN (\w+)",
     re.S,
 )
 
@@ -63,6 +64,11 @@ def parse_sql(texts: list[str]):
     indexes: dict[str, str] = {}  # index name -> table name
 
     for text in texts:
+        # 注释里经常出现 "DROP TABLE users" 这类说明文字；先剔掉整行注释再解析，
+        # 否则它们会被当成真的 DDL 执行，把整张表从重放结果里抹掉。
+        text = "\n".join(
+            line for line in text.splitlines() if not line.strip().startswith("--")
+        )
         for m in STATEMENT.finditer(text):
             if m.group(1):  # CREATE TABLE
                 name, body = m.group(1), m.group(2)
@@ -93,6 +99,10 @@ def parse_sql(texts: list[str]):
                 indexes.pop(m.group(8), None)
             elif m.group(9):  # CREATE [UNIQUE] INDEX
                 indexes[m.group(9)] = m.group(10)
+            elif m.group(11):  # ALTER TABLE ... DROP COLUMN
+                table = tables.get(m.group(11))
+                if table is not None:
+                    tables[m.group(11)] = [c for c in table if c != m.group(12)]
 
     return tables, set(indexes)
 

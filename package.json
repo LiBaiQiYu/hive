@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --config packages/api/wrangler.jsonc --persist-to packages/database/.wrangler/state --var APP_ORIGIN:http://127.0.0.1:8787",
+    "dev:remote": "wrangler dev --remote --config packages/api/wrangler.jsonc --var APP_ORIGIN:http://127.0.0.1:8787",
     "dev:web": "pnpm --filter @hive/web dev",
     "build": "pnpm --filter @hive/web build",
     "typecheck": "tsc -p tsconfig.json --pretty false",

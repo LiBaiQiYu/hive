@@ -1,0 +1,290 @@
+/* ==========================================================================
+   首页首屏：地图原画 + 对战牌（war room）
+   —— 左侧文字压在一层暖色渐变上，右侧留出画作；两张阵营标记钉在地图上。
+   注意：对战牌是装饰性的（比分固定 0:0），只有横幅文案跟随当前赛事状态。
+   ========================================================================== */
+
+.hero.hero--warroom {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.02fr);
+  align-items: center;
+  gap: 16px;
+  min-height: 424px;
+  padding: 0;
+  border-radius: 16px;
+  border: 1px solid rgba(27, 32, 51, 0.14);
+  background: #f8f3ea;
+  isolation: isolate;
+}
+
+/* 旧版斜切纹理在画作上会很脏，直接关掉 */
+.hero.hero--warroom::after {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- 背景层 */
+
+.war-art {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  background: url('./assets/hero/warroom-map.jpg') center 45% / cover no-repeat;
+  filter: saturate(0.92) brightness(1.03);
+  transform: scale(1.02);
+  transform-origin: 62% 42%;
+  transition: transform 0.8s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.hero--warroom:hover .war-art {
+  transform: scale(1.045);
+}
+
+.war-veil {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(
+      92% 135% at 0% 50%,
+      #fbf7f0 0%,
+      rgba(251, 247, 240, 0.985) 34%,
+      rgba(251, 247, 240, 0.86) 48%,
+      rgba(251, 247, 240, 0) 72%
+    ),
+    linear-gradient(180deg, rgba(251, 247, 240, 0.55), rgba(251, 247, 240, 0) 44%),
+    linear-gradient(0deg, rgba(251, 247, 240, 0.5), rgba(251, 247, 240, 0) 52%),
+    radial-gradient(46% 62% at 80% 10%, rgba(255, 221, 165, 0.24), rgba(255, 221, 165, 0) 72%);
+}
+
+/* ---------------------------------------------------------------- 文字列 */
+
+.war-copy {
+  position: relative;
+  z-index: 3;
+  padding: 46px 10px 46px 46px;
+  min-width: 0;
+}
+
+.hero--warroom .hero-kicker {
+  color: #7f7565;
+  font-size: 11.5px;
+  letter-spacing: 0.34em;
+}
+
+.hero--warroom .hero-title {
+  margin: 16px 0 12px;
+  font-size: clamp(66px, 8.2vw, 108px);
+  line-height: 0.92;
+  letter-spacing: 0.1em;
+  color: #17213b;
+  text-shadow: none;
+}
+
+.hero--warroom .hero-sub {
+  max-width: 31em;
+  margin: 0 0 28px;
+  color: #4e4a40;
+  font-size: 15px;
+  line-height: 1.95;
+}
+
+/* 主行动：两个主题都用同一块深红，和画作的暖色/赤金更搭 */
+.hero--warroom .btn.war-cta,
+.hero--warroom .btn.war-cta:active:not(:disabled) {
+  background: linear-gradient(180deg, #b3261e, #8e1b15);
+  border-color: #8e1b15;
+  color: #fdf8f2;
+}
+
+.hero--warroom .btn.war-cta:hover:not(:disabled) {
+  background: linear-gradient(180deg, #c3382d, #9a1f17);
+  border-color: #9a1f17;
+  color: #ffffff;
+  box-shadow: 0 10px 26px rgba(179, 38, 30, 0.3);
+}
+
+.war-cta {
+  height: 46px;
+  padding: 0 24px;
+  border-radius: 4px;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+
+.war-cta-arrow {
+  width: 15px;
+  height: 15px;
+  transition: transform 0.2s ease;
+}
+
+.war-cta:hover .war-cta-arrow {
+  transform: translateX(3px);
+}
+
+.war-cta-ghost {
+  height: 46px;
+  padding: 0 20px;
+  border-radius: 4px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+/* ---------------------------------------------------------------- 状态标签 */
+
+/* 只留一条很轻的状态文字，不再压一整块深色对战条，把地图让出来 */
+.war-caption {
+  position: relative;
+  z-index: 3;
+  align-self: start;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 330px);
+  margin: 46px 42px 0 0;
+  pointer-events: none;
+}
+
+.war-caption-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(240, 214, 141, 0), rgba(240, 214, 141, 0.55));
+}
+
+.war-caption-line:last-child {
+  transform: scaleX(-1);
+}
+
+.war-caption-text {
+  flex: none;
+  padding: 3px 12px;
+  border-radius: 3px;
+  background: rgba(14, 12, 16, 0.34);
+  color: #f6ecd4;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  line-height: 1.7;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+/* ---------------------------------------------------------------- 深色 */
+
+:root[data-theme='light'] .hero.hero--warroom {
+  background: #f8f3ea;
+}
+
+:root[data-theme='dark'] .hero.hero--warroom {
+  border-color: var(--line);
+  background: #0b0d12;
+}
+
+:root[data-theme='dark'] .war-art {
+  filter: saturate(0.78) brightness(0.72) contrast(1.05);
+}
+
+:root[data-theme='dark'] .war-veil {
+  background:
+    radial-gradient(
+      92% 135% at 0% 50%,
+      #0a0c10 0%,
+      rgba(10, 12, 16, 0.97) 24%,
+      rgba(10, 12, 16, 0.9) 38%,
+      rgba(10, 12, 16, 0.62) 52%,
+      rgba(10, 12, 16, 0.22) 65%,
+      rgba(10, 12, 16, 0) 78%
+    ),
+    linear-gradient(180deg, rgba(10, 12, 16, 0.5), rgba(10, 12, 16, 0) 44%),
+    linear-gradient(0deg, rgba(10, 12, 16, 0.55), rgba(10, 12, 16, 0) 55%),
+    radial-gradient(46% 62% at 80% 10%, rgba(255, 196, 120, 0.12), rgba(255, 196, 120, 0) 72%);
+}
+
+:root[data-theme='dark'] .hero--warroom .hero-kicker {
+  color: var(--gold);
+}
+
+:root[data-theme='dark'] .hero--warroom .hero-title {
+  color: #f4efe3;
+}
+
+:root[data-theme='dark'] .hero--warroom .hero-sub {
+  color: var(--muted);
+}
+
+:root[data-theme='dark'] .war-cta-ghost {
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------- 窄屏 */
+
+@media (max-width: 1080px) {
+  .hero.hero--warroom {
+    grid-template-columns: 1fr;
+    gap: 0;
+    min-height: 0;
+  }
+
+  /* 单列时把底部留给地图：文字在上，画在下，不再压任何面板 */
+  .war-copy {
+    padding: 38px 38px 170px;
+  }
+
+  .war-caption {
+    display: none;
+  }
+
+  .war-art {
+    background-position: 60% 38%;
+  }
+
+  .war-veil {
+    background:
+      linear-gradient(
+        180deg,
+        #fbf7f0 0%,
+        rgba(251, 247, 240, 0.98) 34%,
+        rgba(251, 247, 240, 0.92) 50%,
+        rgba(251, 247, 240, 0.55) 66%,
+        rgba(251, 247, 240, 0.15) 100%
+      ),
+      linear-gradient(90deg, rgba(251, 247, 240, 0.5), rgba(251, 247, 240, 0) 72%);
+  }
+
+  :root[data-theme='dark'] .war-veil {
+    background:
+      linear-gradient(
+        180deg,
+        #0a0c10 0%,
+        rgba(10, 12, 16, 0.97) 34%,
+        rgba(10, 12, 16, 0.9) 50%,
+        rgba(10, 12, 16, 0.55) 66%,
+        rgba(10, 12, 16, 0.18) 100%
+      ),
+      linear-gradient(90deg, rgba(10, 12, 16, 0.5), rgba(10, 12, 16, 0) 72%);
+  }
+}
+
+@media (max-width: 640px) {
+  .war-copy {
+    padding: 28px 22px 130px;
+  }
+
+  .hero--warroom .hero-title {
+    font-size: clamp(54px, 16vw, 74px);
+  }
+
+  .hero--warroom .hero-sub {
+    font-size: 13.5px;
+    line-height: 1.85;
+  }
+}
+
+/* 用户明确要求减少动效时，别让背景一直缓慢缩放 */
+@media (prefers-reduced-motion: reduce) {
+  .war-art {
+    animation: none;
+    transition: none;
+  }
+}
