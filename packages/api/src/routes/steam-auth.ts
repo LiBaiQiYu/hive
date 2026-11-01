@@ -2,12 +2,13 @@ import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
-import { requireUser } from '../guard';
+import { requireAdmin, requireUser } from '../guard';
 import {
   STEAM_STATE_COOKIE,
   STATE_TTL_SECONDS,
   buildAuthUrl,
   fetchPersona,
+  probeSteamKey,
   resolveOrigin,
   signState,
   toDotaAccountId,
@@ -71,6 +72,28 @@ steamRoutes.get('/diagnose', async (c) => {
       hint: '如果 effectiveOrigin 不是你浏览器里打开的地址，Steam 回调就会跳到别处',
     },
   });
+});
+
+/* -------------------------------------------------------------------------- */
+/**
+ * 自查用（管理员）：拿当前配置的 key 真请求一次 Steam，回答「配没配 / 有没有效」。
+ * 默认探测自己绑定的 Steam ID，也可以传 ?steamId=7656...
+ */
+steamRoutes.get('/probe', async (c) => {
+  const userId = requireAdmin(c);
+  const bound = await c.env.DB.prepare(
+    `SELECT steam_id64 AS steamId64 FROM game_accounts WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ steamId64: string | null }>();
+
+  const steamId = c.req.query('steamId') ?? bound?.steamId64 ?? null;
+  if (!steamId) {
+    throw new ApiError('VALIDATION_FAILED', '没有可探测的 Steam ID，请传 ?steamId=7656119...');
+  }
+
+  const probe = await probeSteamKey(c.env.STEAM_WEB_API_KEY, steamId);
+  return c.json({ data: { steamId, ...probe } });
 });
 
 /* -------------------------------------------------------------------------- */

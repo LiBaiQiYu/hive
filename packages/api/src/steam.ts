@@ -158,6 +158,58 @@ export async function fetchPersona(
   }
 }
 
+/**
+ * 自查用：真的拿配置里的 key 请求一次 Steam，把 HTTP 状态带回来。
+ * fetchPersona 出错只会静默返回 null，看不出是「没配 key」「key 无效」还是「网络问题」，
+ * 这个函数专门用来回答这三者的区别。
+ */
+export async function probeSteamKey(
+  apiKey: string | undefined,
+  steamId64: string,
+): Promise<{
+  keyConfigured: boolean;
+  httpStatus: number;
+  personaName: string | null;
+  avatarUrl: string | null;
+  error: string | null;
+}> {
+  if (!apiKey) {
+    return { keyConfigured: false, httpStatus: 0, personaName: null, avatarUrl: null, error: '未配置 STEAM_WEB_API_KEY' };
+  }
+  try {
+    const url = `https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${encodeURIComponent(apiKey)}&steamids=${encodeURIComponent(steamId64)}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+      return {
+        keyConfigured: true,
+        httpStatus: response.status,
+        personaName: null,
+        avatarUrl: null,
+        error: response.status === 403 ? 'key 被 Steam 拒绝（403）' : `Steam 返回 ${response.status}`,
+      };
+    }
+    const data = (await response.json()) as {
+      response?: { players?: Array<{ personaname?: string; avatarfull?: string }> };
+    };
+    const player = data.response?.players?.[0];
+    return {
+      keyConfigured: true,
+      httpStatus: response.status,
+      personaName: player?.personaname ?? null,
+      avatarUrl: player?.avatarfull ?? null,
+      error: player ? null : 'key 有效，但该 Steam ID 没有公开资料',
+    };
+  } catch (cause) {
+    return {
+      keyConfigured: true,
+      httpStatus: -1,
+      personaName: null,
+      avatarUrl: null,
+      error: cause instanceof Error ? cause.message : '请求 Steam 失败',
+    };
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 
 /** example.com / .local 这类占位域名一律不信任——它们会被代理接管成假 IP */
