@@ -1,0 +1,18 @@
+# =============================================================================
+# 本地开发用的环境变量。复制成 .dev.vars 后填写（.dev.vars 已被 gitignore）。
+#   cp packages/api/.dev.vars.example packages/api/.dev.vars
+# 只对 `wrangler dev --local` 生效；生产环境一律用 `wrangler secret put`。
+# =============================================================================
+
+# 密码哈希的 pepper。换掉它 = 现有所有账号的密码失效（哈希存的是加过 pepper 的结果）。
+# 生成：openssl rand -base64 32
+PASSWORD_PEPPER=change-me-local-pepper
+
+# IP 哈希用的盐（只存 ip 的 sha256，不落原始 IP）。可随意填。
+IP_HASH_SALT=change-me-local-salt
+
+# Steam Web API Key —— 可选。
+# 作用：只在绑定 Steam 时用来拉昵称和头像；没有它绑定照样成功，只是 persona 为空。
+# 申请：https://steamcommunity.com/dev/apikey （域名随便填，比如 localhost）
+# 注意：它不参与身份校验，OpenID 的校验永远走反向 POST，与这个 key 无关。
+STEAM_WEB_API_KEY=
