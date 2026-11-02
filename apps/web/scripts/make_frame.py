@@ -74,8 +74,11 @@ def main():
             f' stroke-width="{width}" stroke-linejoin="round" stroke-linecap="round"/>'
         )
 
+    # preserveAspectRatio="none"：CSS 用 background-size: 100% 100% 铺满色片，
+    # 不给它就会按 viewBox 比例居中留边（色片比 320×260 更扁，边框会缩在中间）
     svg = (
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
+        'preserveAspectRatio="none">'
         "<defs>"
         '<filter id="glow" x="-20%" y="-20%" width="140%" height="140%">'
         '<feGaussianBlur stdDeviation="4"/>'

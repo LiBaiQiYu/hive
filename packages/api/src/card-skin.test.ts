@@ -6,15 +6,22 @@
  * 而且只在真人点击时才暴露 —— 所以在这里直接读迁移文件比一比。
  */
 import { describe, expect, it } from 'vitest';
-import { CARD_FRAMES, CARD_MATERIALS, toCardSkin } from '@hive/shared';
+import {
+  CARD_FRAMES,
+  CARD_FRAME_COLORS,
+  CARD_FRAME_EFFECTS,
+  CARD_MATERIALS,
+  toCardSkin,
+} from '@hive/shared';
 import SQL_0004 from '../../database/migrations/0004_card_skin.sql?raw';
 import SQL_0005 from '../../database/migrations/0005_card_material_v2.sql?raw';
 import SQL_0006 from '../../database/migrations/0006_card_frame_v2.sql?raw';
 import SQL_0007 from '../../database/migrations/0007_drop_card_effect.sql?raw';
 import SQL_0008 from '../../database/migrations/0008_card_material_psi.sql?raw';
+import SQL_0009 from '../../database/migrations/0009_card_frame_style.sql?raw';
 
 /** 按迁移顺序扫描；后出现的 ADD COLUMN 覆盖先前的（0005 重写了整份材质清单） */
-const MIGRATIONS = [SQL_0004, SQL_0005, SQL_0006, SQL_0007, SQL_0008];
+const MIGRATIONS = [SQL_0004, SQL_0005, SQL_0006, SQL_0007, SQL_0008, SQL_0009];
 
 function sqlList(column: string): string[] {
   const pattern = new RegExp(
@@ -39,6 +46,14 @@ describe('卡片皮肤清单', () => {
     expect(sqlList('card_frame')).toEqual([...CARD_FRAMES]);
   });
 
+  it('发丝线 / 双线的颜色清单与迁移一致', () => {
+    expect(sqlList('card_frame_color')).toEqual([...CARD_FRAME_COLORS]);
+  });
+
+  it('发丝线 / 双线的光效清单与迁移一致', () => {
+    expect(sqlList('card_frame_effect')).toEqual([...CARD_FRAME_EFFECTS]);
+  });
+
   it('特效已经整条下线（0007 删列）', () => {
     expect(SQL_0007).toContain('DROP COLUMN card_effect');
   });
@@ -47,10 +62,29 @@ describe('卡片皮肤清单', () => {
     expect(toCardSkin({ material: 'hologram', frame: null })).toEqual({
       material: 'basic',
       frame: 'hairline',
+      frameColor: 'auto',
+      frameEffect: 'steady',
     });
-    expect(toCardSkin({ material: 'gold', frame: 'double' })).toEqual({
+    expect(
+      toCardSkin({
+        material: 'gold',
+        frame: 'double',
+        frameColor: 'rose',
+        frameEffect: 'blink',
+      }),
+    ).toEqual({
       material: 'gold',
       frame: 'double',
+      frameColor: 'rose',
+      frameEffect: 'blink',
+    });
+    expect(
+      toCardSkin({ material: 'basic', frame: 'hairline', frameColor: 'red', frameEffect: 'pulse' }),
+    ).toEqual({
+      material: 'basic',
+      frame: 'hairline',
+      frameColor: 'auto',
+      frameEffect: 'steady',
     });
   });
 });

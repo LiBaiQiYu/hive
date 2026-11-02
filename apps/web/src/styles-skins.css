@@ -28,6 +28,7 @@
   --skin-glow: rgba(179, 38, 30, 0.16);
   --skin-foil: rgba(179, 38, 30, 0.08);
   --skin-divider: rgba(27, 32, 51, 0.1);
+  --skin-info: #33507f;
   --skin-name-shadow: none;
   --skin-frame-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.9), transparent 34%);
   --skin-frame-shadow:
@@ -51,6 +52,10 @@
   --skin-muted: #9fb6d8;
   --skin-accent: #8fd4ff;
   --skin-accent-2: #ffd166;
+  /* 深蓝卡面：语义色提亮一档 */
+  --skin-ok: #8fe3a2;
+  --skin-warn: #ffd479;
+  --skin-info: #a9c6ff;
   --skin-divider: rgba(140, 200, 255, 0.26);
   --skin-radius: 3px;
   --skin-border-width: 2px;
@@ -78,6 +83,10 @@
   --skin-border: rgba(255, 255, 255, 0.42);
   --skin-glow: rgba(225, 240, 255, 0.3);
   --skin-foil: rgba(255, 255, 255, 0.18);
+  /* 玻璃板自己不带底色，字色不能只吃主题的 --text / --muted：
+     深色主题下磨砂板会被背后的页面照亮，灰字压上去就糊了，这里单独给一套 */
+  --skin-text: #eef4fb;
+  --skin-muted: #c2cede;
   --skin-divider: rgba(255, 255, 255, 0.2);
   --skin-frame-bg: none;
   --skin-frame-shadow:
@@ -88,21 +97,14 @@
     0 20px 40px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(255, 255, 255, 0.16),
     0 0 30px -10px var(--skin-glow);
+  /* 亚克力很亮，正文需要一点暗边才压得住（不是遮罩，只作用在字形上） */
+  --skin-body-shadow: 0 1px 2px rgba(6, 10, 20, 0.45);
 }
 
 /* 磨砂透射：模糊 + 轻微提亮/饱和。透光率 92% 的板子不该压暗背景 */
 .pcard[data-material='acrylic'] .pcard-inner {
   backdrop-filter: blur(14px) saturate(1.2) brightness(1.04);
   -webkit-backdrop-filter: blur(14px) saturate(1.2) brightness(1.04);
-}
-
-/* 亚克力很亮，正文需要一点暗边才压得住（不是遮罩，只作用在字形上） */
-.pcard[data-material='acrylic'] .pcard-head,
-.pcard[data-material='acrylic'] .pcard-medal,
-.pcard[data-material='acrylic'] .pcard-stats,
-.pcard[data-material='acrylic'] .pcard-bio,
-.pcard[data-material='acrylic'] .pcard-foot {
-  text-shadow: 0 1px 2px rgba(6, 10, 20, 0.45);
 }
 
 /* 板体：顶部一层极淡的乳白（表面雾度），不带任何冷色 */
@@ -184,7 +186,10 @@
   --skin-border: rgba(255, 255, 255, 0.92);
   --skin-glow: rgba(90, 130, 210, 0.22);
   --skin-foil: rgba(255, 255, 255, 0.5);
+  --skin-text: #1b2033;
+  --skin-muted: #46536a;
   --skin-divider: rgba(27, 32, 51, 0.14);
+  --skin-info: #33507f;
   --skin-name-shadow: none;
   --skin-frame-bg: none;
   --skin-frame-shadow:
@@ -211,9 +216,14 @@
   --skin-glow: rgba(210, 225, 245, 0.6);
   --skin-foil: rgba(255, 255, 255, 0.6);
   --skin-text: #1b2230;
-  --skin-muted: #4f5a6b;
+  --skin-muted: #454f5f;
   --skin-accent: #2b3d58;
   --skin-accent-2: #7a5c14;
+  /* 银白卡面：语义色压深，绿/黄/蓝在浅底上都立得住 */
+  --skin-ok: #1c6b3a;
+  --skin-warn: #8a5600;
+  --skin-info: #2c4a78;
+  --skin-idle: #4a4f5c;
   --skin-divider: rgba(27, 32, 51, 0.16);
   --skin-name-shadow: none;
   --skin-radius: 12px;
@@ -236,10 +246,21 @@
   --skin-muted: #e8f1ff;
   --skin-accent: #b6ffe2;
   --skin-accent-2: #ffc9f7;
+  /* 镭射底一直在变，语义色要够亮、够白，才压得住任何一片切面 */
+  --skin-ok: #96f0b0;
+  --skin-warn: #ffd98a;
+  --skin-info: #d3e4ff;
   --skin-divider: rgba(225, 240, 255, 0.4);
   --skin-name-shadow:
     0 1px 3px rgba(0, 0, 0, 0.9),
     0 0 12px rgba(0, 0, 0, 0.7);
+  /* 四向描边：文字可能落在接近白色的晶面上 */
+  --skin-body-shadow:
+    1px 0 1px rgba(0, 0, 0, 0.85),
+    -1px 0 1px rgba(0, 0, 0, 0.85),
+    0 1px 1px rgba(0, 0, 0, 0.85),
+    0 -1px 1px rgba(0, 0, 0, 0.85),
+    0 2px 8px rgba(0, 0, 0, 0.7);
   --skin-radius: 12px;
   --skin-border-width: 2px;
   --skin-frame-shadow:
@@ -263,9 +284,15 @@
   /* 金属的高光已经在 canvas 里按 Fresnel 算过了；这层再盖一层白会糊成珍珠纸 */
   --skin-foil: rgba(255, 245, 210, 0.1);
   --skin-text: #2a1d05;
-  --skin-muted: #6d5722;
+  /* 金箔比白纸暗，次要文字要再压深一档才够 4.5:1 */
+  --skin-muted: #574413;
   --skin-accent: #5a3d05;
-  --skin-accent-2: #8a6a1f;
+  --skin-accent-2: #6b4f0e;
+  /* 金箔是亮面：语义色用深一档的墨绿 / 赭黄 / 藏蓝 */
+  --skin-ok: #1c6b3a;
+  --skin-warn: #8a5600;
+  --skin-info: #2c4a78;
+  --skin-idle: #4a4f5c;
   --skin-divider: rgba(90, 61, 5, 0.22);
   --skin-name-shadow: none;
   /* 金属的"厚度"来自上下两道边缘光：顶边反光、底边压暗 */
@@ -289,10 +316,21 @@
   --skin-muted: #b9c3e8;
   --skin-accent: #9df3ff;
   --skin-accent-2: #ff9df2;
+  /* 碎晶底：语义色跟着偏冷、偏亮 */
+  --skin-ok: #93efb3;
+  --skin-warn: #ffd27a;
+  --skin-info: #bdd2ff;
   --skin-divider: rgba(180, 200, 255, 0.28);
   --skin-name-shadow:
     0 1px 3px rgba(0, 0, 0, 0.9),
     0 0 14px rgba(120, 90, 255, 0.6);
+  /* 文字可能落在亮色碎晶上：四向冷色描边 + 一点紫晕 */
+  --skin-body-shadow:
+    1px 0 1px rgba(6, 4, 20, 0.9),
+    -1px 0 1px rgba(6, 4, 20, 0.9),
+    0 1px 1px rgba(6, 4, 20, 0.9),
+    0 -1px 1px rgba(6, 4, 20, 0.9),
+    0 0 12px rgba(90, 70, 200, 0.5);
   --skin-frame-shadow:
     inset 0 1px 0 rgba(235, 230, 255, 0.35),
     inset 0 -4px 12px rgba(10, 8, 30, 0.6),
@@ -301,20 +339,6 @@
   --skin-shadow:
     0 18px 36px rgba(0, 0, 0, 0.55),
     0 0 32px -10px var(--skin-glow);
-}
-
-/* 灵能卡的文字：亮底碎晶上要立得住，加一圈冷色描边 */
-.pcard[data-material='psi'] .pcard-head,
-.pcard[data-material='psi'] .pcard-medal,
-.pcard[data-material='psi'] .pcard-stats,
-.pcard[data-material='psi'] .pcard-bio,
-.pcard[data-material='psi'] .pcard-foot {
-  text-shadow:
-    1px 0 1px rgba(6, 4, 20, 0.9),
-    -1px 0 1px rgba(6, 4, 20, 0.9),
-    0 1px 1px rgba(6, 4, 20, 0.9),
-    0 -1px 1px rgba(6, 4, 20, 0.9),
-    0 0 12px rgba(90, 70, 200, 0.5);
 }
 
 /* ---------------------------------------------------------------- 视差层 */
@@ -342,42 +366,9 @@
 }
 
 
-/* 亮色材质上的语义色要压深，否则绿/黄徽章在浅底上糊成一片 */
-.pcard[data-material='sparkle'] .pcard-badge,
-.pcard[data-material='gold'] .pcard-badge {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.pcard[data-material='sparkle'] .badge-ok,
-.pcard[data-material='gold'] .badge-ok {
-  color: #1c6b3a;
-}
-
-.pcard[data-material='sparkle'] .badge-info,
-.pcard[data-material='gold'] .badge-info {
-  color: #2c4a78;
-}
-
-.pcard[data-material='sparkle'] .badge-warn,
-.pcard[data-material='gold'] .badge-warn {
-  color: #8a5600;
-}
-
-.pcard[data-material='sparkle'] .badge-idle,
-.pcard[data-material='gold'] .badge-idle {
-  color: #4a4f5c;
-}
-
-/* 亮色材质上的"正选/候补"同样要换深浅 */
-.pcard[data-material='sparkle'] .pcard-confirmed,
-.pcard[data-material='gold'] .pcard-confirmed {
-  color: #1c6b3a;
-}
-
-.pcard[data-material='sparkle'] .pcard-wait,
-.pcard[data-material='gold'] .pcard-wait {
-  color: #8a5600;
-}
+/* 语义色（徽章 / 正选候补）不再逐材质写死：每个材质在自己的块里给
+   --skin-ok / --skin-warn / --skin-info / --skin-idle，
+   样式层只认令牌（styles-card.css），换材质时整块文字配色一起走。 */
 
 /* ---------------------------------------------------------------- 边框 */
 
@@ -405,39 +396,12 @@
   opacity: 0.85;
 }
 
-/* 四角：细长的 L 形护角，从角尖向里渐隐，角尖再点一颗小亮星；
-   内侧留白，不做整圈描边，视觉上比原来的"两条短杠"更收敛也更贵气 */
+/* 四角：画法在 components/CardFrameFX.vue + styles-frame-fx.css
+   （GPU 合成、带巡游光点）；这里只把整圈描边和底板关掉，护角交给特效层。 */
 [data-frame='corners'] {
   --skin-border-width: 0px;
   --skin-frame-bg: none;
   --skin-frame-shadow: none;
-}
-
-.pcard[data-frame='corners'] .pcard-frame::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  opacity: 0.92;
-  background:
-    /* 四条长臂：从角上往内渐隐 */
-    linear-gradient(90deg, var(--skin-border), transparent) left 11px top 10px / 36px 1.5px no-repeat,
-    linear-gradient(180deg, var(--skin-border), transparent) left 10px top 11px / 1.5px 36px no-repeat,
-    linear-gradient(270deg, var(--skin-border), transparent) right 11px top 10px / 36px 1.5px no-repeat,
-    linear-gradient(180deg, var(--skin-border), transparent) right 10px top 11px / 1.5px 36px no-repeat,
-    linear-gradient(90deg, var(--skin-border), transparent) left 11px bottom 10px / 36px 1.5px no-repeat,
-    linear-gradient(0deg, var(--skin-border), transparent) left 10px bottom 11px / 1.5px 36px no-repeat,
-    linear-gradient(270deg, var(--skin-border), transparent) right 11px bottom 10px / 36px 1.5px no-repeat,
-    linear-gradient(0deg, var(--skin-border), transparent) right 10px bottom 11px / 1.5px 36px no-repeat,
-    /* 角尖的小亮星 */
-    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) left 8.5px top 8.5px / 7px 7px
-      no-repeat,
-    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) right 8.5px top 8.5px / 7px 7px
-      no-repeat,
-    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) left 8.5px bottom 8.5px / 7px 7px
-      no-repeat,
-    radial-gradient(circle, var(--skin-accent) 0 1.5px, transparent 2.2px) right 8.5px bottom 8.5px / 7px 7px
-      no-repeat;
 }
 
 /* 浮雕：受光边（上/左）提亮、背光边（下/右）压暗，再叠一层斜向的面光，
@@ -488,10 +452,10 @@
     radial-gradient(115% 100% at 50% 50%, transparent 62%, rgba(255, 255, 255, 0.07) 100%);
 }
 
-/* 霜线 / 电光 / 雷纹：逐帧动画版本（透明 WebP）。
-   帧图由 apps/web/scripts/make_border_anims.py 生成，按卡片 2x 尺寸（560×464），
-   background-size: 100% 100% 铺满 —— 卡片换尺寸也不会错位。
-   动效逻辑与 Steam 物品边框一致：导轨常亮 + 光团沿边巡游 + 粒子随机闪烁。 */
+/* 霜线 / 电光 / 雷纹：都不画外框，视觉交给特效层。
+   霜线与电光现在是 GPU 合成的 CSS 图层（styles-frame-fx.css），
+   不再加载逐帧 WebP；雷纹继续用生成好的静态光轨。
+   动效仍然是"导轨常亮 + 光团沿边巡游 + 粒子闪烁"，只是改由 GPU 插值。 */
 [data-frame='frost'],
 [data-frame='spark'],
 [data-frame='arc'] {
@@ -500,29 +464,18 @@
   --skin-frame-shadow: none;
 }
 
-.pcard[data-frame='frost'] .pcard-frame {
-  background: url('./assets/card-frame-frost.webp') center / 100% 100% no-repeat;
-}
-
-.pcard[data-frame='spark'] .pcard-frame {
-  background: url('./assets/card-frame-spark.webp') center / 100% 100% no-repeat;
-  box-shadow: 0 0 18px rgba(80, 200, 255, 0.3);
-}
-
 .pcard[data-frame='arc'] .pcard-frame {
   background: url('./assets/card-frame-arc.webp') center / 100% 100% no-repeat;
   box-shadow: 0 0 18px rgba(255, 180, 80, 0.22);
 }
 
-/* 动效敏感用户：换成静态描边，不加载动画帧 */
+/* 动效敏感用户：雷纹换成静态描边；霜线/电光的静止形态在 styles-frame-fx.css 里 */
 @media (prefers-reduced-motion: reduce) {
-  .pcard[data-frame='frost'] .pcard-frame,
-  .pcard[data-frame='spark'] .pcard-frame,
   .pcard[data-frame='arc'] .pcard-frame {
     background: none;
     box-shadow:
-      0 0 0 1px rgba(200, 230, 255, 0.6),
-      inset 0 0 10px rgba(180, 220, 255, 0.2);
+      0 0 0 1px rgba(255, 214, 150, 0.55),
+      inset 0 0 10px rgba(255, 190, 110, 0.18);
   }
 }
 
@@ -737,22 +690,364 @@
 }
 
 .skin-chip[data-frame='frost'] {
-  border-color: rgba(236, 248, 255, 0.65);
-  box-shadow: 0 0 6px rgba(170, 220, 255, 0.45);
+  border-color: rgba(236, 248, 255, 0.72);
+  /* 一角冷光 + 细碎星点，和卡片上的霜线同一套气质 */
+  background-image:
+    radial-gradient(120% 100% at 18% 0%, rgba(196, 232, 255, 0.3), transparent 62%),
+    radial-gradient(circle at 26% 28%, #fff 0 0.8px, transparent 1.6px),
+    radial-gradient(circle at 72% 64%, #fff 0 0.7px, transparent 1.5px);
+  box-shadow:
+    0 0 7px rgba(170, 220, 255, 0.42),
+    inset 0 0 8px rgba(190, 230, 255, 0.18);
 }
 
 .skin-chip[data-frame='spark'] {
-  border-color: rgba(120, 220, 255, 0.9);
+  border-color: rgba(120, 228, 255, 0.92);
+  /* 一道斜向能量轨，示意"沿边巡游的光团" */
+  background-image:
+    linear-gradient(115deg, transparent 44%, rgba(140, 240, 255, 0.55) 48%, transparent 53%),
+    radial-gradient(90% 120% at 82% 100%, rgba(0, 180, 255, 0.24), transparent 66%);
   box-shadow:
-    0 0 8px rgba(80, 200, 255, 0.6),
-    inset 0 0 6px rgba(80, 200, 255, 0.4);
+    0 0 9px rgba(70, 200, 255, 0.55),
+    inset 0 0 7px rgba(70, 200, 255, 0.36);
 }
 
 .skin-chip[data-frame='arc'] {
   border-color: transparent;
+  /* SVG 是矢量图：background-size: 100% 100% 只把视口拉满，真正跟着拉伸
+     还要靠 SVG 自己的 preserveAspectRatio="none"，否则它会按 320×260 的比例
+     居中留边——色片比它扁，雷纹就缩在中间不贴边。 */
   background-image: url('./assets/card-frame-arc.svg');
   background-size: 100% 100%;
   background-repeat: no-repeat;
+}
+
+/* ---------------------------------------------------------------- 颜色与光效 */
+
+/* 只有发丝线 / 双线出现的入口：一整行小卡，点开才是弹窗 */
+.skin-frame-style {
+  margin-top: 12px;
+}
+
+.skin-frame-style + .skin-actions {
+  margin-top: 16px;
+}
+
+.skin-frame-style-btn {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.06);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    background-color 0.16s ease;
+}
+
+.skin-frame-style-btn:hover {
+  border-color: var(--line-strong);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.skin-frame-style-btn:focus-visible {
+  outline: 1px solid var(--gold-2);
+  outline-offset: 2px;
+}
+
+.skin-frame-style-dot {
+  flex: none;
+}
+
+.skin-frame-style-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skin-frame-style-title {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--gold-2);
+}
+
+.skin-frame-style-hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.skin-frame-style-open {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+/* 色点：入口和弹窗共用；尺寸由具体位置覆盖 */
+.frame-color-dot {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: var(--surface-2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.frame-color-dot[data-color='auto'] {
+  border-color: var(--line-strong);
+  /* 半明半暗：表示"不指定颜色，跟材质走" */
+  background: linear-gradient(135deg, var(--text) 0 48%, var(--surface-2) 48% 100%);
+}
+
+.frame-color-dot[data-color='gold'] {
+  background: #f5cf72;
+}
+
+.frame-color-dot[data-color='ice'] {
+  background: #c9ecff;
+}
+
+.frame-color-dot[data-color='cyan'] {
+  background: #4fe4ff;
+}
+
+.frame-color-dot[data-color='violet'] {
+  background: #b79bff;
+}
+
+.frame-color-dot[data-color='rose'] {
+  background: #ff6fba;
+}
+
+.frame-color-dot[data-color='emerald'] {
+  background: #62e8ae;
+}
+
+.frame-color-dot[data-color='rainbow'] {
+  background: conic-gradient(#f3c453, #f06a8a, #b07cff, #55d8f0, #63e6a8, #f3c453);
+}
+
+/* 浅色弹窗上的色点跟着描边一起压深，避免白底上糊成一片 */
+:root[data-theme='light'] .frame-color-dot[data-color='gold'] {
+  background: #a97a12;
+}
+
+:root[data-theme='light'] .frame-color-dot[data-color='ice'] {
+  background: #5b93bd;
+}
+
+:root[data-theme='light'] .frame-color-dot[data-color='cyan'] {
+  background: #0088c8;
+}
+
+:root[data-theme='light'] .frame-color-dot[data-color='violet'] {
+  background: #7a5fd0;
+}
+
+:root[data-theme='light'] .frame-color-dot[data-color='rose'] {
+  background: #d63d8a;
+}
+
+:root[data-theme='light'] .frame-color-dot[data-color='emerald'] {
+  background: #1a9e6a;
+}
+
+/* 入口的小圆点跟着光效一起呼吸/闪烁，点开前就能看出选的是什么 */
+.skin-frame-style-dot[data-effect='breathe'] {
+  animation: cline-breathe 5.2s ease-in-out infinite;
+}
+
+.skin-frame-style-dot[data-effect='blink'] {
+  animation: cline-blink 2.6s ease-in-out infinite;
+}
+
+/* ---------------------------------------------------------------- 颜色 / 光效弹窗 */
+
+.frame-style-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 弹窗内的小预览：用真实的 CardLineFX，颜色/光效/双线比例与卡片完全一致 */
+.frame-style-demo {
+  position: relative;
+  height: 84px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  overflow: hidden;
+  --skin-radius: 10px;
+  --skin-border: var(--line-strong);
+  --skin-glow: rgba(212, 173, 51, 0.28);
+}
+
+.frame-style-demo-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.frame-style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.frame-style-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.frame-style-heading {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold-2);
+}
+
+.frame-style-note {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.frame-style-colors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.frame-style-color {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.frame-style-color:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.frame-style-color.is-active {
+  border-color: var(--gold);
+  background: rgba(201, 162, 39, 0.1);
+}
+
+.frame-style-color:focus-visible,
+.frame-style-effect:focus-visible {
+  outline: 1px solid var(--gold-2);
+  outline-offset: 2px;
+}
+
+.frame-style-swatch {
+  width: 22px;
+  height: 22px;
+}
+
+.frame-style-color-label {
+  white-space: nowrap;
+}
+
+.frame-style-effects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.frame-style-effect {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.frame-style-effect:hover {
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.frame-style-effect.is-active {
+  border-color: var(--gold);
+  background: rgba(201, 162, 39, 0.1);
+}
+
+.frame-style-effect-name {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.frame-style-effect-hint {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.frame-style-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.frame-style-footer-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  .frame-style-colors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .frame-style-effects {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .frame-style-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* 窄屏：预览和选项上下堆叠，否则两列会把页面撑宽 */
@@ -763,5 +1058,12 @@
 
   .skin-preview {
     position: static;
+  }
+}
+
+/* 动效敏感：入口色点也保持静止 */
+@media (prefers-reduced-motion: reduce) {
+  .skin-frame-style-dot {
+    animation: none !important;
   }
 }

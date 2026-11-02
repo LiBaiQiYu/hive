@@ -26,13 +26,16 @@ meRoutes.get('/', async (c) => {
   const user = await env.DB.prepare(
     `SELECT id, username, display_name AS displayName, role, status,
             qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt,
-            card_material AS cardMaterial, card_frame AS cardFrame
+            card_material AS cardMaterial, card_frame AS cardFrame,
+            card_frame_color AS frameColor, card_frame_effect AS frameEffect
        FROM users WHERE id = ?`,
   )
     .bind(userId)
     .first<{
       cardMaterial: string;
       cardFrame: string;
+      frameColor: string;
+      frameEffect: string;
       [key: string]: unknown;
     }>();
 
@@ -107,12 +110,17 @@ meRoutes.get('/', async (c) => {
     }>();
 
   if (!user) throw new ApiError('NOT_FOUND', '账号不存在');
-  const { cardMaterial, cardFrame, ...profile } = user;
+  const { cardMaterial, cardFrame, frameColor, frameEffect, ...profile } = user;
 
   return c.json({
     data: {
       user: profile,
-      cardSkin: toCardSkin({ material: cardMaterial, frame: cardFrame }),
+      cardSkin: toCardSkin({
+        material: cardMaterial,
+        frame: cardFrame,
+        frameColor,
+        frameEffect,
+      }),
       rating: rating
         ? {
             system: rating.system,
@@ -348,8 +356,8 @@ meRoutes.patch('/', async (c) => {
 /* --------------------------------------------------------------------------
  * PUT /api/me/card-skin —— 卡片外观（材质 / 边框 / 特效）
  *
- * 整份提交而不是逐项 PATCH：皮肤是"材质 + 边框"两件套，只改一半的语义没有意义；
- * 而且玩家每次点选都是"换一套"，整份写回最省心。
+ * 整份提交而不是逐项 PATCH：皮肤是"材质 + 边框 + 配色 + 光效"四件套，
+ * 只改一半的语义没有意义；而且玩家每次点选都是"换一套"，整份写回最省心。
  * 这两个值只影响展示，不写审计、不重算评分、不进快照。
  * ------------------------------------------------------------------------ */
 meRoutes.put('/card-skin', async (c) => {
@@ -359,12 +367,13 @@ meRoutes.put('/card-skin', async (c) => {
     throw new ApiError('VALIDATION_FAILED', '皮肤参数不合法', parsed.error.flatten().fieldErrors);
   }
 
-  const { material, frame } = parsed.data;
+  const { material, frame, frameColor, frameEffect } = parsed.data;
   await c.env.DB.prepare(
-    `UPDATE users SET card_material = ?, card_frame = ?, updated_at = ?
+    `UPDATE users SET card_material = ?, card_frame = ?,
+                      card_frame_color = ?, card_frame_effect = ?, updated_at = ?
       WHERE id = ?`,
   )
-    .bind(material, frame, Date.now(), userId)
+    .bind(material, frame, frameColor, frameEffect, Date.now(), userId)
     .run();
 
   return c.json({ data: { cardSkin: parsed.data }, meta: { requestId: c.get('requestId') } });

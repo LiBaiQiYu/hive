@@ -165,6 +165,7 @@ eventRoutes.get('/:id/registrations', async (c) => {
             COALESCE(r.position_preference, pp.position) AS position,
             u.display_name AS displayName, u.bio,
             u.card_material AS cardMaterial, u.card_frame AS cardFrame,
+            u.card_frame_color AS frameColor, u.card_frame_effect AS frameEffect,
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr,
             pr.effective_rating AS rating,
             ga.verification AS accountVerification, ga.persona_name AS personaName
@@ -187,6 +188,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
       bio: string | null;
       cardMaterial: string;
       cardFrame: string;
+      frameColor: string;
+      frameEffect: string;
       rankTier: number | null;
       declaredMmr: number | null;
       rating: number | null;
@@ -218,6 +221,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
       skin: toCardSkin({
         material: row.cardMaterial,
         frame: row.cardFrame,
+        frameColor: row.frameColor,
+        frameEffect: row.frameEffect,
       }),
     };
   });

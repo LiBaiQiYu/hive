@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import CardFrameFX from './CardFrameFX.vue';
+import CardLineFX from './CardLineFX.vue';
 import HolographicSticker from './HolographicSticker.vue';
 import { normalizeCardSkin, type CardSkin } from '../lib/cards';
 import { renderMetalFrame } from '../lib/metal';
@@ -65,6 +67,31 @@ const mmrLabel = computed(() =>
 /** 皮肤只影响视觉：材质 / 边框 / 特效都是 CSS 变量，组件本身不认识具体皮肤 */
 const skin = computed(() => normalizeCardSkin(props.player.skin));
 
+/** 霜线 / 电光 / 四角走独立的 GPU 合成组件；其余边框仍由 .pcard-frame 的静态样式负责 */
+const frameFx = computed<'frost' | 'spark' | 'corners' | null>(() => {
+  const frame = skin.value.frame;
+  return frame === 'frost' || frame === 'spark' || frame === 'corners' ? frame : null;
+});
+
+/**
+ * 发丝线 / 双线换了颜色或光效时，描边交给 CardLineFX。
+ * 默认的 auto + steady 不挂这一层，保持原来的原生边框（没有额外合成层）。
+ */
+const lineFx = computed<{
+  double: boolean;
+  color: CardSkin['frameColor'];
+  effect: CardSkin['frameEffect'];
+} | null>(() => {
+  const value = skin.value;
+  if (value.frame !== 'hairline' && value.frame !== 'double') return null;
+  if (value.frameColor === 'auto' && value.frameEffect === 'steady') return null;
+  return {
+    double: value.frame === 'double',
+    color: value.frameColor,
+    effect: value.frameEffect,
+  };
+});
+
 /* ---------------------------------------------------------------- 3D 倾斜 */
 
 const board = ref<HTMLElement | null>(null);
@@ -104,6 +131,9 @@ const cardStyle = computed(() => ({
   // 归一化到 -1..1：材质贴图用它做视差位移，指针在中心时正好是 0
   '--px': `${((tilt.value.mx - 50) / 50).toFixed(3)}`,
   '--py': `${((tilt.value.my - 50) / 50).toFixed(3)}`,
+  // 边框动画的起始相位：按 index 错开，一屏十几张卡才不会像同一个转盘
+  '--fx-delay': `${-((props.index % 9) * 0.97).toFixed(2)}s`,
+  '--fx-delay-2': `${-((props.index % 7) * 1.43).toFixed(2)}s`,
 }));
 
 /* ---------------------------------------------------------------- 程序化卡面 */
@@ -166,9 +196,19 @@ onBeforeUnmount(() => {
     :style="cardStyle"
     :data-material="skin.material"
     :data-frame="skin.frame"
+    :data-line-fx="lineFx ? 'on' : undefined"
     @pointermove="onPointerMove"
     @pointerleave="onPointerLeave"
   >
+    <!-- 外光晕必须放在 .pcard-inner 外面：inner 有 overflow:hidden，会被裁掉 -->
+    <div v-if="frameFx" class="pcard-aura" :data-fx="frameFx" aria-hidden="true" />
+    <div
+      v-else-if="lineFx"
+      class="pcard-aura pcard-aura--line"
+      :data-color="lineFx.color"
+      :data-effect="lineFx.effect"
+      aria-hidden="true"
+    />
     <div class="pcard-inner">
       <!-- 装饰层统一包在 .pcard-deco 里：它自带圆角裁切。
            .pcard-inner 是 preserve-3d，overflow:hidden 在 3D 上下文里不生效，
@@ -201,6 +241,15 @@ onBeforeUnmount(() => {
         <!-- 光斑：跟着指针走，卡片"反光"的那一下是廉价但有效的立体感来源 -->
         <div class="pcard-glare" />
         <div class="pcard-frame" />
+        <!-- 发丝线 / 双线的颜色与光效：独立描边层，只动 transform / opacity -->
+        <CardLineFX
+          v-if="lineFx"
+          :color="lineFx.color"
+          :effect="lineFx.effect"
+          :double="lineFx.double"
+        />
+        <!-- 霜线 / 电光 / 四角：纯 CSS 合成层，只动 transform / opacity -->
+        <CardFrameFX v-if="frameFx" :kind="frameFx" />
       </div>
 
       <header class="pcard-head">

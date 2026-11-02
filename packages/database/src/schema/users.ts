@@ -68,8 +68,8 @@ export const users = sqliteTable(
      */
     inviteCodeId: text('invite_code_id'),
     /**
-     * 卡片外观（纯展示，见迁移 0004）。枚举值与 @hive/shared 的
-     * CARD_MATERIALS / CARD_FRAMES / CARD_EFFECTS 保持一致；
+     * 卡片外观（纯展示，见迁移 0004 / 0009）。枚举值与 @hive/shared 的
+     * CARD_MATERIALS / CARD_FRAMES / CARD_FRAME_COLORS / CARD_FRAME_EFFECTS 保持一致；
      * 不一致时 packages/api 的 card-skin 测试会直接失败。
      */
     cardMaterial: text('card_material', {
@@ -82,6 +82,18 @@ export const users = sqliteTable(
     })
       .notNull()
       .default('hairline'),
+    /** 发丝线 / 双线的颜色；其他边框忽略，但保留用户的选择 */
+    cardFrameColor: text('card_frame_color', {
+      enum: ['auto', 'gold', 'ice', 'cyan', 'violet', 'rose', 'emerald', 'rainbow'],
+    })
+      .notNull()
+      .default('auto'),
+    /** 发丝线 / 双线的光效 */
+    cardFrameEffect: text('card_frame_effect', {
+      enum: ['steady', 'breathe', 'blink'],
+    })
+      .notNull()
+      .default('steady'),
   },
   (t) => [
     uniqueIndex('ux_users_username').on(t.username),

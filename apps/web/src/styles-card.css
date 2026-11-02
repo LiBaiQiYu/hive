@@ -15,6 +15,14 @@
   --skin-muted: var(--muted);
   --skin-accent: var(--gold-2);
   --skin-accent-2: var(--gold);
+  /* 语义色也走材质：亮材质压深、暗材质提亮，不能直接吃主题的 --radiant / --amber
+     —— 那套是给页面底色配的，压到深色卡面或金卡上就糊了 */
+  --skin-ok: var(--radiant);
+  --skin-warn: var(--amber);
+  --skin-info: #8aa4d6;
+  --skin-idle: var(--skin-muted);
+  /* 正文描边：亚克力 / 全息 / 灵能这类花底上用它把字形"垫"出来 */
+  --skin-body-shadow: none;
   --skin-divider: rgba(255, 255, 255, 0.07);
   --skin-radius: 14px;
   --skin-border-width: 1px;
@@ -124,29 +132,12 @@
   border-radius: inherit;
 }
 
-/* 全息卡不加遮罩：贴纸的色相和亮度就是卖点。
-   可读性靠"白色字 + 1px 深色描边（四向投影模拟）+ 外发光"，
-   这样无论文字压在深色还是接近白色的切面上都能拉开对比。 */
-.pcard[data-material='holo'] .pcard-head,
-.pcard[data-material='holo'] .pcard-medal,
-.pcard[data-material='holo'] .pcard-stats,
-.pcard[data-material='holo'] .pcard-bio,
-.pcard[data-material='holo'] .pcard-foot {
-  text-shadow:
-    1px 0 1px rgba(0, 0, 0, 0.85),
-    -1px 0 1px rgba(0, 0, 0, 0.85),
-    0 1px 1px rgba(0, 0, 0, 0.85),
-    0 -1px 1px rgba(0, 0, 0, 0.85),
-    0 2px 8px rgba(0, 0, 0, 0.7);
-}
-
-/* 全息卡的徽章自带底色太透，压在亮切面上会糊；给一层深色衬底 */
+/* 全息卡不做遮罩：贴纸的色相和亮度就是卖点。
+   可读性靠"白色字 + 描边"——描边由材质给（--skin-body-shadow / --skin-name-shadow），
+   这样无论文字压在深色还是接近白色的切面上都能拉开对比。
+   徽章压在半透明切面上会糊，单独补一层深色衬底。 */
 .pcard[data-material='holo'] .pcard-badge {
   background: rgba(4, 9, 16, 0.62);
-}
-
-.pcard[data-material='holo'] .badge-idle {
-  color: #dfe9f7;
 }
 
 /* 视差层：材质在这里再叠 1~2 层同款图案，随卡片角度错位，
@@ -197,6 +188,8 @@
 .pcard-foot {
   position: relative;
   transform: translateZ(28px);
+  /* 花底材质（亚克力 / 全息 / 灵能）给正文加一圈描边，纯色材质是 none */
+  text-shadow: var(--skin-body-shadow, none);
 }
 
 .pcard-head {
@@ -226,24 +219,30 @@
   transform: translateZ(14px);
 }
 
+/* 徽章的四个语义色全部来自材质（亮材质压深、暗材质提亮）；
+   底色用 currentColor 兑出来，换材质时文字和衬底一起走，不用逐材质再写一遍。 */
+.badge-ok,
+.badge-info,
+.badge-warn,
+.badge-idle {
+  background: rgba(127, 127, 127, 0.14);
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
 .badge-ok {
-  color: var(--radiant);
-  background: rgba(99, 187, 108, 0.12);
+  color: var(--skin-ok);
 }
 
 .badge-info {
-  color: #8aa4d6;
-  background: rgba(138, 164, 214, 0.12);
+  color: var(--skin-info);
 }
 
 .badge-warn {
-  color: var(--amber);
-  background: rgba(234, 176, 60, 0.12);
+  color: var(--skin-warn);
 }
 
 .badge-idle {
-  color: var(--muted);
-  background: rgba(138, 143, 156, 0.1);
+  color: var(--skin-idle);
 }
 
 .pcard-medal {
@@ -329,11 +328,11 @@
 
 .pcard-wait {
   letter-spacing: 0.1em;
-  color: var(--amber);
+  color: var(--skin-warn);
 }
 
 .pcard-confirmed {
-  color: var(--radiant);
+  color: var(--skin-ok);
 }
 
 .pcard-steam {
@@ -347,12 +346,9 @@
 /* ---------------------------------------------------------------- 浅色 */
 /* 材质自己的颜色由 styles-skins.css 决定，这样金卡在浅色主题下仍然是金卡。
    注意不要把 --skin-frame-bg / --skin-name-shadow 写在这里的 .pcard 上：
-   那会盖掉深色材质（像素 / 赤铜）自带的深色高光，等于给它们糊一层白雾。 */
-
-:root[data-theme='light'] .badge-info {
-  color: #33507f;
-  background: rgba(51, 80, 127, 0.1);
-}
+   那会盖掉深色材质（像素 / 赤铜）自带的深色高光，等于给它们糊一层白雾。
+   同理，语义色（--skin-ok/warn/info）也不能在 :root[data-theme='light'] .pcard
+   上覆盖 —— 那条选择器会连深色材质一起改掉，只给 basic / acrylic 单独补。 */
 
 /* ---------------------------------------------------------------- 无障碍 */
 

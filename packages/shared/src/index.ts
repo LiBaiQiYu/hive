@@ -115,7 +115,7 @@ export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 /* ==========================================================================
  * 玩家卡片外观（纯展示偏好，不参与评分 / 分队 / 快照）
  *
- * 这三份清单必须与 migrations/0004_card_skin.sql 的 CHECK 一致：
+ * 这四份清单必须与 migrations/0004+ 的 CHECK 一致：
  * SQL 是唯一真源，这里只是给它一个类型化的出口。两者漂移时
  * packages/api/src/card-skin.test.ts 会直接失败。
  * ========================================================================== */
@@ -142,12 +142,32 @@ export const CARD_FRAMES = [
   'arc',
 ] as const;
 
+/** 发丝线 / 双线的颜色；rainbow = 流动彩色，效果里自带色相旋转 */
+export const CARD_FRAME_COLORS = [
+  'auto',
+  'gold',
+  'ice',
+  'cyan',
+  'violet',
+  'rose',
+  'emerald',
+  'rainbow',
+] as const;
+
+/** 发丝线 / 双线的光效：常亮 / 呼吸 / 闪烁 */
+export const CARD_FRAME_EFFECTS = ['steady', 'breathe', 'blink'] as const;
+
 export type CardMaterial = (typeof CARD_MATERIALS)[number];
 export type CardFrame = (typeof CARD_FRAMES)[number];
+export type CardFrameColor = (typeof CARD_FRAME_COLORS)[number];
+export type CardFrameEffect = (typeof CARD_FRAME_EFFECTS)[number];
 
 export const cardSkinSchema = z.object({
   material: z.enum(CARD_MATERIALS),
   frame: z.enum(CARD_FRAMES),
+  // 老版本客户端只提交 material / frame 时，按"改造前的样子"补默认值
+  frameColor: z.enum(CARD_FRAME_COLORS).default('auto'),
+  frameEffect: z.enum(CARD_FRAME_EFFECTS).default('steady'),
 });
 
 export type CardSkin = z.infer<typeof cardSkinSchema>;
@@ -155,21 +175,27 @@ export type CardSkin = z.infer<typeof cardSkinSchema>;
 export const DEFAULT_CARD_SKIN: CardSkin = {
   material: 'basic',
   frame: 'hairline',
+  frameColor: 'auto',
+  frameEffect: 'steady',
 };
 
 /**
- * 把数据库里的两列收成一个对象。老数据 / 脏数据一律回落到默认值——
+ * 把数据库里的四列收成一个对象。老数据 / 脏数据一律回落到默认值——
  * 卡片外观不值得为了一条脏记录把整个报名名单打挂。
  */
 export function toCardSkin(input: {
   material?: string | null;
   frame?: string | null;
+  frameColor?: string | null;
+  frameEffect?: string | null;
 }): CardSkin {
   const pick = <T extends string>(list: readonly T[], value: string | null | undefined, fallback: T): T =>
     list.includes(value as T) ? (value as T) : fallback;
   return {
     material: pick(CARD_MATERIALS, input.material, DEFAULT_CARD_SKIN.material),
     frame: pick(CARD_FRAMES, input.frame, DEFAULT_CARD_SKIN.frame),
+    frameColor: pick(CARD_FRAME_COLORS, input.frameColor, DEFAULT_CARD_SKIN.frameColor),
+    frameEffect: pick(CARD_FRAME_EFFECTS, input.frameEffect, DEFAULT_CARD_SKIN.frameEffect),
   };
 }
 
