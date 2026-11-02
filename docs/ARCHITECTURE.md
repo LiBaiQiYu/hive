@@ -170,7 +170,7 @@ confidence = 基础置信度 × 可信度系数
 
 - 冒领他人 ID：`ux_game_accounts_dota_account_id` 唯一索引保证一个 account_id 只能被一个 HIVE 账号占用；但无法阻止"第一个冒领职业选手的人"——这正是徽章存在的理由。
 - 谎报段位：徽章是灰的，分组编辑器同队可见。在 15 人的社区里，社交压力比技术校验有效得多。
-- **数字 ID 是公开的**：绑定 / 声明过的 `dota_account_id` 会随报名名单（`GET /api/events/:id/registrations`）一起发给所有看得到名单的人，卡片上渲染成 `DOTA2 <id> ↗` 直链 OpenDota。这是"归属未验证"的人唯一能被外部核对的凭据——旁观者可以拿它去 OpenDota / Dotabuff / STRATZ 比对该账号公开的段位与战绩。
+- **数字 ID 是公开的**：绑定 / 声明过的 `dota_account_id` 会随报名名单（`GET /api/events/:id/registrations`）一起发给所有看得到名单的人，卡片上渲染成 `DOTA2 <id> ↗` 直链 STRATZ（`https://stratz.com/players/<id>`）。这是"归属未验证"的人唯一能被外部核对的凭据——旁观者可以拿它去 STRATZ / OpenDota / Dotabuff 比对该账号公开的段位与战绩。
 - **只有公开数据才有效**：这些核对都依赖对方在 Dota2 里开启「公开比赛数据」。没开时 OpenDota 抓不到段位，徽章停在「自报」；声明 ID 也**不会**覆盖玩家手填的段位（`POST /api/me/game-account/claim` 在 `rank_tier` 为空时只更新场次）。所以一张卡上"ID 有值 + 徽章是自报"是正常状态，不矛盾。
 - 升级路径（P2）：要求玩家在游戏内个人签名里写入一次性 token，再由 OpenDota 的 `personaname`/profile 侧证，可在不暴露 Steam 密码的前提下证明归属。
 

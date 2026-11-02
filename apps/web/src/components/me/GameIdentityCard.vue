@@ -349,8 +349,8 @@ async function rebindSteam() {
             <span class="mono">{{ account?.personaName ?? '—' }}</span>
           </div>
           <p class="muted identity-note">
-            这个 ID 会显示在你的玩家卡上：其他人可以拿去 OpenDota / Dotabuff
-            核对段位与战绩——这是"归属未验证"时唯一的可信度来源。
+            这个 ID 会显示在你的玩家卡上：其他人点它就能去 STRATZ
+            核对段位与战绩——这是「归属未验证」时唯一的可信度来源。
           </p>
           <p v-if="!session.me?.stats?.rankTier" class="muted identity-note">
             没抓到公开段位：账号大概率没开「公开比赛数据」。这种情况下第三方平台也查不到东西，
@@ -371,7 +371,7 @@ async function rebindSteam() {
         <template v-else>
           <p class="muted identity-hint">
             填 Dota2 个人资料里那串数字 ID（例如 109902856），只读取公开数据，不需要密码。
-            填了会显示在你的玩家卡上，别人能拿去 OpenDota / Dotabuff 核对段位与战绩；
+            填了会显示在你的玩家卡上，别人点它就能去 STRATZ 核对段位与战绩；
             账号没开「公开比赛数据」的话，第三方平台也查不到东西。
           </p>
           <div class="identity-claim">

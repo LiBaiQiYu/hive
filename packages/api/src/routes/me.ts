@@ -427,8 +427,8 @@ meRoutes.post('/game-account/claim', async (c) => {
   // 段位来源：配了 STRATZ token 就走 STRATZ，否则退回 OpenDota
   // （细节与取舍见 services/rank-provider.ts）
   const snapshot = await fetchRankSnapshot(env, accountId);
-  // 下面写库时用的 profile_url 仍然指向 OpenDota 的公开档案页：
-  // 那是给**人**点开核对的链接，不是我们发请求的地方。
+  // 写库时存的 profile_url 指向 STRATZ 的公开档案页：那是给**人**点开核对的链接，
+  // 不是我们发请求的地方（发请求的是 rank-provider）。历史行里可能还是 OpenDota 链接。
 
   const now = Date.now();
   const rankTier = snapshot.rankTier;
@@ -450,7 +450,7 @@ meRoutes.post('/game-account/claim', async (c) => {
         accountId,
         personaname,
         avatar,
-        `https://www.opendota.com/players/${accountId}`,
+        `https://stratz.com/players/${accountId}`,
         now,
         now,
         existing.id,
@@ -468,7 +468,7 @@ meRoutes.post('/game-account/claim', async (c) => {
         accountId,
         personaname,
         avatar,
-        `https://www.opendota.com/players/${accountId}`,
+        `https://stratz.com/players/${accountId}`,
         now,
         now,
         now,

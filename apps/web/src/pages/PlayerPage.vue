@@ -320,9 +320,10 @@ watch(playerId, async () => {
               · DOTA ID
               <a
                 class="mono"
-                :href="`https://www.opendota.com/players/${player.dotaAccountId}`"
+                :href="`https://stratz.com/players/${player.dotaAccountId}`"
                 target="_blank"
                 rel="noopener noreferrer"
+                title="在 STRATZ 查看这个账号的公开资料"
               >{{ player.dotaAccountId }}</a>
             </template>
           </p>

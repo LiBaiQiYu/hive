@@ -52,7 +52,7 @@ const mmrLabel = computed(() =>
 
 /**
  * DOTA2 数字 ID。只来自玩家主动绑定 / 声明（game_accounts），没绑定就是 null。
- * 显示它是为了"可核对"：别人可以拿去 OpenDota / Dotabuff 对段位和战绩。
+ * 显示它是为了"可核对"：别人可以拿去 STRATZ 看这个账号的公开段位和战绩。
  */
 const dotaAccountId = computed(() => props.player.dotaAccountId ?? null);
 
@@ -247,14 +247,17 @@ onBeforeUnmount(() => {
       <header class="pcard-head">
         <div class="pcard-head-main">
           <h3 class="pcard-name">{{ props.player.displayName }}</h3>
-          <!-- 数字 ID 是公开的"可核对"入口：点开 OpenDota 能看到这个账号公开的段位与战绩 -->
+          <!-- 数字 ID 是公开的"可核对"入口：点开 STRATZ 能看到这个账号公开的段位与战绩。
+               @click.stop 是必需的——赛事页把整张卡包在 RouterLink 里，
+               不拦住冒泡的话点这个链接会同时跳玩家详情页。 -->
           <a
             v-if="dotaAccountId"
             class="pcard-dota mono"
-            :href="`https://www.opendota.com/players/${dotaAccountId}`"
+            :href="`https://stratz.com/players/${dotaAccountId}`"
             target="_blank"
             rel="noopener noreferrer"
-            :title="`DOTA2 数字 ID ${dotaAccountId} · 在 OpenDota 查看公开资料`"
+            :title="`DOTA2 数字 ID ${dotaAccountId} · 在 STRATZ 查看公开资料`"
+            @click.stop
           >
             DOTA2 {{ dotaAccountId }}<span class="pcard-dota-arrow" aria-hidden="true">↗</span>
           </a>
