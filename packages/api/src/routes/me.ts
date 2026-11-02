@@ -383,7 +383,10 @@ meRoutes.put('/card-skin', async (c) => {
 });
 
 /* --------------------------------------------------------------------------
- * POST /api/me/game-account/claim —— 用数字 ID 从 OpenDota 拉段位
+ * POST /api/me/game-account/claim —— 用数字 ID 抓段位（STRATZ 优先，OpenDota 兜底）
+ *
+ * 段位**不从 Steam 来**：Steam 只给 SteamID64，换算成 DOTA account_id 之后，
+ * 真正查段位的是 services/rank-provider（配了 STRATZ token 就只走 STRATZ）。
  *
  * 语义必须说清楚：**验证的是"这个账号存在且有公开数据"，不是"这是你的账号"**。
  * 所以写入的是 verification='CLAIMED'，徽章显示"归属未验证"。
@@ -424,6 +427,8 @@ meRoutes.post('/game-account/claim', async (c) => {
   // 段位来源：配了 STRATZ token 就走 STRATZ，否则退回 OpenDota
   // （细节与取舍见 services/rank-provider.ts）
   const snapshot = await fetchRankSnapshot(env, accountId);
+  // 下面写库时用的 profile_url 仍然指向 OpenDota 的公开档案页：
+  // 那是给**人**点开核对的链接，不是我们发请求的地方。
 
   const now = Date.now();
   const rankTier = snapshot.rankTier;
