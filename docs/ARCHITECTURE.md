@@ -274,7 +274,7 @@ finalizeRoster(eventId, policy?):
 
 | kind | 触发 | 任务 | 幂等依据 |
 | --- | --- | --- | --- |
-| `PLAYER_SYNC` | 绑定 Steam / 管理员点击同步 | 拉 OpenDota/STRATZ，更新 `player_stats`、`player_heroes`，随后入队评分重算 | `player_stats.fetched_at >= payload.requestedAt` 则跳过 |
+| `PLAYER_SYNC` | 绑定 Steam / 管理员点击同步 / 每日维护（数据过期或头像缺失） | 拉 STRATZ（缺 token 时 OpenDota），更新 `player_stats`；**并把昵称/头像写回 `game_accounts`**（COALESCE，只填空不覆盖），随后重算评分 | `player_stats.fetched_at >= payload.requestedAt` 则跳过 |
 | `MATCH_IMPORT` | 填写 Dota Match ID | 拉比赛详情，写 `match_player_stats`，回填 `matches` 结果 | `ux_matches_dota_match_id` 唯一 |
 | `RATING_RECOMPUTE` | 同步完成 / 管理员触发 | 重算评分，写 `player_ratings` | 按 `algorithm_version` + `computed_at` 判重 |
 

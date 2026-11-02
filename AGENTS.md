@@ -69,6 +69,8 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 | **拉下别人提交的新迁移后忘了迁移本地库** → 登录 200 但 `/api/me` 500（`D1_ERROR: no such column: card_material`），前端表现成"登录没反应、还是没登录" | `pnpm dev` / `dev:api` 现在会先跑 `db:migrate:local`（幂等）；`dev:remote` 不管迁移，切机器后先手动 `pnpm db:migrate:local`。判断是迁移落后还是真 bug，直接看 wrangler dev 的 stderr 里的 `D1_ERROR` |
 | 会话 Cookie 写死 `Secure`，用非 https 的地址（局域网 IP、非 localhost 主机名）开发时浏览器直接丢弃 Cookie | `secure` 由 `cookieSecure(env, c.req.url)` 推出：看 `APP_ORIGIN` 的 scheme，https 才加 `Secure`（`packages/api/src/env.ts`） |
 | `run_worker_first: ["/api/*"]` 意味着**静态资源根本不进 Worker**，Hono 的 `secureHeaders()` 对页面一行都不生效——HTML/JS/CSS 长期没有 CSP、没有防点击劫持 | 资源层约定文件 `apps/web/public/_headers`（构建时拷进 `dist/`，边缘加头、不耗 Worker 调用）。改完重建 + 发版才生效 |
+| **`wrangler dev` 只把 `secrets.required` 里声明过的键从 `.dev.vars` 注入 Worker**，没声明的键被安静丢掉（启动日志的 bindings 列表里也看不到）。`STRATZ_API_TOKEN` 曾因此从来没在本地加载过 → 本地所有段位同步都退回 OpenDota，看起来像"本地 STRATZ 绑定拿不到东西" | 用 secrets 之前先看一眼启动日志：绑定的键与 `.dev.vars` 里的键对不上，就是这里。`STRATZ_API_TOKEN` 现已加进 `secrets.required`（三个 env 都加）。**排查同类问题：`env.X` 明明配了却是空，先数一数启动日志里的 list** |
+| 头像/昵称只在"绑定那一刻"写一次（claim 用快照 / Steam 绑定用 Web API），之后没有任何地方刷新 → 绑定时上游抽风、或当时还没配 `STEAM_WEB_API_KEY`，这个账号就**永远**没头像 | `PLAYER_SYNC` 现在会把快照里的昵称/头像写回 `game_accounts`（`COALESCE`，只填空）；每日维护的补同步条件里也加了 `avatar_url IS NULL`，最多一天自愈 |
 
 ## 关键设计决策（改了会连累别处）
 

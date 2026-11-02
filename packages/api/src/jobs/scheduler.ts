@@ -82,10 +82,15 @@ export async function dailyMaintenance(
     .bind(weekAgo)
     .run();
 
+  // 补同步的触发条件有两条：
+  //   1) 段位数据过期（一周没同步）——常态
+  //   2) 头像缺失——绑定那一刻上游没给（Steam Web API 没配 / 账号当时没公开数据），
+  //      之后没人再试，就永远是空头像。PLAYER_SYNC 现在会写回昵称与头像（见 handlers.ts），
+  //      所以这里排一次就能自愈，不用等满一周。
   const stale = await env.DB.prepare(
     `SELECT ga.user_id AS userId FROM game_accounts ga
        LEFT JOIN player_stats ps ON ps.user_id = ga.user_id
-      WHERE ps.fetched_at IS NULL OR ps.fetched_at < ?`,
+      WHERE ps.fetched_at IS NULL OR ps.fetched_at < ? OR ga.avatar_url IS NULL`,
   )
     .bind(weekAgo)
     .all<{ userId: string }>();

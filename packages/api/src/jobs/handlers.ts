@@ -83,6 +83,23 @@ async function syncPlayerStats(env: Env, userId: string): Promise<void> {
       .run();
   }
 
+  // 昵称 / 头像原来只在"绑定那一刻"写一次（claim 用快照、Steam 绑定用 Web API），
+  // 之后没有任何地方刷新——于是绑定时上游抽风、或者当时还没配 STEAM_WEB_API_KEY 的账号，
+  // 就永远停在"有段位但没有头像"的状态。同步既然已经把快照拿回来了，就顺手补上：
+  //   · COALESCE：只填空 / 用新的覆盖旧的，绝不拿 null 把已有值抹掉
+  //   · last_synced_at 一并刷新，档案里的"上次同步"才有意义
+  if (snapshot.personaName !== null || snapshot.avatarUrl !== null) {
+    await env.DB.prepare(
+      `UPDATE game_accounts
+          SET persona_name = COALESCE(?, persona_name),
+              avatar_url = COALESCE(?, avatar_url),
+              last_synced_at = ?, updated_at = ?
+        WHERE user_id = ?`,
+    )
+      .bind(snapshot.personaName, snapshot.avatarUrl, now, now, userId)
+      .run();
+  }
+
   // 段位/样本变了，分数必须跟着变
   await recomputeUserRating(env, userId);
 }

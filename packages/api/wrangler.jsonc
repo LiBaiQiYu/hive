@@ -127,11 +127,15 @@
   },
 
   // wrangler 4.x：缺密钥时部署即失败，而不是上线后 500
-  // 可选：STRATZ_API_TOKEN —— 配了就用 STRATZ 抓段位（额度跟 token 走），
-  // 没配自动退回 OpenDota（额度按出口 IP 计，Worker 是共享 IP，容易被别人打满）。
-  // 所以它不在 required 里：没有 token 也能部署，只是继续走 OpenDota。
+  //
+  // STRATZ_API_TOKEN 曾经被刻意排除在 required 之外（"没有 token 也能部署，退回 OpenDota"）。
+  // 实测发现一个坑：**`wrangler dev` 只会把 required 里声明过的键从 .dev.vars 注入进 Worker**，
+  // 没声明的键会被安静丢掉——于是本地永远 without token、永远走 OpenDota，
+  // 表现成"本地 STRATZ 绑定拿不到东西"，而代码本身其实没问题。
+  // 段位抓取的主源已经是 STRATZ（OpenDota 按出口 IP 计额度、经常 429），
+  // 所以这里改成必需：线上必须有 token，本地没有也能起（只是退回 OpenDota）。
   "secrets": {
-    "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY"]
+    "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY", "STRATZ_API_TOKEN"]
   },
 
   // ===========================================================================
@@ -177,8 +181,9 @@
         "SYNC_JOB_LEASE_SECONDS": 120,
         "AUDIT_RETENTION_DAYS": 30
       },
+      // 与生产同口径：STRATZ 是主源，缺 token 就没法验证"段位同步"这条链路
       "secrets": {
-        "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY"]
+        "required": ["IP_HASH_SALT", "PASSWORD_PEPPER", "STEAM_WEB_API_KEY", "STRATZ_API_TOKEN"]
       }
     }
   }
