@@ -37,9 +37,11 @@
 | POST | `/api/auth/logout` | 撤销当前会话 |
 | GET | `/api/auth/session` | 当前会话 + 用户 + 评分摘要 |
 | POST | `/api/auth/password` | `{currentPassword, newPassword}`；新密码 ≥10 位、不得与旧密码相同；成功后**撤销其他所有会话**，当前设备保持登录 |
-| GET | `/api/auth/steam/start` | 302 跳转 Steam；写 `hive_steam_state` Cookie |
-| GET | `/api/auth/steam/callback` | Steam 回调，服务端反向校验后绑定，302 回 `/me` |
-| DELETE | `/api/auth/steam` | 解绑（存在进行中赛事报名时返回 `CONFLICT`） |
+| GET | `/api/auth/steam/start` | 302 跳转 Steam；写 `hive_steam_state` Cookie。`openid.realm` / `return_to` 的 origin 取 `APP_ORIGIN`（见下方回调说明） |
+| GET | `/api/auth/steam/callback` | Steam 回调，服务端反向校验后绑定，302 回 `/me?steam=linked`；失败一律 302 回 `/me?steam=error&reason=…` |
+| DELETE | `/api/auth/steam/unlink` | 解绑（存在进行中赛事报名时返回 `CONFLICT`）；段位来源退回 `SELF_REPORTED` |
+
+回调失败原因（`reason`）：`state`（Cookie 缺失/不匹配，或发起与回调不是同一个地址）、`return_to`（`openid.return_to` 与配置的 `APP_ORIGIN` 不一致）、`endpoint`、`claimed_id`、`post_failed`（服务器访问不到 `steamcommunity.com`）、`not_valid`（Steam 判定校验无效，通常已过期）、`taken`（该 Steam 已绑定别的账号）。前端必须把结果读出来提示用户，否则失败会表现为「点了没反应」。
 
 登录失败统一返回 `UNAUTHENTICATED`，不区分"用户不存在"与"密码错误"。
 
@@ -47,7 +49,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
+| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`gameAccount.avatarUrl` 是 Steam/STRATZ 抓来的公开头像（没抓到为 `null`，玩家卡据此决定是否渲染头像）。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
 | PATCH | `/api/me` | `{displayName?, bio?, qqNumber?}` |
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
 | GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
