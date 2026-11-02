@@ -123,9 +123,11 @@ const winRate = computed(() =>
 );
 
 /**
- * 返回目标跟着"这是不是我自己"走：
- * 看自己的公开主页时，回「我的主页」比回排行榜顺手得多。
- * 用 session 判断而不是接口返回的 isSelf —— 后者要等加载完，会让按钮闪一下。
+ * 返回目标：**优先回上一页**（`<PageBack back>` 会读 history.state）。
+ * 这里的 `backLink` 只是兜底——站外直接打开 /players/:id（分享链接、新标签页）时，
+ * 历史里没有站内来源，才需要给个固定去处：
+ * 看自己的公开主页时回「我的主页」比回排行榜顺手，用 session 判断而不是接口的 isSelf，
+ * 后者要等加载完，会让按钮闪一下。
  */
 const backLink = computed(() =>
   session.me?.user.id === playerId.value
@@ -255,7 +257,8 @@ watch(playerId, async () => {
 
 <template>
   <div class="container">
-    <PageBack :to="backLink.to" :label="backLink.label" />
+    <!-- 从任何卡片/评论进来都回上一页；只有站外直接打开时才回落到 backLink -->
+    <PageBack back :to="backLink.to" :label="backLink.label" />
 
     <div v-if="loading" class="empty" style="display: flex; justify-content: center; padding: 40px">
       加载中…

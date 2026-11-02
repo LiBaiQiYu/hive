@@ -98,7 +98,8 @@ function duration(seconds: number | null): string {
     <div v-else-if="!match" class="empty">{{ error || '比赛不存在或还未发布' }}</div>
 
     <template v-else>
-      <PageBack :to="`/events/${match.eventId}`" :label="`返回${event?.title ?? '赛事'}`" />
+      <!-- 从赛事详情、玩家战绩、管理员赛事页都能进来：先回上一页，站外打开才回落到赛事 -->
+      <PageBack back :to="`/events/${match.eventId}`" :label="`返回${event?.title ?? '赛事'}`" />
 
       <section class="card">
         <div class="event-head">
