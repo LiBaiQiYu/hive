@@ -332,33 +332,6 @@
    —— 顶部概览条 + 玩家单元格 + 行内两个独立动作 + 展开式调整/历史面板
    ========================================================================== */
 
-.page-back {
-  margin-bottom: 6px;
-}
-
-.back-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px 3px 4px;
-  border-radius: 6px;
-  color: var(--muted);
-  font-size: 12.5px;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease;
-}
-
-.back-link svg {
-  width: 14px;
-  height: 14px;
-}
-
-.back-link:hover {
-  color: var(--gold-2);
-  background: rgba(201, 162, 39, 0.08);
-}
-
 .ratings-head {
   display: flex;
   align-items: flex-start;
@@ -790,10 +763,6 @@
 }
 
 /* ---------------------------------------------------------------- 浅色修正 */
-
-:root[data-theme='light'] .back-link:hover {
-  background: rgba(179, 38, 30, 0.06);
-}
 
 :root[data-theme='light'] .confidence-track {
   background: rgba(27, 32, 51, 0.1);

@@ -4,6 +4,7 @@ import { RouterLink, useRoute } from 'vue-router';
 import { NButton, NSpin } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { session } from '../lib/session';
+import PageBack from '../components/PageBack.vue';
 
 interface Member {
   id: string;
@@ -97,11 +98,7 @@ function duration(seconds: number | null): string {
     <div v-else-if="!match" class="empty">{{ error || '比赛不存在或还未发布' }}</div>
 
     <template v-else>
-      <div class="section-head">
-        <RouterLink :to="`/events/${match.eventId}`" class="muted" style="font-size: 13px">
-          ← {{ event?.title ?? '返回赛事' }}
-        </RouterLink>
-      </div>
+      <PageBack :to="`/events/${match.eventId}`" :label="`返回${event?.title ?? '赛事'}`" />
 
       <section class="card">
         <div class="event-head">

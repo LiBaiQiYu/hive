@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { NButton, NInput, NInputNumber, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
+import PageBack from '../components/PageBack.vue';
 import { ApiError, api } from '../lib/api';
 
 interface RatingRow {
@@ -185,21 +185,7 @@ function deltaClass(n: number | null): string {
 
 <template>
   <div class="container">
-    <div class="page-back">
-      <RouterLink to="/admin" class="back-link">
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path
-            d="M9.8 3.2 5 8l4.8 4.8"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
-        返回后台
-      </RouterLink>
-    </div>
+    <PageBack label="返回后台" />
 
     <header class="ratings-head">
       <div class="ratings-heading">

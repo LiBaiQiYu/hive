@@ -19,16 +19,26 @@ import { darkOverrides, lightOverrides } from './lib/ui';
 const route = useRoute();
 const router = useRouter();
 
+/** 版权年份跟着系统走，别每年手改一次 */
+const year = new Date().getFullYear();
+
 const naiveTheme = computed(() => (theme.value === 'dark' ? darkTheme : null));
 const overrides = computed(() => (theme.value === 'dark' ? darkOverrides : lightOverrides));
 
-/** 右上角用户菜单：路由跳转 + 退出，管理员多一项后台 */
+/**
+ * 右上角用户菜单：这里是"和账号有关"的入口，顶栏不放的东西都在这儿。
+ * 顶栏已经有「赛事」「我的」，所以不再重复赛事列表；
+ * 「管理后台」只对 ADMIN 出现（路由守卫另有一道，这里只是不让人看见）。
+ */
 const userMenu = computed(() => {
   const items: Array<Record<string, unknown>> = [
     { label: '我的主页', key: '/me' },
-    { label: '赛事列表', key: '/events' },
+    { label: '账号设置', key: '/settings' },
   ];
-  if (session.me?.user.role === 'ADMIN') items.push({ label: '管理后台', key: '/admin' });
+  if (session.me?.user.role === 'ADMIN') {
+    items.push({ type: 'divider', key: 'divider-admin' });
+    items.push({ label: '管理后台', key: '/admin' });
+  }
   items.push({ type: 'divider', key: 'divider' });
   items.push({ label: '退出登录', key: 'logout' });
   return items;
@@ -86,7 +96,11 @@ async function onMenuSelect(key: string) {
                 >
                   战绩
                 </RouterLink>
-                <RouterLink to="/me" class="nav-link" :class="{ active: route.path === '/me' }">
+                <RouterLink
+                  to="/me"
+                  class="nav-link"
+                  :class="{ active: route.path === '/me' || route.path === '/settings' }"
+                >
                   我的
                 </RouterLink>
                 <RouterLink
@@ -147,6 +161,24 @@ async function onMenuSelect(key: string) {
                   @select="onMenuSelect"
                 >
                   <NButton quaternary class="user-chip">
+                    <!-- 窄屏会把用户名收起来，留这个图标当"账号菜单"的锚点 -->
+                    <svg class="user-icon" viewBox="0 0 16 16" aria-hidden="true">
+                      <circle
+                        cx="8"
+                        cy="5.4"
+                        r="2.9"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                      />
+                      <path
+                        d="M2.6 14c.5-2.7 2.7-4.3 5.4-4.3s4.9 1.6 5.4 4.3"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                      />
+                    </svg>
                     <span class="user-name">{{ session.me.user.displayName }}</span>
                     <svg class="user-caret" viewBox="0 0 12 12" aria-hidden="true">
                       <path
@@ -174,7 +206,43 @@ async function onMenuSelect(key: string) {
             </RouterView>
           </main>
 
-          <footer class="footer">HIVE · SAME GAME, BETTER COMMUNITY</footer>
+          <footer class="footer">
+            <div class="container">
+              <div class="footer-main">
+                <div class="footer-brand">
+                  <BrandLogo :height="22" />
+                  <span class="footer-tag">Same game, better community</span>
+                </div>
+
+                <div class="footer-dev">
+                  <span class="footer-dev-label">开发者</span>
+                  <a
+                    class="footer-link"
+                    href="https://cwa1e.top"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    CarlosWhite_A1E
+                    <span class="footer-ext" aria-hidden="true">↗</span>
+                  </a>
+                  <a
+                    class="footer-link footer-link-sub"
+                    href="https://cwa1e.top"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    cwa1e.top
+                  </a>
+                </div>
+              </div>
+
+              <div class="footer-bottom">
+                <span>© {{ year }} HIVE</span>
+                <span class="footer-dot" aria-hidden="true">·</span>
+                <span>群内自用，非官方项目，与 Valve 无关</span>
+              </div>
+            </div>
+          </footer>
         </div>
       </NDialogProvider>
     </NMessageProvider>

@@ -1,16 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { computed, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api } from '../lib/api';
 import { loadMe } from '../lib/session';
 
+const route = useRoute();
 const router = useRouter();
 const mode = ref<'login' | 'register'>('login');
 const submitting = ref(false);
 const error = ref('');
 const message = useMessage();
+
+/**
+ * 登录后回跳（比如被守卫从 /settings 带来的）。
+ * 只接受站内绝对路径，否则 ?redirect=https://evil 就成了开放重定向。
+ */
+const redirectTo = computed(() => {
+  const raw = route.query.redirect;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//') ? value : '';
+});
 
 const loginForm = ref({ identifier: '', password: '' });
 const registerForm = ref({
@@ -28,7 +39,7 @@ async function submitLogin() {
     await api('/auth/login', { method: 'POST', body: loginForm.value });
     await loadMe();
     message.success('登录成功');
-    void router.push('/');
+    void router.replace(redirectTo.value || '/');
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '登录失败';
   } finally {
@@ -43,7 +54,7 @@ async function submitRegister() {
     await api('/auth/register', { method: 'POST', body: registerForm.value });
     await loadMe();
     message.success('账号已创建，欢迎加入');
-    void router.push('/events');
+    void router.replace(redirectTo.value || '/events');
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '注册失败';
   } finally {

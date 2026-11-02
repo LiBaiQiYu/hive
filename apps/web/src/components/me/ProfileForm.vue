@@ -1,0 +1,117 @@
+<script setup lang="ts">
+/**
+ * 个人资料表单（账号设置页）。
+ *
+ * 从「我的」拆出来的理由：显示名 / QQ / 简介是半年动一次的东西，
+ * 和评分、卡面那种"改了立刻看到效果"的日常操作不该挤在同一页。
+ * 显示名和简介会出现在玩家卡上，所以保存后要 loadMe 让全站拿到新值。
+ */
+import { ref, watch } from 'vue';
+import { NButton, NInput, useMessage } from 'naive-ui';
+import HelpTip from '../HelpTip.vue';
+import { ApiError, api } from '../../lib/api';
+import { loadMe, session } from '../../lib/session';
+
+const message = useMessage();
+
+const profile = ref({ displayName: '', bio: '', qqNumber: '' });
+const profileSaving = ref(false);
+const profileError = ref('');
+const profileSaved = ref(false);
+
+function fillProfile() {
+  const user = session.me?.user;
+  profile.value = {
+    displayName: user?.displayName ?? '',
+    bio: user?.bio ?? '',
+    qqNumber: user?.qqNumber ?? '',
+  };
+}
+
+watch(() => session.me?.user, fillProfile, { deep: true, immediate: true });
+
+async function saveProfile() {
+  profileSaving.value = true;
+  profileError.value = '';
+  profileSaved.value = false;
+  try {
+    await api('/me', {
+      method: 'PATCH',
+      body: {
+        displayName: profile.value.displayName,
+        bio: profile.value.bio || null,
+        qqNumber: profile.value.qqNumber || null,
+      },
+    });
+    await loadMe();
+    profileSaved.value = true;
+    message.success('资料已保存');
+  } catch (err) {
+    profileError.value = err instanceof ApiError ? err.message : '保存失败';
+  } finally {
+    profileSaving.value = false;
+  }
+}
+</script>
+
+<template>
+  <section class="card section">
+    <h2 class="card-title">
+      个人资料
+      <HelpTip
+        title="哪些能改？"
+        :steps="[
+          '① 显示名、QQ、简介随时可以改',
+          '② 用户名不可修改——它是登录凭据',
+          '③ 评分与段位由系统和管理员维护，不接受自行填写',
+        ]"
+      />
+    </h2>
+
+    <div class="id-row">
+      <span class="stat-label">用户名</span>
+      <span class="mono">
+        @{{ session.me?.user.username }}
+        <span class="muted" style="font-size: 11px">· 登录凭据，不可修改</span>
+      </span>
+    </div>
+
+    <div
+      class="grid"
+      style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 16px"
+    >
+      <label class="field" style="margin: 0">
+        <span class="field-label">显示名</span>
+        <NInput v-model:value="profile.displayName" :maxlength="32" size="medium" />
+      </label>
+      <label class="field" style="margin: 0">
+        <span class="field-label">QQ（选填，仅管理员可见）</span>
+        <NInput
+          v-model:value="profile.qqNumber"
+          :maxlength="12"
+          placeholder="例如 123456789"
+          size="medium"
+        />
+      </label>
+    </div>
+
+    <label class="field" style="margin: 14px 0 0">
+      <span class="field-label">简介</span>
+      <NInput
+        v-model:value="profile.bio"
+        :maxlength="280"
+        placeholder="一句话介绍你的打法，会显示在玩家档案上"
+        size="medium"
+      />
+    </label>
+
+    <p v-if="profileError" class="alert" style="margin-top: 14px">{{ profileError }}</p>
+    <p v-if="profileSaved" class="muted" style="margin-top: 14px">资料已保存。</p>
+
+    <div style="margin-top: 16px; display: flex; align-items: center; gap: 14px">
+      <NButton type="primary" :disabled="profileSaving" :loading="profileSaving" @click="saveProfile">
+        {{ profileSaving ? '保存中…' : '保存资料' }}
+      </NButton>
+    </div>
+  </section>
+</template>

@@ -31,6 +31,49 @@
   height: auto;
 }
 
+/* ---------------------------------------------------------------- 二级页返回 */
+
+/* 后台子页和「账号设置」共用的左上角返回。位置和样式只在这里定义，
+   页面里一律写 <PageBack />，别再手搓 RouterLink + 内联 font-size。 */
+.page-back {
+  margin-bottom: 6px;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 4px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.back-link svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 返回目标偶尔带赛事名（比赛详情页），太长就省略，别把标题行顶开 */
+.back-label {
+  max-width: 44vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.back-link:hover {
+  color: var(--gold-2);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+:root[data-theme='light'] .back-link:hover {
+  background: rgba(179, 38, 30, 0.06);
+}
+
 /* ---------------------------------------------------------------- 顶栏 */
 
 /* 主题切换：一个圆按钮里叠两个图标，切换时交叉旋转淡出淡入 */
@@ -100,6 +143,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 窄屏（styles.css 里 .user-name 被收起）时用这个图标表示"这里是账号菜单"。
+   不然下拉触发器只剩一个 11px 的小箭头，没人知道能点。 */
+.user-icon {
+  display: none;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  opacity: 0.8;
+}
+
+@media (max-width: 560px) {
+  .user-icon {
+    display: block;
+  }
 }
 
 .user-caret {

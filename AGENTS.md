@@ -28,7 +28,9 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         `NConfigProvider` 挂了 `zhCN` + `dateZhCN`；日期选择器要「只到分钟」就传 `time-picker-format="HH:mm"`
         —— Naive 的时/分/秒列是按 `format` 推导的，不需要（也没有）`showSecond` 这类开关
         按钮统一用 `NButton`：默认态=描边、`type="primary"`=主行动、表格行内小动作才用 `quaternary`
-        顶栏：主题切换是单图标圆按钮（日月交叉旋转），用户名是 `NDropdown`（我的主页/赛事/后台/退出）
+        顶栏：主题切换是单图标圆按钮（日月交叉旋转），用户名是 `NDropdown`（我的主页 / 账号设置 / 后台 / 退出）
+        「我的主页」`/me` 只放档案四块（评分 / 游戏身份 / 卡片外观 / 位置偏好），组件在 `components/me/`；
+        资料与密码在「账号设置」`/settings`，只从下拉进入，带登录守卫（未登录跳 `/login?redirect=`）
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
         steam_id64 76561198659699463 / dota 699433735）；填上 STEAM_WEB_API_KEY 才有昵称头像
 未做    OpenDota 对局导入（**明确不做**：用户决定"赛后手工选胜负方"就够了，KDA 不展示）
@@ -44,9 +46,10 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
+pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
 ```
 
-交付前四条必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`
+交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`，改过鉴权/接口再补一条 `pnpm sec:check`。
 
 ## 已经踩过的坑（别再踩）
 

@@ -111,6 +111,8 @@ export interface Me {
     bio?: string | null;
     qqNumber?: string | null;
     role: 'PLAYER' | 'ADMIN';
+    /** 注册时间（秒级时间戳），账号设置页用来展示"注册于" */
+    createdAt?: number;
   };
   rating: Rating | null;
   /** 玩家自己选的卡片外观（材质 / 边框 / 特效） */

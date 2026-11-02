@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { NButton, NDatePicker, NInput, NInputNumber, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
+import PageBack from '../components/PageBack.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 
 interface InviteCode {
@@ -108,9 +108,7 @@ function statusOf(code: InviteCode): { text: string; tag: string } {
 
 <template>
   <div class="container">
-    <div class="section-head">
-      <RouterLink to="/admin" class="muted" style="font-size: 13px">← 返回后台</RouterLink>
-    </div>
+    <PageBack label="返回后台" />
 
     <div class="section-head">
       <h1 class="section-title">邀请码</h1>

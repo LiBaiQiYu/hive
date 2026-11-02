@@ -25,7 +25,8 @@
 
 ## 2. 信息架构与路由
 
-导航只有五项：**首页 / 赛事 / 排行榜 / 战绩 / 社区**。后台独立壳（同一 Worker 下 `/admin/*`）。
+导航只有五项：**首页 / 赛事 / 排行榜 / 战绩 / 我的**。账号类入口收进右上角用户名下拉：
+**我的主页 / 账号设置 / 管理后台（仅 ADMIN 可见）/ 退出登录**。后台独立壳（同一 Worker 下 `/admin/*`）。
 
 | 路由 | 页面 | 权限 | 主要接口 |
 | --- | --- | --- | --- |
@@ -37,7 +38,8 @@
 | `/records` | 战绩（Tab：全站 / 我的） | 公开 / 登录 | `GET /api/matches`、`GET /api/me/matches` |
 | `/community` | 社区（**V1 只做玩家目录**） | 公开 | `GET /api/players?query=&position=` |
 | `/players/:id` | 玩家档案 | 公开 | `GET /api/players/:id` |
-| `/me` | 我的（档案 / 位置 / Steam / 安全） | 登录 | `GET /api/me`、`PATCH /api/me`、`PUT /api/me/positions` |
+| `/me` | 我的主页（评分 / 游戏身份 / 卡片外观 / 位置偏好） | 登录（页面自己提示） | `GET /api/me`、`GET /api/me/rating-history`、`PUT /api/me/positions`、`PUT /api/me/card-skin`、`PUT /api/me/rank`、`POST /api/me/game-account/claim` |
+| `/settings` | 账号设置（个人资料 / 账号安全，`#profile` `#security`） | 登录（未登录跳 `/login?redirect=`） | `PATCH /api/me`、`POST /api/auth/password` |
 | `/login` `/register` | 登录 / 邀请码注册 | 公开 | `POST /api/auth/*` |
 | `/admin` | 仪表盘 | 管理员 | `GET /api/admin/dashboard` |
 | `/admin/events` `/registrations` `/grouping` `/players` `/ratings` `/sync` `/audit` `/invites` | 后台七页 | 管理员 | 见 [API.md](API.md) |
@@ -45,10 +47,34 @@
 后台侧栏九项与接口的对应：仪表盘 / 赛事管理 / 报名管理 / 智能分组 / 玩家管理 / 评分管理 / 数据同步 / 操作日志 / **系统设置**。
 **系统设置 V1.0 不实现**（没有需要运营调的东西：修正上限、迭代次数都是 env）。侧栏该位置直接去掉，避免点进去是空页。
 
+### 2.1 为什么「我的主页」和「账号设置」分成两页
+
+拆分的依据是**改动频率**和**改错后果**，不是功能分类：
+
+| | 我的主页 `/me` | 账号设置 `/settings` |
+| --- | --- | --- |
+| 内容 | 评分、游戏身份、卡片外观、位置偏好 | 显示名 / QQ / 简介、密码 |
+| 频率 | 每场打完都可能来看一眼、点两下 | 半年动一次 |
+| 心态 | 改错了不心疼（卡面点一下即生效） | 改错了要吃亏（登录凭据） |
+| 编辑方式 | 点击即保存 / 就地保存 | 填完按「保存」 |
+
+混在一页时，换一张卡面要滚过三个密码框；密码框和卡面挤在同一屏，也容易让"我只是想看看"变成误触。
+
+几条边界：
+
+- **评分、段位、位置偏好不接受玩家自己填**（评分归算法和管理员，段位来自 Steam/OpenDota 或由服务端按天梯分折算），所以它们属于"档案展示"，不是"设置项"。
+- **游戏身份的只读信息和写操作分开**：徽章、DOTA ID、游戏昵称、段位常驻展示；绑定 / 重新认证 / 解绑 / 数字 ID 拉取 / 手动段位都收进「管理身份」折叠区。没验证过时默认展开——新用户第一件事就是绑 Steam 或填段位，藏起来等于没有。
+- **位置偏好不做防抖自动保存**：志愿必须从第 1 志愿连续填写，中途状态（把 1 号位改成「不打」、2 号位还没提上来）是非法数据，自动提交只会把半成品写进库；改成显式保存 + 「有未保存的改动」标记 + 离开页面时确认。
+- **`/settings` 走登录守卫**（游客进来什么也做不了，跳 `/login?redirect=` 并回跳），`/me` 不守卫（未登录时页面自己显示「请先登录」，跳走反而突兀）。
+
+> 待办：`/community` 玩家目录和 `/players/:id` 公开档案还没做。做完之后 `/me` 的只读部分可以抽成 `PlayerProfile` 复用——
+> 现在"我的主页"只有自己能看，缺了"别人眼里的我"这一半对照。
+
 ## 3. 组件清单（按复用度排序）
 
 | 组件 | 出现位置 | 关键约束 |
 | --- | --- | --- |
+| `PageBack` | 后台各子页、账号设置、赛事详情、比赛详情 | 统一放**标题上方左侧**（`.page-back` + `.back-link`，见 styles-ui.css）；文案「返回 + 目的地」。别再手写 `← xxx` 的内联链接——三种样式两种位置就是这么来的 |
 | `StatusPill` | 赛事卡、详情、列表 | `event.status` → 文案/颜色映射见 §4；`VOID/CANCELLED` 必须是灰色而非红色，避免"大家都在犯错"的错觉 |
 | `EventCard` | 首页、赛事列表、详情侧栏 | 三种 CTA 态：立即报名 / 加入候补 / 查看详情；`DRAFT` 状态对普通玩家不可见 |
 | `StatCard` | 首页四宫格、后台四宫格 | 数字等宽；`null` 显示 `—` 而不是 `0`（"0 场比赛"和"没数据"是两件事） |
@@ -247,27 +273,30 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
 ## 10. 玩家卡片皮肤（材质 / 边框）
 
 玩家卡不是固定皮肤：每个账号在「我的 → 卡片外观」里自选材质 + 边框，报名名单里所有人看到的就是他自己选的那套。
-两个维度是**正交**的，一共 6 × 8 = 48 种组合。
+两个基础维度是**正交**的，一共 7 × 8 = 56 种组合；发丝线 / 双线另外各带 8 种颜色 × 3 种光效。
 
 | 维度 | 取值 | 负责什么 |
 | --- | --- | --- |
-| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 | 底色、纹理、字色（正文、次要文字、强调色三个令牌一起给）；`gold` / `pixel` / `psi` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts`），随倾斜重绘 |
-| `frame` 边框 | `hairline` 发丝线 / `none` 无边 / `double` 双线 / `corners` 四角 / `bevel` 浮雕 / `frost` 霜线 / `spark` 电光 / `arc` 雷纹 | 前三档纯 CSS；`frost`/`spark`/`arc` 是**逐帧动画 WebP**（透明底，480×398 ≈ 卡片 2x，`background-size: 100% 100%`，卡片换尺寸也不错位），由 `apps/web/scripts/make_border_anims.py` 生成 |
+| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 | 底色、纹理、**整套字色**（正文 / 次要 / 强调 / 语义色）；`gold` / `pixel` / `psi` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts`），随倾斜重绘 |
+| `frame` 边框 | `hairline` 发丝线 / `none` 无边 / `double` 双线 / `corners` 四角 / `bevel` 浮雕 / `frost` 霜线 / `spark` 电光 / `arc` 雷纹 | `none` / `bevel` 是静态 CSS；`corners`/`frost`/`spark` 走 **GPU 合成**（`components/CardFrameFX.vue` + `styles-frame-fx.css`，只动 transform / opacity）；`arc` 仍是逐帧动画 WebP（480×398，`apps/web/scripts/make_border_anims.py` 生成） |
+| `frameColor` 颜色 | `auto` 跟随材质 / `gold` 鎏金 / `ice` 霜蓝 / `cyan` 电青 / `violet` 灵紫 / `rose` 霓虹 / `emerald` 翡翠 / `rainbow` 流动彩色 | **只对发丝线 / 双线生效**；`auto` 吃材质自己的 `--skin-border`，其他值覆盖描边与光晕，`rainbow` 是旋转的 conic-gradient |
+| `frameEffect` 光效 | `steady` 常亮 / `breathe` 呼吸 / `blink` 闪烁 | 只对发丝线 / 双线生效；只动整层 `opacity`。`rainbow` 自带色相旋转，光效叠加在它上面 |
 
-> 特效（流光 / 星尘 / 扫描 / 呼吸）已整条下线（迁移 0007 删 `users.card_effect`）：卡片不再输出 `data-effect`，选择器里也没有这一栏。
+> 旧的全局特效（流光 / 星尘 / 扫描 / 呼吸，`users.card_effect`）已在迁移 0007 整条下线；现在的 `frameColor` / `frameEffect` 是**边框配色**，不是当年那套全卡特效，迁移 0009 只加两列，不恢复 `card_effect`。
 
 实现约定：
 
-1. **组件不认识皮肤**。`PlayerCard` 只输出 `data-material` / `data-frame` 两个属性，样式全在 `styles-skins.css` 里换 CSS 变量（`--skin-bg` `--skin-text` `--skin-accent` `--skin-muted` `--skin-divider` `--skin-radius` `--skin-shadow` `--skin-tex` `--skin-tex-size` `--skin-tex-repeat` …）。
+1. **组件不认识皮肤**。`PlayerCard` 只输出 `data-material` / `data-frame` 两个属性，样式全在 `styles-skins.css` 里换 CSS 变量（`--skin-bg` `--skin-text` `--skin-muted` `--skin-accent` `--skin-accent-2` `--skin-ok` `--skin-warn` `--skin-info` `--skin-idle` `--skin-body-shadow` `--skin-divider` `--skin-radius` `--skin-shadow` `--skin-tex` `--skin-tex-size` `--skin-tex-repeat` …）。
 2. **两种材质用生成的 SVG 贴图**：`apps/web/src/assets/card-sparkle.svg`（碎钻晶面 + 星点）与 `card-gold.svg`（流动金箔）。CSS 渐变再做不出参考图里的不规则碎面，就用固定种子的脚本生成后当成静态资源提交；改纹理只需要重跑生成脚本。其余材质仍是纯 CSS 渐变。
 3. **材质自带配色，不随主题翻转**。金卡在浅色主题下仍然是金卡；`basic` 与 `acrylic` 才跟随深浅主题各写一套。因此**不要**在 `:root[data-theme='light'] .pcard` 上写 `--skin-frame-bg` 这类材质令牌——那会给深色材质糊一层白雾（踩过）。
-4. **语义色要单独照顾亮色材质**：`sparkle` / `holo` / `gold` 上的 `badge-*` 与"正选/候补"会压深一档，否则浅底绿字看不清。
+4. **换材质 = 换整套文字配色**：每个材质在自己的块里给全 `--skin-text` / `--skin-muted` / `--skin-accent*`，以及 `--skin-ok`（正选 / 已认证）/ `--skin-warn`（候补）/ `--skin-info` / `--skin-idle` 四个语义色。徽章底色用 `color-mix(in srgb, currentColor 16%, transparent)` 从当前文字色兑出来，所以**不要**再写 `[data-material='xxx'] .badge-ok { color: … }` 这种逐材质的补丁——亮材质压深、暗材质提亮，全部在材质块里一次给完。笔画比较花的底（亚克力 / 全息 / 灵能）再加一层 `--skin-body-shadow` 描边。
 5. **视差层（闪耀 / 全息 / 金色）**：`PlayerCard` 额外渲染一个 `.pcard-depth`，材质在里面用 `::before` / `::after` 再画 1~2 层同款图案，位移量取自指针归一化值 `--px` / `--py`（-1..1），每层方向和幅度不同（如闪耀：晶面层 −18px、星点层 +30px）。卡片倾斜时图案之间互相错位，就有了"图案有厚度"的错觉；指针离开即归位。
    - 全息的微晶切面是**程序化渲染**的：`apps/web/src/lib/holo.ts` 里每个三角面带一个扰动法线，用半程向量算镜面强度、用倾斜量 + 法线朝向算衍射色相，canvas 逐帧重画；所以倾斜时颜色真的从蓝紫滑到黄绿（同一张贴纸在不同角度的照片就是这样），不是贴图平移。色相同时写回 `--foil-hue`，金属外框跟着一起变色。
    - 全息是五层结构（`HolographicSticker`）：深色金属底板 / 虹彩薄膜 / 微晶切面 / 金属外框 / 透明树脂。切面与高光带按 `--px` / `--py` 以不同幅度位移。
    - 金色的"反光"是两道错速滑动的镜面亮带（亮带紧跟一条暗带）+ 跟着指针的聚光 + 底边压暗，配上错位的金箔副本才有折射感。
    - 注意：`.pcard-depth` 带 `transform`，自成层叠上下文，**不要在它的伪元素上用 `mix-blend-mode`**（只会和透明底混合，等于白写）；`will-change` 也只在 `.is-active` 时挂，避免名单页十几张卡常驻合成层。
-6. **边框动画图**：`frost`/`spark`/`arc` 由 `apps/web/scripts/make_border_anims.py` 生成（480×398 透明 WebP，循环 1s/5s/1s）。`prefers-reduced-motion` 下退回静态描边，不加载动画帧。
+6. **边框动效分三套**：`corners` / `frost` / `spark` 是 `components/CardFrameFX.vue` 的 CSS 图层，动画只用 transform / opacity（合成器逐帧插值，不重绘），配色读材质的 `--skin-*`；四角是四个镜像的角标（两条臂 + 沿臂巡游的光点 + 依次点亮的角光 + 角尖星点）。`hairline` / `double` 只要颜色 / 光效不是 `auto` + `steady`，就挂 `components/CardLineFX.vue`（发丝线 1px、双线 2px+1px 描边；流动彩色走 1px 遮罩环里的旋转 conic-gradient，呼吸 / 闪烁只动整层 opacity），同时把 `--skin-border-width` 归零、原生边框透明，避免出现两条描边。只有 `arc` 还是 `apps/web/scripts/make_border_anims.py` 生成的逐帧 WebP。`prefers-reduced-motion` 下三套都退回静态描边 / 静态角标，不播动画。
+   - 只有 `hairline` / `double` 会在边框分组下面出现「颜色与光效」入口；点开是 `NModal` 弹窗，选色不离开弹窗，左侧卡片实时预览，`MePage` 的 350ms 防抖负责自动保存。
 7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
    `packages/api/src/card-skin.test.ts` 会比对迁移 SQL 与 shared 清单，漏改一侧直接红。
-8. **存储**：`users.card_material / card_frame`，两个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame }`，整份提交，不写审计、不重算评分、不冻快照。
+8. **存储**：`users.card_material / card_frame / card_frame_color / card_frame_effect`，四个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame, frameColor, frameEffect }`，整份提交，不写审计、不重算评分、不冻快照。老客户端只传前两个字段时，服务端按 `auto` + `steady` 补齐。

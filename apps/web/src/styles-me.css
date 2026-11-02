@@ -1,7 +1,16 @@
 /* 我的页：评分展示与位置编辑器 */
 
+/* 我的主页两栏：固定两列。
+   auto-fit 在 1180 的容器里能塞下第三列，两张卡就被挤到左边 2/3、右边空一大块
+   （.grid-3 踩过同一个坑）。窄屏再降到一列。 */
 .grid-2 {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .rating-hero {
@@ -293,4 +302,196 @@
   .pos-select {
     justify-self: end;
   }
+}
+
+/* ---------------------------------------------------------------- 我的主页头部 */
+
+/* 标题和「编辑资料」在窄屏会挤在一起，允许换行 */
+.me-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.me-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ---------------------------------------------------------------- 游戏身份 */
+
+/* 结论行：徽章在左，段位在右 —— 和左边评分卡「先给结论」的节奏对齐 */
+.identity-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 6px 0 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.identity-rank {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.identity-rank-value {
+  font-family: var(--display);
+  font-size: 24px;
+  line-height: 1.15;
+  color: var(--gold-2);
+  white-space: nowrap;
+}
+
+/* 还没采到段位时用琥珀色提醒，而不是把"未采集"也染成金色 */
+.identity-rank-empty {
+  color: var(--amber);
+  font-size: 18px;
+}
+
+.identity-rank-src {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* 三个来源用分段控件切换，比三块堆叠省一半高度 */
+.identity-tabs {
+  margin-top: 2px;
+}
+
+.identity-hint {
+  margin: 2px 0 12px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.identity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* 数字 ID：输入框吃掉剩余宽度，按钮不换行 */
+.identity-claim {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.identity-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 手填被锁：用琥珀色说明条，而不是把控件置灰了事——要说清"为什么"和"怎么办" */
+.identity-lock {
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(234, 176, 60, 0.34);
+  border-radius: 8px;
+  background: rgba(234, 176, 60, 0.08);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+:root[data-theme='light'] .identity-lock {
+  border-color: rgba(168, 98, 10, 0.28);
+  background: rgba(168, 98, 10, 0.07);
+}
+
+@media (max-width: 560px) {
+  /* 窄屏一行放不下「徽章 + 段位」，硬挤会贴在一起：改成上下两段 */
+  .identity-state {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .identity-rank {
+    align-items: flex-start;
+  }
+
+  .identity-claim {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .identity-claim .n-button {
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------- 账号设置页 */
+
+.settings-jump {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.settings-jump a {
+  padding: 5px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.settings-jump a:hover {
+  color: var(--gold-2);
+  border-color: var(--line-strong);
+}
+
+/* 吸顶导航会盖住锚点的第一行，给个上边距（原生锚点跳转也走这条） */
+#profile,
+#security {
+  scroll-margin-top: 84px;
+}
+
+.settings-note {
+  margin-top: 26px;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.settings-note a {
+  color: var(--gold-2);
+}
+
+/* 账号信息：用户名 / 身份 / 注册时间，只读 */
+.account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+  margin-top: 22px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+  font-size: 12px;
+}
+
+.account-meta > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* 位置偏好：有改动但还没保存 */
+.pos-dirty {
+  font-size: 12px;
+  color: var(--amber);
 }

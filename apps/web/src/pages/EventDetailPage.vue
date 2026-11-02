@@ -6,6 +6,7 @@ import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/
 import { session } from '../lib/session';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import HelpTip from '../components/HelpTip.vue';
+import PageBack from '../components/PageBack.vue';
 
 interface Registration {
   id: string;
@@ -134,9 +135,7 @@ async function withdraw() {
 
 <template>
   <div class="container">
-    <div class="section-head">
-      <RouterLink to="/events" class="muted" style="font-size: 13px">← 赛事列表</RouterLink>
-    </div>
+    <PageBack to="/events" label="返回赛事列表" />
 
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!event" class="empty">{{ error || '赛事不存在' }}</div>

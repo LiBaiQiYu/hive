@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
 import { NButton, useMessage } from 'naive-ui';
+import PageBack from '../components/PageBack.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 
 interface JobRow {
@@ -77,9 +77,7 @@ const statusTag = (status: string) => {
 
 <template>
   <div class="container">
-    <div class="section-head">
-      <RouterLink to="/admin" class="muted" style="font-size: 13px">← 返回后台</RouterLink>
-    </div>
+    <PageBack label="返回后台" />
 
     <div class="section-head">
       <h1 class="section-title">队列健康</h1>

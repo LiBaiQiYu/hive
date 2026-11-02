@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
+import { useRoute } from 'vue-router';
 import {
   NButton,
   NDatePicker,
@@ -13,6 +13,7 @@ import {
 } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import HelpTip from '../components/HelpTip.vue';
+import PageBack from '../components/PageBack.vue';
 
 interface RegRow {
   id: string;
@@ -517,9 +518,7 @@ const statusPill = (status: string) => {
 
 <template>
   <div class="container">
-    <div class="section-head">
-      <RouterLink to="/admin" class="muted" style="font-size: 13px">← 返回后台</RouterLink>
-    </div>
+    <PageBack label="返回后台" />
 
     <div v-if="loading" class="empty">加载中…</div>
     <div v-else-if="!event" class="empty">{{ error || '赛事不存在' }}</div>
