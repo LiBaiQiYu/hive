@@ -99,6 +99,9 @@ authRoutes.post('/register', async (c) => {
         role: 'PLAYER',
         status: 'ACTIVE',
         inviteCodeId: code.id,
+        // 注册即登录：不写这一列的话，后台「最近登录」对刚注册的人是「从未」——
+        // 因为 last_login_at 只在 POST /auth/login 里更新，而注册后没人会立刻再登一次。
+        lastLoginAt: now,
         createdAt: now,
         updatedAt: now,
       }),

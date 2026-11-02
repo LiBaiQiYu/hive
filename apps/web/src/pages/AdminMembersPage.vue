@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { NButton, NPopconfirm, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
 import { ApiError, api, formatDate } from '../lib/api';
+import { rankLabel } from '../lib/rank';
 import { session } from '../lib/session';
 
 interface MemberRow {
@@ -15,9 +16,22 @@ interface MemberRow {
   createdAt: number;
   lastLoginAt: number | null;
   effective: number;
+  /** 段位编码（勋章×10+星级）；null = 没采集到 */
+  rankTier: number | null;
+  /** 自己申报的天梯分；同步到权威段位后会被清空 */
+  declaredMmr: number | null;
+  rankSource: string | null;
   registrations: number;
   appearances: number;
 }
+
+/** 段位从哪来：管理员看这张表时要能立刻判断可信度 */
+const SOURCE_LABEL: Record<string, string> = {
+  OPENDOTA: '同步',
+  STRATZ: '同步',
+  SELF_REPORTED: '自报',
+  ADMIN_SET: '管理员',
+};
 
 const users = ref<MemberRow[]>([]);
 const loading = ref(true);
@@ -80,6 +94,8 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
         <thead>
           <tr>
             <th>成员</th>
+            <th>段位</th>
+            <th class="num">天梯分</th>
             <th class="num">评分</th>
             <th class="num">报名</th>
             <th class="num">出场</th>
@@ -94,6 +110,16 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
               <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ user.username }}</span>
               <span v-if="user.id === meId" class="tag tag-other" style="margin-left: 6px">我</span>
             </td>
+            <td class="mono" style="white-space: nowrap">
+              <template v-if="user.rankTier">
+                {{ rankLabel(user.rankTier) }}
+                <span v-if="SOURCE_LABEL[user.rankSource ?? '']" class="muted" style="font-size: 11px; margin-left: 5px">
+                  {{ SOURCE_LABEL[user.rankSource ?? ''] }}
+                </span>
+              </template>
+              <span v-else class="muted" style="font-size: 12px">未采集</span>
+            </td>
+            <td class="num mono">{{ user.declaredMmr ?? '—' }}</td>
             <td class="num mono">{{ user.effective }}</td>
             <td class="num mono">{{ user.registrations }}</td>
             <td class="num mono">{{ user.appearances }}</td>
