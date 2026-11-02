@@ -170,6 +170,8 @@ confidence = 基础置信度 × 可信度系数
 
 - 冒领他人 ID：`ux_game_accounts_dota_account_id` 唯一索引保证一个 account_id 只能被一个 HIVE 账号占用；但无法阻止"第一个冒领职业选手的人"——这正是徽章存在的理由。
 - 谎报段位：徽章是灰的，分组编辑器同队可见。在 15 人的社区里，社交压力比技术校验有效得多。
+- **数字 ID 是公开的**：绑定 / 声明过的 `dota_account_id` 会随报名名单（`GET /api/events/:id/registrations`）一起发给所有看得到名单的人，卡片上渲染成 `DOTA2 <id> ↗` 直链 OpenDota。这是"归属未验证"的人唯一能被外部核对的凭据——旁观者可以拿它去 OpenDota / Dotabuff / STRATZ 比对该账号公开的段位与战绩。
+- **只有公开数据才有效**：这些核对都依赖对方在 Dota2 里开启「公开比赛数据」。没开时 OpenDota 抓不到段位，徽章停在「自报」；声明 ID 也**不会**覆盖玩家手填的段位（`POST /api/me/game-account/claim` 在 `rank_tier` 为空时只更新场次）。所以一张卡上"ID 有值 + 徽章是自报"是正常状态，不矛盾。
 - 升级路径（P2）：要求玩家在游戏内个人签名里写入一次性 token，再由 OpenDota 的 `personaname`/profile 侧证，可在不暴露 Steam 密码的前提下证明归属。
 
 ## 6. 实力评分（WARROOM Rating）
@@ -177,28 +179,28 @@ confidence = 基础置信度 × 可信度系数
 三层结构与"快照冻结"规则见 [DATABASE.md §4.1–4.2](DATABASE.md)。这里只讲算法。
 
 ```
-system_rating = clamp(round(
-    900 × 段位分          # rank_tier 或自报 MMR，映射到 0..1（8000 以上封顶）
-  + 100 × 出勤分          # 实际出场 / 报名场次；无报名记录按满分
-), 0, 1000)
-
-# 收缩只看天梯样本，避免"手填一个段位就封神"
-confidence = min(1, career_matches / 300)
-system_rating = round(500 + (system_rating - 500) × max(confidence, 0.15))
+system_rating = clamp(round(estimated_mmr / 10), 0, 1000)
+# estimated_mmr = 自报 MMR（SELF_REPORTED）或勋章/星级估算；
+# 两者都没有 → 500 中性值（不是 0，避免把"没填资料"当成菜）
+attendance_bp = round(played / registered × 10000)    # 无报名记录 → NULL
 effective_rating = clamp(system_rating + admin_adjustment, 0, 1000)
 
-# 管理员修正的实际上限随置信度放宽，保证"新玩家/隐私局玩家"仍能被摆到正确位置
+# 置信度只用于"展示的不确定度 / 管理员修正上限"，不收缩实力分
+confidence = min(1, career_matches / 300)
 admin_adjustment_limit = ADMIN_ADJUSTMENT_LIMIT + round(350 × (1 - confidence))   # 150 → 500
+
+# 候补顺序（只作用于 WAITLIST，不影响正选与分队）
+sort_key = (attendance_bp ?? 5000) DESC → effective_rating_snapshot DESC → created_at ASC → id ASC
 ```
 
 设计取舍：
 
-- **样本量主要来自 OpenDota，不来自社区赛。** 每月 8 场、15 人，摊下来每人每月不到 1 场；若拿社区赛样本做收缩，所有人会长期贴着 500，评分系统等于没有。`career_matches` 是天梯/普通局累计场次，量级完全不同。
-- **收缩阈值 `/40` 改为 `/300`**（职业局口径），社区赛按 ×5 折算。天梯打了 800 场的玩家置信度直接到 1，只有新号才会被拉向 500。
-- **社区表现用 Beta 先验平滑**：`(社区胜场 + 2) / (社区场次 + 4)`，2:0 不会把人推上神坛，0:3 也不会把人钉死。
-- **管理员修正上限随置信度放宽**：这是"隐私局玩家"的解法。玩家关掉「公开比赛数据」后 external 数据为 0、置信度为 0，修正上限自动放宽到 ±500（`150 + 350×(1−confidence)`），足够把新手摆到正确区间。`system_rating` 仍然只能由重算任务写，数据库 `CHECK` 本就按 ±500 兜底，不需要迁移。
-- **权重总和固定 1000**，任何一项缺失都按 0 处理并降低 `confidence`，而不是重新归一化——否则"数据少的玩家"会被虚高。
-- **版本化**：每次计算写入 `algorithm_version`（`RATING_ALGO_VERSION`）。改权重必须升版本，且旧数据不批量重算，只在下次同步时按新版本覆盖，`breakdown_json` 保留当时的五项明细，便于解释"为什么他是 720"。
+- **实力与可靠性分开**。出勤不再进入 `system_rating`：技术好但少来的人不会被扣成低分、以更低分进池；出勤只决定候补顺序。正选仍然先到先得，分队只看实力分。
+- **没有出勤记录按 50% 中性值排队**：新人既不被惩罚，也不会因为"没有污点"直接插到全勤玩家前面。
+- **样本量只影响不确定度**。`career_matches` 来自 OpenDota，量级远大于社区赛；它不再把高分往 500 拉。旧版 `500 + (raw−500) × max(confidence, 0.8)` 会把 9000 分压到 820，等于用"打得少"否定真实水平；现在 9000 分就是 900，置信度单独显示。
+- **分数上限的来源**：`estimated_mmr` 优先用自报 MMR（仅 `SELF_REPORTED`），同步了 OpenDota 后以勋章/星级估算（`estimateMmr`），避免"手填 9000 + 同步到先锋"的错配；没有段位时 `system_rating = 500`、`confidence = 0`，由管理员在 ±500 范围内修正。
+- **候补优先级的顺序固定为出勤率 → 实力分（报名快照）→ 报名时间**。没有出勤记录时用 `5000`（50%）参与排序；位置在 `services/waitlist.ts` 里统一重排，报名/封盘/转正/退赛都走它。
+- **版本化**：每次计算写入 `algorithm_version`（`warroom-v3`）；算法升级后每日维护会把旧版本评分逐条重算，管理员也可以在评分页点「重算全部」立即刷新。`breakdown_json` 保留 `components`（v3 只有 `MMR` 一项）、`estimatedMmr`、`attendanceBp`、`attendancePlayed`、`attendanceRegistered`。
 - 管理员修正是一个**独立业务模块**：写 `rating_adjustments`（前后值 + 原因 + 操作人）+ 更新 `player_ratings.admin_adjustment` + `effective_rating` + 写 `audit_logs`，三者在同一个 batch 内完成。
 
 ## 7. 自动分组算法
@@ -221,7 +223,7 @@ Phase B  对每队求最优位置指派：5! = 120 种置换，取 Σ position_f
 - **状态机**：`DRAFT`（可反复生成、可拖拽）→ `PUBLISHED`（快照冻结、前端可见）→ `IN_PROGRESS` → `COMPLETED`；`VOID` 用于流局。重新生成只在 `DRAFT` 允许。
 - **并发**：`matches.version` 乐观锁。编辑器每次保存带 `version`，不匹配返回 `409 VERSION_CONFLICT`，前端提示"阵容已被其他管理员修改"。
 - 分组是**单场次**的：报名 20 人生成 2 个 `matches`，分别生成、分别发布，V1.0 不做跨场次联合优化。
-- **候补排序比分组算法更影响体验。** 15 人报名只能开 1 场、5 人轮空，这是每周的常态。默认按"报名先后"排队，但应提供"近期上场次数少者优先"的切换——数据从 `team_members` 统计即可，`is_substitute` 字段已经在表里。代价是轮换优先于实力均衡时 `ratingGap` 会变大，编辑器必须显式提示"本场为轮换优先，双方分差 180"，让管理员自己决定是否接受。
+- **候补排序比分组算法更影响体验。** 15 人报名只能开 1 场、5 人轮空，这是每周的常态。v3 固定按**出勤率 → 实力分（报名快照）→ 报名时间**排队：出勤高的人先补位，同出勤再看实力，最后才看谁先报名；没有出勤记录按 50% 中性值。不再提供"轮换优先"切换，避免管理员每次手动选。排序只在 `WAITLIST` 内生效，正选与分队不看它。
 
 ### 7.1 封盘与成局（`finalizeRoster`）
 
@@ -246,7 +248,8 @@ finalizeRoster(eventId, policy?):
      ├─ n < 10                 → { outcome: 'INSUFFICIENT' }，不改数据，交管理员决定
      ├─ n % 10 === 0           → { outcome: 'EXACT' }
      └─ n % 10 !== 0 且未给 policy → 422 POLICY_REQUIRED（AUTO_FINALIZE_ODD=false 时）
-          START_PARTIAL: 前 canForm×10 人保持 CONFIRMED，余数 → WAITLIST(1..k)
+          START_PARTIAL: 前 canForm×10 人保持 CONFIRMED，余数 → WAITLIST，
+                          随后按"出勤率 → 实力分 → 报名时间"重排 1..k（含原有候补）
           EXTEND       : 不结算，registration_closes_at 推后，状态回 REGISTRATION_OPEN
           CANCEL       : 全员保持 CONFIRMED，事件 → CANCELLED
   4. 写 audit_logs(action='event.finalize', 含 policy 与前后人数)

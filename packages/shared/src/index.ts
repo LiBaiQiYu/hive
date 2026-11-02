@@ -80,18 +80,29 @@ export const usernameSchema = z
   .string()
   .trim()
   .toLowerCase()
+  .min(1, '请填写用户名')
   .regex(/^[a-z0-9_]{3,24}$/, '用户名需 3-24 位，仅限小写字母、数字与下划线');
 
 export const registerSchema = z.object({
   username: usernameSchema,
-  displayName: z.string().trim().min(1).max(32),
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(10, '密码至少 10 位').max(72),
+  displayName: z.string().trim().min(1, '请填写显示名——群里怎么称呼你').max(32, '显示名最多 32 个字'),
+  // 空值时同时命中 min 和 email 两条，前端取第一条（「请填写邮箱」）
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, '请填写邮箱')
+    .email('邮箱格式不正确，例如 name@example.com'),
+  // 空值同样取第一条「请设置密码」，短于 10 位才说长度
+  password: z.string().min(1, '请设置密码').min(10, '密码至少 10 位').max(72, '密码最多 72 位'),
+  // 邀请码必填：先 trim + 大写化，再按 6–16 位字母/数字/短横线校验。
+  // 这些文案与前端 LoginPage 的 RULES 逐字一致——同一个规则别在两处说两种话
   inviteCode: z
     .string()
     .trim()
     .toUpperCase()
-    .regex(/^[A-Z0-9-]{6,16}$/, '邀请码格式不正确'),
+    .min(1, '请填写邀请码——由管理员在群里发放')
+    .regex(/^[A-Z0-9-]{6,16}$/, '邀请码是 6–16 位字母、数字或短横线，例如 HIVE-DEV-01'),
 });
 
 export const loginSchema = z.object({

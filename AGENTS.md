@@ -16,7 +16,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
 已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + OpenDota）
         赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
-        评分算法 v2（段位 900 + 出勤 100）/ 管理员修正 + 历史
+        评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员修正 + 历史
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
         战绩页（我的对局 + 全员胜场；胜负来自管理员赛后选的胜负方，不含 KDA）
         后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）
@@ -73,8 +73,9 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 ## 关键设计决策（改了会连累别处）
 
 - **`capacity` 是目标人数**（20 = 2 场 × 10 人），不是座位数。报名期不生成比赛；封盘时按 `floor(confirmed/10)` 切场，余数进候补。人数卡在两档之间时**必须由管理员显式选** `START_PARTIAL / EXTEND / CANCEL`（`AUTO_FINALIZE_ODD=false`）。
-- **评分只算两项**：段位 900 + 出勤 100，`confidence = career_matches/300`，收缩下限 0.8。近期表现/位置能力/英雄池都不进评分——位置属于**分队**逻辑，战绩/英雄池等接 OpenDota 后做展示。
-- **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（段位/出勤各得多少分），前端评分卡直接画构成条。
+- **实力与可靠性分开**：`system_rating = clamp(round(估计 MMR / 10), 0, 1000)`，没有段位/MMR 时给 500 中性值；出勤**不进入**实力分。`confidence = career_matches/300` 只影响不确定度与管理员修正上限，不再把分数往 500 收缩。近期表现/位置能力/英雄池都不进评分——位置属于**分队**逻辑。
+- **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
+- **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
 - **MMR 与段位的优先级**：`rank_source='SELF_REPORTED'` 时才用 MMR；`OPENDOTA`/`ADMIN_SET` 时以勋章为准（同步时会清掉 MMR）。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。

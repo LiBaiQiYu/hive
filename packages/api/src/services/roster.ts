@@ -89,14 +89,28 @@ export function planFinalize(
   };
 }
 
+export interface SelectionRow {
+  /** 有没有段位信息（rank_tier 或 self-reported MMR 任一非空） */
+  hasRank: boolean;
+  effectiveRating: number;
+  createdAt: number;
+  id: string;
+}
+
 /**
- * 选人顺序：有效评分高者优先，同分按报名时间早者优先，再按 id 兜底。
- * 三键都必须存在，否则同样的数据可能排出不同顺序（翻页/重算时最容易出问题）。
+ * 正选名单的挑选顺序：
+ *
+ *   1. **有段位信息的优先**。没有段位的人，实力分只有 500 中性值；
+ *      让这个中性值去压过真实打了 450 分的人，等于奖励"不填资料"。
+ *   2. 有效评分高者优先。
+ *   3. 同分按报名时间早者优先。
+ *   4. id 兜底，否则同样的数据可能排出不同顺序（派发/重算时最容易出问题）。
+ *
+ * 四个键都必须存在。改动这里必须同步改 routes/admin-events.ts 里封盘用的 ORDER BY，
+ * 否则"手动让位"和"自动挑选"会给出两套结果。
  */
-export function compareForSelection(
-  a: { effectiveRating: number; createdAt: number; id: string },
-  b: { effectiveRating: number; createdAt: number; id: string },
-): number {
+export function compareForSelection(a: SelectionRow, b: SelectionRow): number {
+  if (a.hasRank !== b.hasRank) return a.hasRank ? -1 : 1;
   if (a.effectiveRating !== b.effectiveRating) return b.effectiveRating - a.effectiveRating;
   if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
   return a.id.localeCompare(b.id);

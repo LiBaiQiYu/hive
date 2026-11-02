@@ -12,12 +12,13 @@ import {
   type RatingInput,
 } from '../algorithms/rating';
 import type { Env } from '../env';
+import { reorderOpenEventWaitlists } from './waitlist';
 
 /**
  * 汇总一个玩家的评分输入。
  *
  * 出勤口径：报名过、且赛事已经结束（COMPLETED）的场次 vs 真正上过场
- * （正选，不含临时替补，且那场比赛已结束）。
+ * （正选，不含临时替补，且那场比赛已结束）。它只影响候补优先级，不进入实力分。
  */
 export async function collectInput(env: Env, userId: string): Promise<RatingInput> {
   const stats = await env.DB.prepare(
@@ -62,11 +63,12 @@ export interface RecomputeResult {
   system: number;
   effective: number;
   confidenceBp: number;
+  attendanceBp: number | null;
 }
 
 /**
  * 重算一个人的系统分。
- * 只动 system_rating / effective_rating / confidence_bp / breakdown，
+ * 只动 system_rating / effective_rating / confidence_bp / attendance_bp / breakdown，
  * **绝不碰 admin_adjustment** —— 那是管理员的人工判断，重算不该抹掉它。
  */
 export async function recomputeUserRating(env: Env, userId: string): Promise<RecomputeResult> {
@@ -86,14 +88,16 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
     components: rating.components,
     estimatedMmr: rating.estimatedMmr,
     attendanceBp: rating.attendanceBp,
+    attendancePlayed: rating.attendancePlayed,
+    attendanceRegistered: rating.attendanceRegistered,
   });
 
   if (!current) {
     // 历史账号可能没有评分行，补一条
     await env.DB.prepare(
       `INSERT INTO player_ratings (id, user_id, system_rating, admin_adjustment, effective_rating,
-         confidence_bp, breakdown_json, algorithm_version, computed_at, updated_at)
-       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+         confidence_bp, attendance_bp, breakdown_json, algorithm_version, computed_at, updated_at)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         newId(now),
@@ -101,6 +105,7 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
         rating.system,
         effective,
         rating.confidenceBp,
+        rating.attendanceBp,
         breakdown,
         ALGO_VERSION,
         now,
@@ -110,14 +115,15 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
   } else {
     await env.DB.prepare(
       `UPDATE player_ratings
-          SET system_rating = ?, effective_rating = ?, confidence_bp = ?, breakdown_json = ?,
-              algorithm_version = ?, computed_at = ?, updated_at = ?
+          SET system_rating = ?, effective_rating = ?, confidence_bp = ?, attendance_bp = ?,
+              breakdown_json = ?, algorithm_version = ?, computed_at = ?, updated_at = ?
         WHERE user_id = ?`,
     )
       .bind(
         rating.system,
         effective,
         rating.confidenceBp,
+        rating.attendanceBp,
         breakdown,
         ALGO_VERSION,
         now,
@@ -127,7 +133,12 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
       .run();
   }
 
-  return { system: rating.system, effective, confidenceBp: rating.confidenceBp };
+  return {
+    system: rating.system,
+    effective,
+    confidenceBp: rating.confidenceBp,
+    attendanceBp: rating.attendanceBp,
+  };
 }
 
 /**
@@ -135,7 +146,7 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
  *
  * 触发点：录入比赛结果、赛事转 COMPLETED。
  * 这两件事都会改变出勤口径（上场场次 / 报名且已结束的场次），
- * 不重算的话出勤那 100 分会一直停在旧值。
+ * 不重算的话 attendance_bp 会一直停在旧值，候补排序也会失真。
  */
 export async function recomputeEventRatings(env: Env, eventId: string): Promise<number> {
   const rows = await env.DB.prepare(
@@ -152,5 +163,9 @@ export async function recomputeEventRatings(env: Env, eventId: string): Promise<
   for (const row of users) {
     await recomputeUserRating(env, row.userId);
   }
+
+  // 出勤率变了，其他还在招募 / 待封盘赛事的候补顺序也可能要跟着换
+  await reorderOpenEventWaitlists(env);
+
   return users.length;
 }

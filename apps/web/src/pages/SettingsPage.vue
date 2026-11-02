@@ -35,7 +35,7 @@ import ProfileForm from '../components/me/ProfileForm.vue';
     </div>
 
     <p class="settings-note muted">
-      游戏身份（Steam / OpenDota / 段位）、卡片外观和位置偏好属于玩家档案，在
+      游戏身份（Steam / 数字 ID / 段位）、卡片外观和位置偏好属于玩家档案，在
       <RouterLink to="/me">我的主页</RouterLink> 里改。
     </p>
   </div>

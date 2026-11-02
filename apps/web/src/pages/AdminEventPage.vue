@@ -14,6 +14,7 @@ import {
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
+import { SERVER_HELP, SERVER_OPTIONS, type ServerRegion } from '../lib/server';
 
 interface RegRow {
   id: string;
@@ -24,6 +25,7 @@ interface RegRow {
   position: number | null;
   waitlistPosition: number | null;
   effectiveRating: number;
+  attendanceBp: number | null;
 }
 
 interface MatchRow {
@@ -104,6 +106,8 @@ const form = ref({
   capacity: 20,
   registrationClosesAt: null as number | null,
   startsAt: null as number | null,
+  /** 服务器不属于赛程：归档/取消之外随时可改 */
+  serverRegion: 'GLOBAL' as ServerRegion,
 });
 const scheduleEditable = computed(
   () => event.value?.status === 'DRAFT' || event.value?.status === 'REGISTRATION_OPEN',
@@ -117,6 +121,7 @@ function openEdit() {
     capacity: current.capacity,
     registrationClosesAt: current.registrationClosesAt,
     startsAt: current.startsAt,
+    serverRegion: current.serverRegion,
   };
   editing.value = true;
   message.value = '';
@@ -134,6 +139,11 @@ const confirmed = computed(() => regs.value.filter((r) => r.status === 'CONFIRME
 const waitlist = computed(() => regs.value.filter((r) => r.status === 'WAITLIST'));
 const canForm = computed(() => Math.floor(confirmed.value.length / 10));
 const odd = computed(() => confirmed.value.length % 10 !== 0 && confirmed.value.length >= 10);
+
+const attendanceOf = (reg: RegRow) => {
+  const bp = reg.attendanceBp;
+  return typeof bp === 'number' ? `${Math.round(bp / 100)}%` : '—';
+};
 
 async function refresh() {
   loading.value = true;
@@ -194,6 +204,10 @@ async function saveEdit() {
 
   const title = form.value.title.trim();
   if (title && title !== current.title) body.title = title;
+
+  if (form.value.serverRegion !== current.serverRegion) {
+    body.serverRegion = form.value.serverRegion;
+  }
 
   const capacity = Number(form.value.capacity);
   if (Number.isFinite(capacity) && capacity > 0 && capacity !== current.capacity) {
@@ -589,6 +603,18 @@ const statusPill = (status: string) => {
             </label>
             <label class="field">
               <span class="field-label">
+                服务器
+                <HelpTip v-bind="SERVER_HELP" />
+              </span>
+              <NSelect
+                v-model:value="form.serverRegion"
+                :options="SERVER_OPTIONS"
+                style="width: 220px"
+                size="medium"
+              />
+            </label>
+            <label class="field">
+              <span class="field-label">
                 目标人数
                 <HelpTip
                   title="目标人数怎么填？"
@@ -639,7 +665,7 @@ const statusPill = (status: string) => {
             <NButton type="primary" :disabled="busy" @click="saveEdit">保存</NButton>
           </div>
           <p v-if="!scheduleEditable" class="coverage-warn" style="font-size: 12px; margin-top: 8px">
-            报名已关闭：容量与赛程已参与封盘决策，只能改标题。
+            报名已关闭：容量与赛程已参与封盘决策，只能改标题与服务器。
           </p>
         </div>
 
@@ -848,12 +874,16 @@ const statusPill = (status: string) => {
 
         <div v-if="regs.length === 0" class="empty">还没有人报名。</div>
         <div v-else class="card" style="padding: 8px 12px">
+          <p class="muted" style="font-size: 12px; margin: 4px 4px 10px">
+            候补顺序：出勤率 → 评分 → 报名时间；出勤低的人会排在后面。
+          </p>
           <table class="table">
             <thead>
               <tr>
                 <th>玩家</th>
                 <th>状态</th>
                 <th class="num">评分</th>
+                <th class="num">出勤</th>
                 <th>位置</th>
                 <th></th>
               </tr>
@@ -885,6 +915,7 @@ const statusPill = (status: string) => {
                   </span>
                 </td>
                 <td class="num mono">{{ reg.effectiveRating }}</td>
+                <td class="num mono muted">{{ attendanceOf(reg) }}</td>
                 <td class="muted">{{ reg.position ? `${reg.position} 号位` : '未填' }}</td>
                 <td>
                   <NButton

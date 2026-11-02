@@ -7,6 +7,9 @@
  *
  * MVP 需要 match_player_stats，而那张表还没有数据（对局导入没做），
  * 所以这里不提供 mvp 排序——宁可不给，也不返回一列恒为 0 的假数据。
+ *
+ * 段位 / 天梯分是**只读展示**，不参与排序：它们是评分的输入，不是结果，
+ * 拿它排序会让"分数高但没填 MMR"的人莫名其妙掉到后面。
  */
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
@@ -28,6 +31,11 @@ interface Row {
   wins: number;
   losses: number;
   played: number;
+  /** 天梯段位编码（十位勋章 + 个位星级）；没同步过就是 null */
+  rankTier: number | null;
+  /** 天梯分：只有「自报」路线才有值，Steam / OpenDota 同步不带 MMR */
+  declaredMmr: number | null;
+  rankSource: string | null;
 }
 
 leaderboardRoutes.get('/', async (c) => {
@@ -37,17 +45,22 @@ leaderboardRoutes.get('/', async (c) => {
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
 
   // 战绩口径：正选出场 + 比赛已结束且有胜负。候补/流局都不计入。
+  // 段位与天梯分来自 player_stats（LEFT JOIN：没同步过的玩家照样上榜，值是 null）
   const rows = await c.env.DB.prepare(
     `SELECT u.id, u.username, u.display_name AS displayName, u.role,
             COALESCE(pr.effective_rating, 500) AS effective,
             COALESCE(pr.system_rating, 500) AS system,
             COALESCE(pr.admin_adjustment, 0) AS adjustment,
             COALESCE(pr.confidence_bp, 0) AS confidenceBp,
+            ps.rank_tier AS rankTier,
+            ps.declared_mmr AS declaredMmr,
+            ps.rank_source AS rankSource,
             COALESCE(w.wins, 0) AS wins,
             COALESCE(w.losses, 0) AS losses,
             COALESCE(w.played, 0) AS played
        FROM users u
        LEFT JOIN player_ratings pr ON pr.user_id = u.id
+       LEFT JOIN player_stats ps ON ps.user_id = u.id
        LEFT JOIN (
          SELECT tm.user_id AS userId,
                 SUM(CASE WHEN (tm.team_side = 'RADIANT' AND m.radiant_win = 1)

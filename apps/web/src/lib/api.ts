@@ -4,10 +4,24 @@ export class ApiError extends Error {
   constructor(
     readonly code: string,
     message: string,
+    /** 服务端 zod 的逐字段错误（field → 文案数组），表单可以就地标红而不是弹一句笼统提示 */
+    readonly fields?: Record<string, string[]>,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** 只认 { field: string[] } 这种形状；服务端的 details 别的接口可能塞任何东西 */
+function readFieldErrors(details: unknown): Record<string, string[]> | undefined {
+  if (!details || typeof details !== 'object') return undefined;
+  const fields: Record<string, string[]> = {};
+  for (const [key, value] of Object.entries(details as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue;
+    const messages = value.filter((item): item is string => typeof item === 'string' && item !== '');
+    if (messages.length > 0) fields[key] = messages;
+  }
+  return Object.keys(fields).length > 0 ? fields : undefined;
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -38,7 +52,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   });
 
   const payload = (await response.json().catch(() => null)) as
-    | { data?: unknown; error?: { code: string; message: string } }
+    | { data?: unknown; error?: { code: string; message: string; details?: unknown } }
     | null;
 
   if (!response.ok) {
@@ -50,6 +64,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     throw new ApiError(
       payload?.error?.code ?? 'INTERNAL',
       payload?.error?.message ?? `请求失败（${response.status}）`,
+      readFieldErrors(payload?.error?.details),
     );
   }
   return payload?.data as T;
@@ -74,11 +89,13 @@ export interface EventView {
   registrationOpensAt: number | null;
   registrationClosesAt: number | null;
   startsAt: number | null;
+  /** 011 追加：赛事服务器。CN = 国服（蒸汽平台 / -perfectworld），GLOBAL = 全球服 */
+  serverRegion: 'CN' | 'GLOBAL';
 }
 
-/** 评分构成里的一项（段位 / 社区出勤） */
+/** 评分构成里的一项（v3 只有天梯实力；RANK/COMMUNITY 是旧数据的兼容值） */
 export interface RatingComponent {
-  key: 'RANK' | 'COMMUNITY' | string;
+  key: 'MMR' | 'RANK' | 'COMMUNITY' | string;
   weight: number;
   /** 0..1 */
   value: number;
@@ -90,6 +107,8 @@ export interface RatingBreakdown {
   components: RatingComponent[];
   estimatedMmr: number | null;
   attendanceBp: number | null;
+  attendancePlayed?: number | null;
+  attendanceRegistered?: number | null;
 }
 
 export interface Rating {

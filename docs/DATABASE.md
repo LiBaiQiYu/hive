@@ -83,11 +83,14 @@ SQL 里的时间默认值 `(CAST(strftime('%s','now') AS INTEGER) * 1000)` 只�
 ### 4.1 评分是三层，历史是只追加的
 
 ```
-player_ratings.system_rating      ← 算法算出来的，只有重算任务能改
+player_ratings.system_rating      ← 实力分（MMR ÷ 10），只有重算任务能改
 player_ratings.admin_adjustment   ← 管理员改的，只有 rating 模块能改
 player_ratings.effective_rating   ← 前两者相加并 clamp，冗余存储用于排序
+player_ratings.attendance_bp      ← 出勤率（0..10000，NULL=无记录），独立于实力分
 rating_adjustments                ← 每次修改一行，append-only
 ```
+
+`attendance_bp` 只服务候补排序（出勤率 → 实力分 → 报名时间），**不参与** `system_rating` / 分队。它由 `recomputeUserRating` 随评分一起刷新；迁移 0010 先从旧 `breakdown_json` 回填，旧值则等每日维护或管理员「重算全部」。
 
 为什么不在 `users` 上加一列 `rating`：`users` 是身份表，写入频率低；评分会被 Cron 批量重算、被管理员修正、被排行榜高频读取，混在一起会让"谁是权威数据"变得模糊。拆分后 `player_ratings` 可以整表删掉重算而不触碰任何身份信息。
 
@@ -117,6 +120,8 @@ rating_adjustments                ← 每次修改一行，append-only
 `events.capacity` 的语义是**目标人数**，不是座位数：`capacity = 20` 表示目标 2 场 × 10 人，`capacity % 10 = 0` 的 CHECK 保证目标场次永远整除。报名人数未满时全体 `CONFIRMED` 等待成局；封盘时由 `finalizeRoster()` 按 `floor(confirmed/10)` 切场次，余数才转 `WAITLIST`。
 
 `teams.event_id`、`team_members.match_id` 是有意的冗余：赛事阵容页与"我的比赛历史"都靠它们省掉一次 join。
+
+候补队列不按报名先后硬排：`registrations.waitlist_position` 由 `services/waitlist.ts` 按 **出勤率 → 实力分（报名快照）→ 报名时间** 重排（无出勤记录按 50% 中性值），报名、封盘转候补、候补转正、退赛后都调用。它只影响 `WAITLIST`，正选和分队不使用。
 
 ## 5. 索引策略
 

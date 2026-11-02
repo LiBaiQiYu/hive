@@ -5,6 +5,7 @@ import type { AppEnv } from '../env';
 import { requireAdmin } from '../guard';
 import { ALGO_VERSION, adjustmentLimit, computeEffective } from '../algorithms/rating';
 import { recomputeUserRating } from '../services/rating';
+import { reorderOpenEventWaitlists } from '../services/waitlist';
 
 export const adminRatingRoutes = new Hono<AppEnv>();
 
@@ -19,6 +20,7 @@ adminRatingRoutes.get('/players', async (c) => {
     `SELECT u.id, u.username, u.display_name AS displayName, u.role,
             pr.system_rating AS system, pr.admin_adjustment AS adjustment,
             pr.effective_rating AS effective, pr.confidence_bp AS confidenceBp,
+            pr.attendance_bp AS attendanceBp,
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr,
             pr.updated_at AS updatedAt
        FROM users u
@@ -35,6 +37,7 @@ adminRatingRoutes.get('/players', async (c) => {
     adjustment: number | null;
     effective: number | null;
     confidenceBp: number | null;
+    attendanceBp: number | null;
     rankTier: number | null;
     declaredMmr: number | null;
     updatedAt: number | null;
@@ -88,12 +91,21 @@ adminRatingRoutes.post('/recompute', async (c) => {
     : await env.DB.prepare(`SELECT id FROM users WHERE status = 'ACTIVE'`).all<{ id: string }>();
 
   const now = Date.now();
-  const results: Array<{ userId: string; system: number; effective: number; confidenceBp: number }> = [];
+  const results: Array<{
+    userId: string;
+    system: number;
+    effective: number;
+    confidenceBp: number;
+    attendanceBp: number | null;
+  }> = [];
 
   for (const user of users.results ?? []) {
     const rating = await recomputeUserRating(env, user.id);
     results.push({ userId: user.id, ...rating });
   }
+
+  // 重算会刷新出勤率，仍在招募 / 待封盘赛事的候补队列要按新值重排
+  await reorderOpenEventWaitlists(env);
 
   await env.DB.prepare(
     `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, after_json, request_id, created_at)

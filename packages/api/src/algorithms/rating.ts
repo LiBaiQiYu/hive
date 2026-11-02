@@ -1,20 +1,29 @@
 /**
- * WARROOM Rating · 纯函数实现
+ * WARROOM Rating · 纯函数实现（v3）
  *
- * V1 的评分口径（按产品决定收敛过）：
- *   段位 900 + 社区出勤 100 = 1000
+ * 实力分 = Dota2 MMR ÷ 10，范围 0..1000：
+ *   · 有自报 MMR 就用它；
+ *   · 否则用天梯勋章 / 星级估算 MMR；
+ *   · 两者都没有时给 500 中性值，置信度 0，交给管理员修正。
  *
- * 为什么砍掉了"近期表现"和"英雄池"：
- *   · 近期胜率在 15 人的社区里噪音极大，20 局样本不足以说明水平；
- *   · 英雄池需要 OpenDota 数据，而大多数人不一定开着公开战绩。
- * 现在只保留两件几乎没有争议的事：你是什么段位，以及你报没报名然后来没来。
+ * 出勤不再是评分的一部分：
+ *   · attendanceBp 只描述"报名且赛事已结束的场次里，实际出场占比"；
+ *   · 它用于候补优先级（出勤高者先转正），不拉低实力分，也不参与分队。
+ *
+ * 为什么把原来的 900 + 100 拆掉：
+ *   技术好但不常来的人会被出勤扣成分数，报名时反而以更低分进池，
+ *   既低估实力，也会让分队误判。实力和可靠性是两件事，必须分开表达。
+ *
+ * 仍然砍掉"近期表现"和"英雄池"：
+ *   15 人社区的 20 局样本噪音极大；英雄池需要 OpenDota 数据，
+ *   而大多数人不一定开着公开战绩。
  */
-export const ALGO_VERSION = 'warroom-v2';
+export const ALGO_VERSION = 'warroom-v3';
 
-export const WEIGHTS = {
-  rank: 900,
-  community: 100,
-} as const;
+/** MMR → 0..1000 的缩放；10000 分 = 1000 */
+export const MMR_TO_RATING_DIVISOR = 10;
+/** 没有任何段位 / MMR 时的中性值 */
+export const NEUTRAL_RATING = 500;
 
 /** 各勋章对应的 MMR 下界 */
 const MEDAL_FLOOR: Record<number, number> = {
@@ -29,13 +38,11 @@ const MEDAL_FLOOR: Record<number, number> = {
 };
 
 const STAR_STEP = 154;
-const MMR_CEILING = 8000;
-const BASELINE = 500;
 
 export interface RatingInput {
   rankTier: number | null;
   declaredMmr: number | null;
-  /** 天梯累计场次（OpenDota），决定置信度 */
+  /** 天梯累计场次（OpenDota），只决定置信度 / 修正上限 */
   careerMatches: number;
   /** 实际出场的完赛人数场次 */
   communityPlayed: number;
@@ -43,7 +50,7 @@ export interface RatingInput {
   communityRegistered: number;
 }
 
-export type ComponentKey = 'RANK' | 'COMMUNITY';
+export type ComponentKey = 'MMR';
 
 export interface RatedComponent {
   key: ComponentKey;
@@ -51,7 +58,7 @@ export interface RatedComponent {
   /** 0..1 */
   value: number;
   score: number;
-  basis: string;
+  basis: 'SELF_MMR' | 'MEDAL' | 'NO_DATA';
 }
 
 export interface RatingOutput {
@@ -61,6 +68,9 @@ export interface RatingOutput {
   estimatedMmr: number | null;
   /** 出勤率（基点），无报名记录时为 null */
   attendanceBp: number | null;
+  /** 实际出场 / 报名且已结束的场次（用于展示，不参与实力分） */
+  attendancePlayed: number;
+  attendanceRegistered: number;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -106,49 +116,42 @@ export function rankTierFromMmr(mmr: number): number {
   return medal * 10 + star;
 }
 
-export function computeRating(input: RatingInput): RatingOutput {  const mmr = estimateMmr(input.rankTier, input.declaredMmr);
+export function computeRating(input: RatingInput): RatingOutput {
+  const mmr = estimateMmr(input.rankTier, input.declaredMmr);
 
-  // ① 段位：MMR 线性映射，8000 以上封顶。没有段位时给 0.3 的中性值
-  const rankValue = mmr === null ? 0.3 : clamp(mmr / MMR_CEILING, 0, 1);
+  // ① 实力分：MMR ÷ 10，封顶 1000；没有数据时用 500 中性值
+  const system = mmr === null
+    ? NEUTRAL_RATING
+    : clamp(Math.round(mmr / MMR_TO_RATING_DIVISOR), 0, 1000);
 
-  // ② 社区出勤：报名了就来，满分；报了不来按缺席比例扣
-  const registered = input.communityRegistered;
-  const played = Math.min(input.communityPlayed, registered);
-  const attendance = registered > 0 ? played / registered : 1;
-  const communityValue = clamp(attendance, 0, 1);
+  // ② 出勤：独立统计，只用于候补优先级，不进入 system
+  const registered = Math.max(0, Math.trunc(input.communityRegistered));
+  const played = Math.min(Math.max(0, Math.trunc(input.communityPlayed)), registered);
+  const attendance = registered > 0 ? played / registered : null;
+  const attendanceBp = attendance === null ? null : Math.round(attendance * 10000);
 
   const components: RatedComponent[] = [
     {
-      key: 'RANK',
-      weight: WEIGHTS.rank,
-      value: rankValue,
-      score: Math.round(rankValue * WEIGHTS.rank),
+      key: 'MMR',
+      weight: 1000,
+      value: clamp(system / 1000, 0, 1),
+      score: system,
       basis: mmr === null ? 'NO_DATA' : input.declaredMmr !== null ? 'SELF_MMR' : 'MEDAL',
-    },
-    {
-      key: 'COMMUNITY',
-      weight: WEIGHTS.community,
-      value: communityValue,
-      score: Math.round(communityValue * WEIGHTS.community),
-      basis: registered > 0 ? 'ATTENDANCE' : 'NO_RECORD',
     },
   ];
 
-  const raw = components.reduce((sum, component) => sum + component.score, 0);
-
-  // 置信度：没有天梯样本时给一个很弱的下限收缩。
-  // 这里的取值经过实测调整：下限设成 0.15 会把 9000 分压到 575、1000 分压到 457，
-  // 原始 787 的分差只剩 118，评分彻底失去区分度。0.8 让分数基本反映段位，
-  // "这人到底有没有那么强"交给徽章（自报/已验证）和管理员修正去表达。
+  // 置信度不再收缩实力分：样本少只影响"展示的不确定度 / 管理员修正上限"，
+  // 不应该把 9000 分的玩家按 500 基准线砍掉。
   const confidence = clamp(input.careerMatches / 300, 0, 1);
-  const shrunk = Math.round(BASELINE + (raw - BASELINE) * Math.max(confidence, 0.8));
 
   return {
-    system: clamp(shrunk, 0, 1000),
+    system,
     confidenceBp: Math.round(confidence * 10000),
     components,
     estimatedMmr: mmr,
-    attendanceBp: registered > 0 ? Math.round(attendance * 10000) : null,
+    attendanceBp,
+    attendancePlayed: played,
+    attendanceRegistered: registered,
   };
 }
 

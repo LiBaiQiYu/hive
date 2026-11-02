@@ -4,6 +4,7 @@ import { ApiError, cardSkinSchema, newId, toCardSkin } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { requireUser } from '../guard';
 import { explainRejection, normalizePositions } from '../services/positions';
+import { fetchRankSnapshot } from '../services/rank-provider';
 import { recomputeUserRating } from '../services/rating';
 import { rankTierFromMmr } from '../algorithms/rating';
 
@@ -391,12 +392,6 @@ const claimSchema = z.object({
   accountId: z.number().int().min(1).max(4_294_967_295),
 });
 
-interface OpenDotaPlayer {
-  profile?: { personaname?: string; avatarfull?: string };
-  rank_tier?: number | null;
-  leaderboard_rank?: number | null;
-}
-
 meRoutes.post('/game-account/claim', async (c) => {
   const userId = requireUser(c);
   const env = c.env;
@@ -426,44 +421,17 @@ meRoutes.post('/game-account/claim', async (c) => {
     throw new ApiError('CONFLICT', '这个账号 ID 已经被其他成员占用');
   }
 
-  let player: OpenDotaPlayer;
-  try {
-    const response = await fetch(`https://api.opendota.com/api/players/${accountId}`);
-    if (response.status === 404) {
-      throw new ApiError('NOT_FOUND', '查不到这个账号，请确认数字 ID 是否正确');
-    }
-    if (response.status === 429) {
-      throw new ApiError('RATE_LIMITED', 'OpenDota 限流了，请稍后再试');
-    }
-    if (!response.ok) {
-      throw new ApiError('CONFLICT', `OpenDota 返回 ${response.status}，稍后再试`);
-    }
-    player = (await response.json()) as OpenDotaPlayer;
-  } catch (err) {
-    if (err instanceof ApiError) throw err;
-    throw new ApiError('CONFLICT', '无法连接 OpenDota，请检查网络或稍后再试');
-  }
-
-  if (!player.profile) {
-    throw new ApiError('NOT_FOUND', 'OpenDota 里没有这个账号的资料');
-  }
-
-  // 顺手取一下累计场次，用于置信度（失败不影响主流程）
-  let careerMatches = 0;
-  try {
-    const wl = await fetch(`https://api.opendota.com/api/players/${accountId}/wl`);
-    if (wl.ok) {
-      const data = (await wl.json()) as { win?: number; lose?: number };
-      careerMatches = (data.win ?? 0) + (data.lose ?? 0);
-    }
-  } catch {
-    /* 忽略 */
-  }
+  // 段位来源：配了 STRATZ token 就走 STRATZ，否则退回 OpenDota
+  // （细节与取舍见 services/rank-provider.ts）
+  const snapshot = await fetchRankSnapshot(env, accountId);
 
   const now = Date.now();
-  const rankTier = typeof player.rank_tier === 'number' ? player.rank_tier : null;
-  const personaname = player.profile.personaname ?? null;
-  const avatar = player.profile.avatarfull ?? null;
+  const rankTier = snapshot.rankTier;
+  const personaname = snapshot.personaName;
+  const avatar = snapshot.avatarUrl;
+  /** 拿不到就是 null —— 只影响置信度，不允许它覆盖已知值 */
+  const careerMatches = snapshot.careerMatches;
+  const rankSource = snapshot.source;
 
   if (existing) {
     await env.DB.prepare(
@@ -513,11 +481,12 @@ meRoutes.post('/game-account/claim', async (c) => {
     if (rankTier !== null) {
       // 同步到权威段位后，手填的 MMR 就该作废——留着只会和段位打架
       await env.DB.prepare(
-        `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = 'OPENDOTA',
-                career_matches = ?, rank_checked_at = ?, fetched_at = ?, updated_at = ?
+        `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = ?,
+                career_matches = COALESCE(?, career_matches),
+                rank_checked_at = ?, fetched_at = ?, updated_at = ?
           WHERE user_id = ?`,
       )
-        .bind(rankTier, careerMatches, now, now, now, userId)
+        .bind(rankTier, rankSource, careerMatches, now, now, now, userId)
         .run();
     } else {
       // 对方没开「公开比赛数据」：这个 ID 只能用于别人去第三方核对，抓不到段位。
@@ -531,30 +500,31 @@ meRoutes.post('/game-account/claim', async (c) => {
             SET rank_tier = CASE WHEN ? THEN NULL ELSE rank_tier END,
                 declared_mmr = CASE WHEN ? THEN NULL ELSE declared_mmr END,
                 rank_source = CASE WHEN ? THEN 'SELF_REPORTED' ELSE rank_source END,
-                career_matches = CASE WHEN ? > 0 THEN ? ELSE career_matches END,
+                career_matches = COALESCE(?, career_matches),
                 fetched_at = ?,
                 updated_at = ?
           WHERE user_id = ?`,
       )
-        .bind(
-          staleFlag,
-          staleFlag,
-          staleFlag,
-          careerMatches,
-          careerMatches,
-          now,
-          now,
-          userId,
-        )
+        .bind(staleFlag, staleFlag, staleFlag, careerMatches, now, now, userId)
         .run();
     }
   } else {
     await env.DB.prepare(
       `INSERT INTO player_stats (id, user_id, rank_tier, rank_source, career_matches,
          rank_checked_at, fetched_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'OPENDOTA', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, COALESCE(?, 0), ?, ?, ?, ?)`,
     )
-      .bind(newId(now), userId, rankTier, careerMatches, rankTier !== null ? now : null, now, now, now)
+      .bind(
+        newId(now),
+        userId,
+        rankTier,
+        rankSource,
+        careerMatches,
+        rankTier !== null ? now : null,
+        now,
+        now,
+        now,
+      )
       .run();
   }
 
@@ -572,7 +542,7 @@ meRoutes.post('/game-account/claim', async (c) => {
       note:
         rankTier === null
           ? '这个账号没开「公开比赛数据」，抓不到段位；已有的自报段位会保留。这个数字仍会显示在你的卡片上，别人去第三方平台也只能看到公开数据'
-          : '段位来自 OpenDota；账号归属未验证，徽章会显示「归属未验证」',
+          : `段位来自 ${rankSource === 'STRATZ' ? 'STRATZ' : 'OpenDota'}；账号归属未验证，徽章会显示「归属未验证」`,
     },
   });
 });

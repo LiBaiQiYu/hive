@@ -4,6 +4,7 @@ import { RouterLink, useRouter } from 'vue-router';
 import { NButton, NDatePicker, NInput, NSelect, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import { SERVER_HELP, SERVER_OPTIONS, serverLabel, type ServerRegion } from '../lib/server';
 
 const router = useRouter();
 const events = ref<EventView[]>([]);
@@ -18,6 +19,8 @@ const form = ref({
   capacity: 20,
   closesAt: null as number | null,
   startsAt: null as number | null,
+  /** 服务器：默认全球服（Steam 直接启动的样子），国服要显式选 */
+  serverRegion: 'GLOBAL' as ServerRegion,
 });
 
 const capacityOptions = [10, 20, 30].map((value) => ({
@@ -71,9 +74,16 @@ async function create() {
         capacity: form.value.capacity,
         registrationClosesAt: toIso(form.value.closesAt),
         startsAt: toIso(form.value.startsAt),
+        serverRegion: form.value.serverRegion,
       },
     });
-    form.value = { title: '', capacity: 20, closesAt: null, startsAt: null };
+    form.value = {
+      title: '',
+      capacity: 20,
+      closesAt: null,
+      startsAt: null,
+      serverRegion: 'GLOBAL',
+    };
     message.success('赛事已创建');
     void router.push(`/admin/events/${created.id}`);
   } catch (err) {
@@ -168,7 +178,23 @@ async function create() {
           <NSelect v-model:value="form.capacity" :options="capacityOptions" size="medium" />
         </label>
         <label class="field" style="margin: 0">
-          <span class="field-label">报名截止</span>
+          <span class="field-label">
+            服务器
+            <HelpTip v-bind="SERVER_HELP" />
+          </span>
+          <NSelect v-model:value="form.serverRegion" :options="SERVER_OPTIONS" size="medium" />
+        </label>
+        <label class="field" style="margin: 0">
+          <span class="field-label">
+            报名截止
+            <HelpTip
+              title="不填会怎样？"
+              :steps="[
+                '① 不填 = 由你手动封盘，赛事卡上会显示「待定 · 管理员手动封盘」',
+                '② 填了之后，赛事卡会显示倒计时，不足 24 小时转琥珀色',
+              ]"
+            />
+          </span>
           <NDatePicker
             v-model:value="form.closesAt"
             type="datetime"
@@ -180,7 +206,16 @@ async function create() {
           />
         </label>
         <label class="field" style="margin: 0">
-          <span class="field-label">开赛时间</span>
+          <span class="field-label">
+            开赛时间
+            <HelpTip
+              title="为什么要填？"
+              :steps="[
+                '① 首页和赛事列表的赛事卡会把它放在最显眼的位置',
+                '② 不填就显示「待定」，玩家不知道什么时候开打',
+              ]"
+            />
+          </span>
           <NDatePicker
             v-model:value="form.startsAt"
             type="datetime"
@@ -219,7 +254,12 @@ async function create() {
           </thead>
           <tbody>
             <tr v-for="event in events" :key="event.id">
-              <td>{{ event.title }}</td>
+              <td>
+                {{ event.title }}
+                <span class="server-tag" :class="{ 'is-cn': event.serverRegion === 'CN' }">
+                  {{ serverLabel(event.serverRegion) }}
+                </span>
+              </td>
               <td>
                 <span class="pill pill-idle">{{ STATUS_LABEL[event.status] ?? event.status }}</span>
               </td>

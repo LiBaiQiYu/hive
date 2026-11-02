@@ -109,7 +109,8 @@ describe('planFinalize', () => {
 });
 
 describe('compareForSelection', () => {
-  const row = (effectiveRating: number, createdAt: number, id: string) => ({
+  const row = (effectiveRating: number, createdAt: number, id: string, hasRank = true) => ({
+    hasRank,
     effectiveRating,
     createdAt,
     id,
@@ -128,5 +129,20 @@ describe('compareForSelection', () => {
   it('完全同分同时时按 id 兜底，保证顺序稳定', () => {
     const rows = [row(900, 1, 'b'), row(900, 1, 'a')].sort(compareForSelection);
     expect(rows.map((r) => r.id)).toEqual(['a', 'b']);
+  });
+
+  it('没有段位的排在有段位的后面，哪怕中性分更高', () => {
+    // 没有段位 = 只有 500 中性值。让它压过真实打了 450 的人，等于奖励"不填资料"
+    const rows = [
+      row(500, 1, 'norank-early', false),
+      row(450, 9, 'ranked-low', true),
+      row(800, 5, 'ranked-high', true),
+    ].sort(compareForSelection);
+    expect(rows.map((r) => r.id)).toEqual(['ranked-high', 'ranked-low', 'norank-early']);
+  });
+
+  it('同段位状态下才比评分', () => {
+    const rows = [row(400, 1, 'a', false), row(450, 2, 'b', false)].sort(compareForSelection);
+    expect(rows.map((r) => r.id)).toEqual(['b', 'a']);
   });
 });

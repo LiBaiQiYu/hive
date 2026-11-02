@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { NSpin } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
+import RankCell from '../components/RankCell.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 import { loadMe, session } from '../lib/session';
 
@@ -33,6 +34,11 @@ interface LeaderRow {
   losses: number;
   played: number;
   winRateBp: number | null;
+  /** 与排行榜同源：段位 / 天梯分 / WARROOM 评分 */
+  effective: number;
+  rankTier: number | null;
+  declaredMmr: number | null;
+  rankSource?: string | null;
 }
 
 const loading = ref(true);
@@ -200,6 +206,8 @@ function duration(seconds: number | null): string {
               <tr>
                 <th style="width: 56px" class="num">#</th>
                 <th>玩家</th>
+                <th title="天梯段位与天梯分，来自账号同步或自己填写">段位 / MMR</th>
+                <th class="num">WARROOM</th>
                 <th class="num">胜 / 负</th>
                 <th class="num">胜率</th>
               </tr>
@@ -214,6 +222,16 @@ function duration(seconds: number | null): string {
                 <td>
                   {{ row.displayName }}
                   <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ row.username }}</span>
+                </td>
+                <td>
+                  <RankCell
+                    :rank-tier="row.rankTier"
+                    :declared-mmr="row.declaredMmr"
+                    :rank-source="row.rankSource"
+                  />
+                </td>
+                <td class="num mono" style="color: var(--gold-2); font-size: 15px">
+                  {{ row.effective }}
                 </td>
                 <td class="num mono">{{ row.wins }} / {{ row.losses }}</td>
                 <td class="num mono">{{ pct(row.winRateBp) }}</td>

@@ -6,12 +6,11 @@ import { requireAdmin } from '../guard';
 import { countRegistrations, loadEvent, toEventView } from './events';
 import { planFinalize, type FinalizePolicy } from '../services/roster';
 import { recomputeEventRatings } from '../services/rating';
+import { reorderWaitlist, sortWaitlist, type WaitlistPriorityRow } from '../services/waitlist';
 import {
   assertPromotable,
   assertTitleEditable,
-  compactWaitlist,
   planEventUpdate,
-  type WaitlistEntry,
 } from '../services/event-edit';
 
 export const adminEventRoutes = new Hono<AppEnv>();
@@ -30,6 +29,8 @@ const createEventSchema = z.object({
   registrationOpensAt: isoDate.optional(),
   registrationClosesAt: isoDate.optional(),
   startsAt: isoDate.optional(),
+  // 服务器：不传就是全球服（Steam 默认行为），国服要显式选
+  serverRegion: z.enum(['CN', 'GLOBAL']).default('GLOBAL'),
 });
 
 /**
@@ -51,6 +52,8 @@ const updateEventSchema = z
     registrationOpensAt: isoDate.nullable().optional(),
     registrationClosesAt: isoDate.nullable().optional(),
     startsAt: isoDate.nullable().optional(),
+    // 服务器随时可改（不影响任何已落库的决策），只有归档/取消后不能编辑
+    serverRegion: z.enum(['CN', 'GLOBAL']).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, '至少要修改一个字段');
 
@@ -134,8 +137,9 @@ adminEventRoutes.post('/', async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO events (id, title, summary, format, team_size, capacity, status,
-       registration_opens_at, registration_closes_at, starts_at, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'DOTA2_5V5', 5, ?, 'DRAFT', ?, ?, ?, ?, ?, ?)`,
+       registration_opens_at, registration_closes_at, starts_at, server_region,
+       created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'DOTA2_5V5', 5, ?, 'DRAFT', ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id,
@@ -145,6 +149,7 @@ adminEventRoutes.post('/', async (c) => {
       opensAt,
       closesAt,
       input.startsAt ? Date.parse(input.startsAt) : null,
+      input.serverRegion,
       adminId,
       now,
       now,
@@ -156,7 +161,7 @@ adminEventRoutes.post('/', async (c) => {
     action: 'event.create',
     entityType: 'event',
     entityId: id,
-    after: { title: input.title, capacity: input.capacity },
+    after: { title: input.title, capacity: input.capacity, serverRegion: input.serverRegion },
     requestId: c.get('requestId'),
   });
 
@@ -179,7 +184,7 @@ adminEventRoutes.patch('/:id', async (c) => {
   }
   const patch = parsed.data;
 
-  if (patch.title !== undefined || patch.summary !== undefined) {
+  if (patch.title !== undefined || patch.summary !== undefined || patch.serverRegion !== undefined) {
     assertTitleEditable(event);
   }
 
@@ -202,11 +207,14 @@ adminEventRoutes.patch('/:id', async (c) => {
 
   const title = patch.title ?? event.title;
   const summary = patch.summary === undefined ? event.summary : patch.summary;
+  // 服务器不属于赛程：归档/取消之外都能改，不需要等报名关闭
+  const serverRegion = patch.serverRegion ?? event.server_region;
   const now = Date.now();
 
   await env.DB.prepare(
     `UPDATE events SET title = ?, summary = ?, capacity = ?,
-       registration_opens_at = ?, registration_closes_at = ?, starts_at = ?, updated_at = ?
+       registration_opens_at = ?, registration_closes_at = ?, starts_at = ?,
+       server_region = ?, updated_at = ?
      WHERE id = ?`,
   )
     .bind(
@@ -216,6 +224,7 @@ adminEventRoutes.patch('/:id', async (c) => {
       next.opensAt,
       next.closesAt,
       next.startsAt,
+      serverRegion,
       now,
       event.id,
     )
@@ -233,6 +242,7 @@ adminEventRoutes.patch('/:id', async (c) => {
       registrationOpensAt: event.registration_opens_at,
       registrationClosesAt: event.registration_closes_at,
       startsAt: event.starts_at,
+      serverRegion: event.server_region,
     },
     after: {
       title,
@@ -241,6 +251,7 @@ adminEventRoutes.patch('/:id', async (c) => {
       registrationOpensAt: next.opensAt,
       registrationClosesAt: next.closesAt,
       startsAt: next.startsAt,
+      serverRegion,
     },
     requestId: c.get('requestId'),
   });
@@ -336,11 +347,14 @@ adminEventRoutes.post('/:id/finalize', async (c) => {
   let changed = 0;
 
   if (decision.outcome === 'START_PARTIAL') {
-    // 顺序必须与 compareForSelection 一致：评分降序 → 报名时间升序 → id 升序
+    // 顺序必须与 compareForSelection 一致：有段位 → 评分降序 → 报名时间升序 → id 升序。
+    // 段位看的是**实时** player_stats，不是报名快照：报名后发现没填段位、补上了就该算数。
     const rows = await env.DB.prepare(
-      `SELECT id FROM registrations
-        WHERE event_id = ? AND status = 'CONFIRMED'
-        ORDER BY effective_rating_snapshot DESC, created_at ASC, id ASC`,
+      `SELECT r.id FROM registrations r
+         LEFT JOIN player_stats ps ON ps.user_id = r.user_id
+        WHERE r.event_id = ? AND r.status = 'CONFIRMED'
+        ORDER BY (CASE WHEN ps.rank_tier IS NOT NULL OR ps.declared_mmr IS NOT NULL THEN 1 ELSE 0 END) DESC,
+                 r.effective_rating_snapshot DESC, r.created_at ASC, r.id ASC`,
     )
       .bind(event.id)
       .all<{ id: string }>();
@@ -355,6 +369,8 @@ adminEventRoutes.post('/:id/finalize', async (c) => {
       );
       // batch 是事务：要么全部进候补，要么一条都不动
       await env.DB.batch(statements);
+      // 位置只是临时值；真正顺序由"出勤 → 实力 → 报名时间"决定
+      await reorderWaitlist(env, event.id);
       changed = benched.length;
     }
   } else if (decision.outcome === 'EXTEND') {
@@ -409,10 +425,14 @@ adminEventRoutes.get('/:id/registrations', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT r.id, r.user_id AS userId, u.display_name AS displayName, u.username,
             r.status, r.position_preference AS position, r.waitlist_position AS waitlistPosition,
-            r.effective_rating_snapshot AS effectiveRating, r.created_at AS createdAt
-       FROM registrations r JOIN users u ON u.id = r.user_id
+            r.effective_rating_snapshot AS effectiveRating, r.created_at AS createdAt,
+            pr.attendance_bp AS attendanceBp
+       FROM registrations r
+       JOIN users u ON u.id = r.user_id
+       LEFT JOIN player_ratings pr ON pr.user_id = r.user_id
       WHERE r.event_id = ?
       ORDER BY CASE r.status WHEN 'CONFIRMED' THEN 0 WHEN 'WAITLIST' THEN 1 ELSE 2 END,
+               CASE WHEN r.status = 'WAITLIST' THEN r.waitlist_position END ASC,
                r.effective_rating_snapshot DESC, r.created_at ASC`,
   )
     .bind(event.id)
@@ -454,14 +474,20 @@ adminEventRoutes.post('/:id/registrations/:rid/promote', async (c) => {
   });
 
   const waitlistRows = await env.DB.prepare(
-    `SELECT id, waitlist_position AS position FROM registrations
-      WHERE event_id = ? AND status = 'WAITLIST'
-      ORDER BY waitlist_position ASC, created_at ASC`,
+    `SELECT r.id,
+            pr.attendance_bp AS attendanceBp,
+            r.effective_rating_snapshot AS effectiveRating,
+            r.created_at AS createdAt
+       FROM registrations r
+       LEFT JOIN player_ratings pr ON pr.user_id = r.user_id
+      WHERE r.event_id = ? AND r.status = 'WAITLIST'`,
   )
     .bind(event.id)
-    .all<WaitlistEntry>();
+    .all<WaitlistPriorityRow>();
 
-  const remaining = compactWaitlist(waitlistRows.results ?? [], registration.id);
+  const remaining = sortWaitlist(
+    (waitlistRows.results ?? []).filter((row) => row.id !== registration.id),
+  ).map((row, index) => ({ id: row.id, position: index + 1 }));
   const now = Date.now();
 
   // 转正 + 重排必须在同一个事务里：否则中途失败会留下"两个 1 号候补"的队列

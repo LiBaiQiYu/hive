@@ -208,6 +208,48 @@
   text-shadow: var(--skin-name-shadow);
 }
 
+/* 名字 + DOTA2 数字 ID：ID 是给旁观者核对用的，压成一行小字放在名字下面，
+   不占统计格，也不和右上角的验证徽章抢位置 */
+.pcard-head-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pcard-dota {
+  width: fit-content;
+  max-width: 100%;
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--skin-muted);
+  text-decoration: none;
+  opacity: 0.9;
+  transition:
+    color 160ms ease,
+    opacity 160ms ease;
+}
+
+.pcard-dota:hover,
+.pcard-dota:focus-visible {
+  color: var(--skin-accent);
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pcard-dota:focus-visible {
+  outline: 1px solid var(--skin-accent);
+  outline-offset: 2px;
+}
+
+.pcard-dota-arrow {
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: 0.7;
+}
+
 .pcard-badge {
   flex: none;
   font-size: 10px;

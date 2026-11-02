@@ -3,6 +3,7 @@ import { ApiError, newId, toCardSkin } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { requireUser } from '../guard';
 import { MATCH_SIZE, slotsToNextMatch, targetMatches } from '../services/roster';
+import { reorderWaitlist } from '../services/waitlist';
 
 export const eventRoutes = new Hono<AppEnv>();
 
@@ -20,6 +21,8 @@ export interface EventRow {
   ends_at: number | null;
   created_at: number;
   updated_at: number;
+  /** 011 追加：CN（国服）/ GLOBAL（全球服） */
+  server_region: string;
 }
 
 export interface RegistrationCounts {
@@ -28,7 +31,8 @@ export interface RegistrationCounts {
 }
 
 const EVENT_COLUMNS = `id, title, summary, format, team_size, capacity, status,
-  registration_opens_at, registration_closes_at, starts_at, ends_at, created_at, updated_at`;
+  registration_opens_at, registration_closes_at, starts_at, ends_at, created_at, updated_at,
+  server_region`;
 
 export async function loadEvent(env: Env, eventId: string): Promise<EventRow> {
   const row = await env.DB.prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE id = ?`)
@@ -71,6 +75,8 @@ export function toEventView(event: EventRow, counts: RegistrationCounts) {
     registrationClosesAt: event.registration_closes_at,
     startsAt: event.starts_at,
     endsAt: event.ends_at,
+    /** 国服 / 全球服：只影响"去哪打"，不影响任何计分逻辑 */
+    serverRegion: event.server_region,
   };
 }
 
@@ -153,6 +159,10 @@ eventRoutes.get('/:id/matches', async (c) => {
  *
  * 只暴露展示所需字段：昵称、简介、位置、段位、MMR、WARROOM 评分、验证等级。
  * 不返回邮箱、QQ、SteamID64 —— 卡片要好看，但没必要把身份信息全抖出来。
+ *
+ * 例外是 `dota_account_id`：它本来就来自公开资料（OpenDota / Steam），
+ * 而且玩家是主动绑定才会写进这一行；公开它是为了让别人能去 OpenDota /
+ * Dotabuff 核对段位与战绩（公平性）。没绑定的人不会有 game_accounts 行。
  */
 eventRoutes.get('/:id/registrations', async (c) => {
   const event = await loadEvent(c.env, c.req.param('id'));
@@ -168,7 +178,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
             u.card_frame_color AS frameColor, u.card_frame_effect AS frameEffect,
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr,
             pr.effective_rating AS rating,
-            ga.verification AS accountVerification, ga.persona_name AS personaName
+            ga.verification AS accountVerification, ga.persona_name AS personaName,
+            ga.dota_account_id AS dotaAccountId
        FROM registrations r
        JOIN users u ON u.id = r.user_id
        LEFT JOIN player_stats ps ON ps.user_id = r.user_id
@@ -195,6 +206,7 @@ eventRoutes.get('/:id/registrations', async (c) => {
       rating: number | null;
       accountVerification: string | null;
       personaName: string | null;
+      dotaAccountId: number | null;
     }>();
 
   const players = (rows.results ?? []).map((row) => {
@@ -217,6 +229,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
       rating: row.rating,
       verification,
       personaName: row.personaName,
+      // 公开给其他人核对：数字 ID 只是"声明"，归属仍以 Steam 徽章为准
+      dotaAccountId: row.dotaAccountId,
       // 卡片外观跟着人走：别人看到的永远是玩家自己选的那套皮肤
       skin: toCardSkin({
         material: row.cardMaterial,
@@ -372,13 +386,26 @@ eventRoutes.post('/:id/registrations', async (c) => {
 
   const after = await countRegistrations(env, event.id);
 
+  // 候补队列不是"先到先得"：出勤高的人先补位。新报名可能插到队首，
+  // 所以写完后重排一次，并回读这条报名的真实位置。
+  let finalWaitlistPosition = waitlistPosition;
+  if (status === 'WAITLIST') {
+    await reorderWaitlist(env, event.id);
+    const positioned = await env.DB.prepare(
+      `SELECT waitlist_position AS position FROM registrations WHERE id = ?`,
+    )
+      .bind(id)
+      .first<{ position: number | null }>();
+    finalWaitlistPosition = positioned?.position ?? null;
+  }
+
   return c.json(
     {
       data: {
         registration: {
           id,
           status,
-          waitlistPosition,
+          waitlistPosition: finalWaitlistPosition,
           effectiveRatingSnapshot: snapshot.effective,
         },
         event: toEventView(event, after),
@@ -410,6 +437,9 @@ eventRoutes.delete('/:id/registrations', async (c) => {
     .run();
 
   if (!result.meta.changes) throw new ApiError('NOT_FOUND', '没有可退的报名');
+
+  // 候补退赛会留下位置空洞，按同一条优先级重排一次
+  await reorderWaitlist(env, event.id);
 
   return c.json({
     data: { event: toEventView(event, await countRegistrations(env, event.id)) },

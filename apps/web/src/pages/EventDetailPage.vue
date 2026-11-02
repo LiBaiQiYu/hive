@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { RouterLink, useRoute } from 'vue-router';
-import { NButton, NSelect, useMessage } from 'naive-ui';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { NButton, NSelect, useDialog, useMessage } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import { SERVER_HELP, serverLabel } from '../lib/server';
 import { session } from '../lib/session';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import HelpTip from '../components/HelpTip.vue';
@@ -16,6 +17,7 @@ interface Registration {
 }
 
 const route = useRoute();
+const router = useRouter();
 const event = ref<EventView | null>(null);
 const mine = ref<Registration | null>(null);
 const players = ref<PlayerCardData[]>([]);
@@ -23,6 +25,7 @@ const loading = ref(true);
 const error = ref('');
 const message = ref('');
 const submitting = ref(false);
+const dialog = useDialog();
 
 interface MatchRow {
   id: string;
@@ -72,7 +75,7 @@ async function load() {
 onMounted(load);
 
 const canRegister = computed(
-  () => event.value?.status === 'REGISTRATION_OPEN' && !mine.value,
+  () => Boolean(session.me) && event.value?.status === 'REGISTRATION_OPEN' && !mine.value,
 );
 const isFull = computed(
   () => (event.value?.confirmed ?? 0) >= (event.value?.capacity ?? 0),
@@ -82,13 +85,79 @@ const progress = computed(() => {
   return Math.min(100, (event.value.confirmed / event.value.capacity) * 100);
 });
 
-/** 档案里的第一志愿：选择「不指定」时，分组用的就是它 */
-const profilePrimary = computed(
-  () => session.me?.positions?.find((item) => item.rank === 1)?.position ?? null,
+/**
+ * 档案里的位置偏好数量。
+ * 分队按志愿顺序排位置：少于 3 个时，剩下的位置基本等于"随便塞"，
+ * 所以报名前要和"没段位"一样提醒一次（软门槛，不拦人）。
+ */
+const positionCount = computed(() => session.me?.positions?.length ?? 0);
+const thinPositions = computed(() => positionCount.value > 0 && positionCount.value < 3);
+
+/**
+ * 有没有段位信息（Steam / 数字 ID 同步 / 手填，任一条路都算）。
+ * 没有任何一条时，实力分只有 500 中性值；人数超额时系统会把这类玩家排在后面。
+ */
+const hasRank = computed(
+  () => Boolean(session.me?.stats?.rankTier || session.me?.stats?.declaredMmr),
 );
 
 /** 报名时选择的主位置；0 = 不指定（后端会回退到档案里的第一志愿） */
 const positionChoice = ref(0);
+
+/**
+ * 报名前的"软门槛"：不拦人，但必须让人知道后果——
+ * 不是"资料没填完整"这种废话，而是"人多了你可能上不了场"。
+ */
+function askRankFirst() {
+  dialog.warning({
+    title: '还没有段位信息',
+    content:
+      '绑定 Steam、用数字 ID 同步、或手动填段位，任选一种就行。现在报名也能成功，但报名人数超过可上场人数时，系统会优先让有段位 / 天梯分的玩家上场。',
+    positiveText: '先去补段位',
+    negativeText: '仍然报名',
+    onPositiveClick: () => {
+      void router.push('/me#game-identity');
+    },
+    onNegativeClick: () => {
+      // 段位这条放行后，位置偏好不够还要再提醒一次
+      if (positionCount.value < 3) askPositionsFirst();
+      else void register();
+    },
+  });
+}
+
+/**
+ * 位置偏好少于 3 个：分队时志愿用完了，剩下的位置只能随便安排。
+ * 和"没段位"同一个处理方式——先说清后果，再让人自己决定。
+ */
+function askPositionsFirst() {
+  const count = positionCount.value;
+  dialog.warning({
+    title: count === 0 ? '还没有位置偏好' : `位置偏好只有 ${count} 个`,
+    content:
+      '分队会尽量按你填的志愿顺序安排位置。少于 3 个时，一旦排到没填过的位置，系统只能把你当「任意位置」处理——很可能整场都在打不熟的分路。建议先补到 3–5 个。现在报名也能成功，只是位置不由你定。',
+    positiveText: '去补位置偏好',
+    negativeText: '仍然报名',
+    onPositiveClick: () => {
+      void router.push('/me#positions');
+    },
+    onNegativeClick: () => {
+      void register();
+    },
+  });
+}
+
+function onRegisterClick() {
+  if (!hasRank.value) {
+    askRankFirst();
+    return;
+  }
+  if (positionCount.value < 3) {
+    askPositionsFirst();
+    return;
+  }
+  void register();
+}
 
 async function register() {
   if (!event.value) return;
@@ -144,7 +213,13 @@ async function withdraw() {
       <section class="card">
         <div class="event-head">
           <div>
-            <h1 class="event-name" style="font-size: 24px">{{ event.title }}</h1>
+            <div class="event-title-row">
+              <h1 class="event-name" style="font-size: 24px">{{ event.title }}</h1>
+              <span class="server-tag" :class="{ 'is-cn': event.serverRegion === 'CN' }">
+                {{ serverLabel(event.serverRegion) }}
+              </span>
+              <HelpTip v-bind="SERVER_HELP" />
+            </div>
             <div class="event-meta" style="margin-top: 8px">
               <span>5v5 · DOTA2 · {{ event.capacity }} 人 / {{ event.targetMatches }} 场</span>
               <span v-if="event.registrationClosesAt">
@@ -184,9 +259,10 @@ async function withdraw() {
                   :steps="[
                     '① 报名时选的位置只是这一次的意向',
                     '② 选「不指定」时，按「我的 → 位置偏好」里的第一志愿安排',
-                    '③ 建议填满 3–5 个位置：志愿决定顺序，熟练度决定你实际能不能打',
+                    '③ 位置偏好建议填满 3–5 个：少于 3 个时，分队可能把你挪到没填过的位置',
+                    '④ 人多了谁上场：有段位 / 天梯分的优先，其次比 WARROOM 评分，同分按报名时间',
                   ]"
-                  note="报名时会把评分与位置冻结成快照；事后改档案、改评分都不会影响已公布的阵容。"
+                  note="报名时会把评分与位置冻结成快照，事后改评分不影响已公布的阵容。「有没有段位」是实时判断的：报名后补上段位就算有段位，但评分仍按报名时的快照算。"
                 />
               </span>
               <NSelect
@@ -201,7 +277,7 @@ async function withdraw() {
               type="primary"
               :disabled="submitting"
               :loading="submitting"
-              @click="register"
+              @click="onRegisterClick"
             >
               {{ isFull ? '加入候补' : '立即报名' }}
             </NButton>
@@ -223,9 +299,26 @@ async function withdraw() {
         <p v-if="error" class="alert" style="margin-top: 16px">{{ error }}</p>
         <p v-if="message" class="muted" style="margin-top: 16px">{{ message }}</p>
 
-        <p v-if="canRegister && !profilePrimary" class="coverage-warn" style="margin: 16px 0 0; font-size: 12px">
-          档案里还没填位置偏好——分队只能把你当成「位置未知」，容易被排到不熟的位置。
-          <RouterLink to="/me" style="color: var(--gold-2)">去补全 →</RouterLink>
+        <p
+          v-if="canRegister && positionCount === 0"
+          class="coverage-warn"
+          style="margin: 16px 0 0; font-size: 12px"
+        >
+          档案里还没填位置偏好——分队只能把你当成「位置未知」，容易被排到任意位置。
+          <RouterLink to="/me#positions" style="color: var(--gold-2)">去补全 →</RouterLink>
+        </p>
+        <p
+          v-else-if="canRegister && thinPositions"
+          class="coverage-warn"
+          style="margin: 16px 0 0; font-size: 12px"
+        >
+          档案里只填了 {{ positionCount }} 个位置偏好——少于 3 个时，分队可能把你挪到没填过的位置。
+          <RouterLink to="/me#positions" style="color: var(--gold-2)">补到 3–5 个 →</RouterLink>
+        </p>
+
+        <p v-if="canRegister && !hasRank" class="coverage-warn" style="margin: 16px 0 0; font-size: 12px">
+          还没有段位信息——报名人数超过可上场人数时，有段位 / 天梯分的玩家会优先上场。
+          <RouterLink to="/me#game-identity" style="color: var(--gold-2)">去补段位 →</RouterLink>
         </p>
       </section>
 

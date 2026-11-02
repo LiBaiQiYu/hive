@@ -6,6 +6,9 @@
  */
 import type { Env } from '../env';
 import { intVar } from '../env';
+import { ALGO_VERSION } from '../algorithms/rating';
+import { recomputeUserRating } from '../services/rating';
+import { reorderOpenEventWaitlists } from '../services/waitlist';
 import { claimJobs, completeJob, failJob, reclaimExpired } from './queue';
 import { handleJob } from './handlers';
 
@@ -54,10 +57,11 @@ export async function drainJobs(env: Env, limit?: number): Promise<DrainSummary>
  *   · 按 AUDIT_RETENTION_DAYS 裁剪审计日志
  *   · 清掉一周前就完成的 outbox 记录（DONE 只用于排查，不需要永久保留）
  *   · 给"绑了游戏账号、但 7 天没同步"的玩家排一次 PLAYER_SYNC
+ *   · 把算法版本落后的评分重算一遍（v3 改的是实力分口径，旧值必须刷新）
  */
 export async function dailyMaintenance(
   env: Env,
-): Promise<{ sessions: number; audits: number; jobs: number; queued: number }> {
+): Promise<{ sessions: number; audits: number; jobs: number; queued: number; ratings: number }> {
   const now = Date.now();
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
@@ -105,11 +109,28 @@ export async function dailyMaintenance(
     queued += result.meta.changes ?? 0;
   }
 
+  // 算法升级后，旧版本的 system_rating / attendance_bp 不能继续用。
+  // 这里逐条重算（社区只有十几个人，代价可忽略）；管理员也可以立即点「重算全部」。
+  const staleRatings = await env.DB.prepare(
+    `SELECT user_id AS userId FROM player_ratings WHERE algorithm_version <> ?`,
+  )
+    .bind(ALGO_VERSION)
+    .all<{ userId: string }>();
+
+  let ratings = 0;
+  for (const row of staleRatings.results ?? []) {
+    await recomputeUserRating(env, row.userId);
+    ratings += 1;
+  }
+
+  if (ratings > 0) await reorderOpenEventWaitlists(env);
+
   return {
     sessions: sessions.meta.changes ?? 0,
     audits: audits.meta.changes ?? 0,
     jobs: jobs.meta.changes ?? 0,
     queued,
+    ratings,
   };
 }
 

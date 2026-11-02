@@ -89,6 +89,7 @@ const previewPlayer = computed<PlayerCardData>(() => {
     rating: me?.rating?.effective ?? null,
     verification,
     personaName: me?.gameAccount?.personaName ?? null,
+    dotaAccountId: me?.gameAccount?.dotaAccountId ?? null,
     skin: cardSkin.value,
   };
 });

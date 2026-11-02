@@ -226,7 +226,7 @@ async function claimAccount() {
     claimMsg.value = result.hiddenData
       ? `${result.personaName ?? '该账号'} 没开「公开比赛数据」：抓不到段位，原有的自报段位会保留。这个 ID 仍会显示在卡片上，但第三方平台也只能看到公开数据`
       : `已同步 ${result.personaName ?? ''} 的段位，评分更新为 ${result.rating.effective}`;
-    message.success(result.hiddenData ? '已记录数字 ID' : '已从 OpenDota 同步');
+    message.success(result.hiddenData ? '已记录数字 ID' : '段位已同步');
   } catch (err) {
     claimErr.value = err instanceof ApiError ? err.message : '获取失败';
   } finally {
@@ -378,7 +378,7 @@ async function rebindSteam() {
               size="medium"
             />
             <NButton :disabled="claiming" :loading="claiming" @click="claimAccount">
-              {{ claiming ? '获取中…' : '从 OpenDota 获取' }}
+              {{ claiming ? '获取中…' : '同步段位' }}
             </NButton>
           </div>
           <p v-if="claimErr" class="alert identity-note">{{ claimErr }}</p>

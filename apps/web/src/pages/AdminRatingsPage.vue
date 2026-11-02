@@ -14,6 +14,7 @@ interface RatingRow {
   adjustment: number | null;
   effective: number | null;
   confidenceBp: number | null;
+  attendanceBp: number | null;
   rankTier: number | null;
   declaredMmr: number | null;
   limit: number;
@@ -160,6 +161,12 @@ const signed = (n: number | null) => (n === null ? '—' : `${n >= 0 ? '+' : ''}
 /** 置信度是万分比（1000 = 10%） */
 const confidenceOf = (player: RatingRow) => Math.round((player.confidenceBp ?? 0) / 100);
 
+/** 出勤率（万分比 → 百分比）；无记录显示 — */
+const attendanceOf = (player: RatingRow) => {
+  const bp = player.attendanceBp;
+  return typeof bp === 'number' ? `${Math.round(bp / 100)}%` : '—';
+};
+
 const MEDALS = ['先锋', '卫士', '中军', '统帅', '传奇', '万古流芳', '超凡入圣', '冠绝'];
 
 /** rank_tier = 勋章 × 10 + 星级；冠绝（80）没有星 */
@@ -195,11 +202,12 @@ function deltaClass(n: number | null): string {
             wide
             title="重算和修正的关系"
             :steps="[
-              '① 重算只更新系统分（段位 900 + 出勤 100），不动你手工设置的修正',
-              '② 修正上限随数据置信度自动放宽：150 → 500',
-              '③ 修正必须填原因，记录不可删除',
+              '① 重算只更新实力分（MMR ÷ 10）和出勤率，不动你手工设置的修正',
+              '② 候补顺序：出勤率 → 实力分 → 报名时间；实力分本身不含出勤',
+              '③ 修正上限随数据置信度自动放宽：150 → 500',
+              '④ 修正必须填原因，记录不可删除',
             ]"
-            note="录入比赛结果、赛事转「已结束」都会触发重算；已公布的阵容与报名快照不受影响。"
+            note="录入比赛结果、赛事转「已结束」都会触发重算；旧算法版本会在每日维护里自动补算，也可以在这里立即重算全部。已公布的阵容与报名快照不受影响。"
           />
         </h1>
       </div>
@@ -290,6 +298,7 @@ function deltaClass(n: number | null): string {
               <th class="num">修正</th>
               <th class="num">最终</th>
               <th class="num">置信度</th>
+              <th class="num">出勤</th>
               <th class="num">可修正</th>
               <th class="col-actions">操作</th>
             </tr>
@@ -331,6 +340,9 @@ function deltaClass(n: number | null): string {
                     </span>
                     <span class="confidence-text mono">{{ confidenceOf(player) }}%</span>
                   </div>
+                </td>
+                <td class="num mono muted" :title="player.attendanceBp === null ? '还没有已结束赛事' : '只影响候补顺序'">
+                  {{ attendanceOf(player) }}
                 </td>
                 <td class="num mono muted">±{{ player.limit }}</td>
                 <td class="col-actions">
@@ -395,7 +407,7 @@ function deltaClass(n: number | null): string {
               </tr>
 
               <tr v-if="editing === player.id" class="panel-row">
-                <td colspan="8">
+                <td colspan="9">
                   <form class="adjust-panel" @submit.prevent="save(player)" @keydown.esc="cancelEdit">
                     <div class="adjust-head">
                       <span class="adjust-title">调整「{{ player.displayName }}」的修正</span>
@@ -465,7 +477,7 @@ function deltaClass(n: number | null): string {
               </tr>
 
               <tr v-if="historyFor === player.id" class="panel-row">
-                <td colspan="8">
+                <td colspan="9">
                   <div class="history-panel">
                     <div class="history-head">
                       <span class="history-title">

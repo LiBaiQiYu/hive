@@ -14,7 +14,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 免得每次刷新都糊一脸。
  */
-export const APP_VERSION = '1.0.1';
+export const APP_VERSION = '1.1.0';
 
 export interface ReleaseNote {
   version: string;
@@ -24,6 +24,17 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.1.0',
+    date: '2026-11-02',
+    items: [
+      '评分改版：实力分只看天梯 MMR，出勤单独计算',
+      '报名满员后按「出勤率 → 实力分 → 报名先后」排候补',
+      '赛事新增服务器选择（国服 / 全球服），避免进错服',
+      '排行榜补上段位与天梯分，和评分来源一目了然',
+      '我的主页评分构成改成「实力分 + 出勤明细」',
+    ],
+  },
   {
     version: '1.0.1',
     date: '2026-11-02',

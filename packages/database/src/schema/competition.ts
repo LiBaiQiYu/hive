@@ -42,6 +42,11 @@ export const events = sqliteTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     createdAt: integer('created_at').notNull().default(TS_NOW),
     updatedAt: integer('updated_at').notNull().default(TS_NOW),
+    /* ---- 0011 追加：必须留在末尾，与 SQL 的列顺序一致 ---- */
+    /** 服务器：CN = 国服（蒸汽平台 / -perfectworld），GLOBAL = 全球服 */
+    serverRegion: text('server_region', { enum: ['CN', 'GLOBAL'] })
+      .notNull()
+      .default('GLOBAL'),
   },
   (t) => [index('idx_events_status_starts').on(t.status, t.startsAt)],
 );

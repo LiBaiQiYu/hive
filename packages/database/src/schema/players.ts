@@ -120,6 +120,11 @@ export const playerRatings = sqliteTable(
     adjustedBy: text('adjusted_by').references(() => users.id, { onDelete: 'set null' }),
     adjustedAt: integer('adjusted_at'),
     updatedAt: integer('updated_at').notNull().default(TS_NOW),
+    /**
+     * 出勤率（基点，0..10000）；NULL = 还没有已结束赛事。
+     * 独立于 system_rating，只用于候补优先级。
+     */
+    attendanceBp: integer('attendance_bp'),
   },
   (t) => [
     uniqueIndex('ux_player_ratings_user_id').on(t.userId),

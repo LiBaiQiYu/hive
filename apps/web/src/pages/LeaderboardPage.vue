@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { NButton, NSpin } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
+import RankCell from '../components/RankCell.vue';
 import { ApiError, api } from '../lib/api';
 import { session } from '../lib/session';
 
@@ -20,6 +21,9 @@ interface Entry {
   losses: number;
   played: number;
   winRateBp: number | null;
+  rankTier: number | null;
+  declaredMmr: number | null;
+  rankSource: string | null;
 }
 
 type SortKey = 'rating' | 'wins';
@@ -61,11 +65,11 @@ const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : ran
         <HelpTip
           title="这些数字是什么？"
           :steps="[
-            '① WARROOM 是分队用的内部评分（0–1000），不等于天梯分',
-            '② 胜场只统计已结束、且有胜负记录的比赛',
-            '③ 候补与流局不计入胜场',
+            '① WARROOM 实力分 = 天梯 MMR ÷ 10，范围 0–1000',
+            '② 出勤不进入实力分，只影响候补顺序；正选和分队不看它',
+            '③ 胜场只统计已结束、且有胜负记录的比赛',
           ]"
-          note="分数构成（段位 / 出勤）与管理员修正记录，在「我的」页可以逐项看到。"
+          note="MMR 只有自己填的才有；同步了 Steam / OpenDota / STRATZ 后用勋章估算。段位与 MMR 是评分的输入，不单独排序；评分构成在「我的主页」里能看到。"
         />
       </h1>
       <div style="display: flex; gap: 8px; align-items: center">
@@ -92,6 +96,7 @@ const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : ran
           <tr>
             <th style="width: 64px">排名</th>
             <th>玩家</th>
+            <th title="天梯段位与天梯分，来自账号同步或自己填写">段位 / MMR</th>
             <th class="num">WARROOM</th>
             <th class="num">胜 / 负</th>
             <th class="num">胜率</th>
@@ -114,6 +119,13 @@ const medal = (rank: number) => (rank === 1 ? '🥇' : rank === 2 ? '🥈' : ran
               </RouterLink>
               <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ entry.username }}</span>
               <span v-if="entry.role === 'ADMIN'" class="tag tag-other" style="margin-left: 6px">管理员</span>
+            </td>
+            <td>
+              <RankCell
+                :rank-tier="entry.rankTier"
+                :declared-mmr="entry.declaredMmr"
+                :rank-source="entry.rankSource"
+              />
             </td>
             <td class="num mono" style="color: var(--gold-2); font-size: 15px">
               {{ entry.effective }}

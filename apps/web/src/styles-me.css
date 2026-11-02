@@ -98,6 +98,16 @@
   line-height: 1.6;
 }
 
+/* 出勤是独立指标：蓝色条，避免和金色的实力分混在一起 */
+.rating-attendance {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.rating-attendance .rating-break-bar i {
+  background: linear-gradient(90deg, #4f8fd6, #8bd8ff);
+}
+
 :root[data-theme='light'] .rating-break-bar {
   background: rgba(27, 32, 51, 0.08);
 }
@@ -459,7 +469,8 @@
 
 /* 吸顶导航会盖住锚点的第一行，给个上边距（原生锚点跳转也走这条） */
 #profile,
-#security {
+#security,
+#game-identity {
   scroll-margin-top: 84px;
 }
 
@@ -494,4 +505,42 @@
 .pos-dirty {
   font-size: 12px;
   color: var(--amber);
+}
+
+/* ------------------------------------------------------- 段位 / MMR 单元格 */
+
+/* 排行榜与战绩页共用（components/RankCell.vue）。
+   段位和 MMR 同占一列：拆成两列的话窄屏会被挤出横向滚动条 */
+.lb-rank {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.lb-medal {
+  font-family: var(--display);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  color: var(--gold-2);
+}
+
+.lb-stars {
+  display: inline-flex;
+  gap: 1px;
+  font-size: 9px;
+  letter-spacing: 0;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.lb-none {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.lb-mmr {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
 }

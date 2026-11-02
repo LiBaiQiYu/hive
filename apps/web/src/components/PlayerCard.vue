@@ -7,6 +7,7 @@ import { normalizeCardSkin, type CardSkin } from '../lib/cards';
 import { renderMetalFrame } from '../lib/metal';
 import { renderPixelFrame } from '../lib/pixel';
 import { renderPsiFrame } from '../lib/psi';
+import { rankParts } from '../lib/rank';
 
 export interface PlayerCardData {
   userId: string;
@@ -19,6 +20,8 @@ export interface PlayerCardData {
   rating: number | null;
   verification: string;
   personaName: string | null;
+  /** DOTA2 数字 ID：绑定 / 声明过才有，公开在卡片上供别人去第三方核对 */
+  dotaAccountId?: number | null;
   /** 玩家自己选的皮肤；老接口没有这个字段时按默认皮肤渲染 */
   skin?: CardSkin | null;
 }
@@ -27,25 +30,8 @@ const props = withDefaults(defineProps<{ player: PlayerCardData; index?: number 
   index: 0,
 });
 
-const MEDALS: Record<number, string> = {
-  1: '先锋',
-  2: '卫士',
-  3: '中军',
-  4: '统帅',
-  5: '传奇',
-  6: '万古流芳',
-  7: '超凡入圣',
-  8: '冠绝',
-};
-
-/** rank_tier 编码：十位=勋章，个位=星级 */
-const rank = computed(() => {
-  const tier = props.player.rankTier;
-  if (!tier || tier < 10) return null;
-  const medal = Math.floor(tier / 10);
-  const star = tier % 10;
-  return { medal: MEDALS[medal] ?? '未知', star, tier };
-});
+/** rank_tier 编码：十位=勋章，个位=星级（拆解逻辑统一在 lib/rank.ts） */
+const rank = computed(() => rankParts(props.player.rankTier));
 
 const verification = computed(() => {
   switch (props.player.verification) {
@@ -63,6 +49,12 @@ const verification = computed(() => {
 const mmrLabel = computed(() =>
   props.player.declaredMmr === null ? '—' : String(props.player.declaredMmr),
 );
+
+/**
+ * DOTA2 数字 ID。只来自玩家主动绑定 / 声明（game_accounts），没绑定就是 null。
+ * 显示它是为了"可核对"：别人可以拿去 OpenDota / Dotabuff 对段位和战绩。
+ */
+const dotaAccountId = computed(() => props.player.dotaAccountId ?? null);
 
 /** 皮肤只影响视觉：材质 / 边框 / 特效都是 CSS 变量，组件本身不认识具体皮肤 */
 const skin = computed(() => normalizeCardSkin(props.player.skin));
@@ -253,7 +245,20 @@ onBeforeUnmount(() => {
       </div>
 
       <header class="pcard-head">
-        <h3 class="pcard-name">{{ props.player.displayName }}</h3>
+        <div class="pcard-head-main">
+          <h3 class="pcard-name">{{ props.player.displayName }}</h3>
+          <!-- 数字 ID 是公开的"可核对"入口：点开 OpenDota 能看到这个账号公开的段位与战绩 -->
+          <a
+            v-if="dotaAccountId"
+            class="pcard-dota mono"
+            :href="`https://www.opendota.com/players/${dotaAccountId}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="`DOTA2 数字 ID ${dotaAccountId} · 在 OpenDota 查看公开资料`"
+          >
+            DOTA2 {{ dotaAccountId }}<span class="pcard-dota-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
         <span class="pcard-badge" :class="`badge-${verification.tone}`">
           {{ verification.label }}
         </span>
@@ -261,7 +266,7 @@ onBeforeUnmount(() => {
 
       <div class="pcard-medal">
         <template v-if="rank">
-          <span class="medal-text">{{ rank.medal }}</span>
+          <span class="medal-text">{{ rank.name }}</span>
           <span class="medal-star">
             <i v-for="n in Math.max(rank.star, 0)" :key="n">★</i>
           </span>

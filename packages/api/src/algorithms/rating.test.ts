@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ALGO_VERSION,
+  MMR_TO_RATING_DIVISOR,
   adjustmentLimit,
   computeEffective,
   computeRating,
@@ -44,55 +46,91 @@ describe('estimateMmr', () => {
   });
 });
 
-describe('computeRating', () => {
-  it('两项权重合计 1000', () => {
-    const result = computeRating(base);
+describe('computeRating · 实力分', () => {
+  it('实力分 = MMR ÷ 10，且只有 MMR 一项构成', () => {
+    const result = computeRating(veteran);
+    expect(MMR_TO_RATING_DIVISOR).toBe(10);
+    expect(result.system).toBe(520);
+    expect(result.components).toEqual([
+      {
+        key: 'MMR',
+        weight: 1000,
+        value: 0.52,
+        score: 520,
+        basis: 'SELF_MMR',
+      },
+    ]);
     expect(result.components.reduce((sum, c) => sum + c.weight, 0)).toBe(1000);
-    expect(result.components.map((c) => c.key)).toEqual(['RANK', 'COMMUNITY']);
   });
 
-  it('段位是核心：同一出勤下，超凡 5 远高于中军 2', () => {
-    // 自报 MMR 的优先级高于勋章，比较勋章效果时必须把它清掉
-    const high = computeRating({ ...veteran, rankTier: 75, declaredMmr: null });
-    const low = computeRating({ ...veteran, rankTier: 32, declaredMmr: null });
-    expect(high.system).toBeGreaterThan(low.system + 150);
+  it('没有 MMR 时用勋章估算，没有段位时给中性 500', () => {
+    const medal = computeRating({ ...base, rankTier: 51 });
+    expect(medal.system).toBe(308);
+    expect(medal.components[0]?.basis).toBe('MEDAL');
+
+    const none = computeRating(base);
+    expect(none.system).toBe(500);
+    expect(none.components[0]?.basis).toBe('NO_DATA');
+    expect(none.confidenceBp).toBe(0);
   });
 
-  it('全勤拿满社区分，缺席按比例扣', () => {
-    const full = computeRating({ ...veteran, communityPlayed: 10, communityRegistered: 10 });
-    const half = computeRating({ ...veteran, communityPlayed: 5, communityRegistered: 10 });
-    const none = computeRating({ ...veteran, communityPlayed: 0, communityRegistered: 10 });
-    expect(full.system).toBeGreaterThan(half.system);
-    expect(half.system).toBeGreaterThan(none.system);
-    expect(full.attendanceBp).toBe(10000);
-    expect(none.attendanceBp).toBe(0);
+  it('段位分差要能真实反映出来：9000 与 1000 相差 800', () => {
+    const high = computeRating({ ...base, rankTier: 80, declaredMmr: 9000 });
+    const low = computeRating({ ...base, rankTier: 11, declaredMmr: 1000 });
+    expect(high.system).toBe(900);
+    expect(low.system).toBe(100);
+    expect(high.system - low.system).toBe(800);
   });
 
-  it('没有报名记录的新人不扣分', () => {
-    const result = computeRating({ ...veteran, communityPlayed: 0, communityRegistered: 0 });
-    expect(result.attendanceBp).toBeNull();
-    const community = result.components.find((c) => c.key === 'COMMUNITY');
-    expect(community?.value).toBe(1);
-    expect(community?.basis).toBe('NO_RECORD');
-  });
-
-  it('段位分差要能真实反映出来：9000 与 1000 相差 500 以上', () => {
-    const high = computeRating({ rankTier: 80, declaredMmr: 9000, careerMatches: 0, communityPlayed: 0, communityRegistered: 0 });
-    const low = computeRating({ rankTier: 11, declaredMmr: 1000, careerMatches: 0, communityPlayed: 0, communityRegistered: 0 });
-    expect(high.system - low.system).toBeGreaterThan(500);
-  });
-
-  it('没有天梯样本也能靠段位拿到高分，只是不确定度拉满', () => {
-    const noCareer = computeRating({ rankTier: 80, declaredMmr: 9000, careerMatches: 0, communityPlayed: 0, communityRegistered: 0 });
-    expect(noCareer.system).toBeGreaterThan(800);
+  it('样本不足不再把分数往 500 收缩，但置信度仍然是 0', () => {
+    const noCareer = computeRating({ ...base, rankTier: 80, declaredMmr: 9000 });
+    expect(noCareer.system).toBe(900);
     expect(noCareer.confidenceBp).toBe(0);
     expect(uncertainty(noCareer.confidenceBp)).toBe(300);
   });
 
   it('结果永远在 0..1000', () => {
-    const extreme = computeRating({ ...veteran, declaredMmr: 20000 });
-    expect(extreme.system).toBeLessThanOrEqual(1000);
-    expect(extreme.system).toBeGreaterThanOrEqual(0);
+    const extreme = computeRating({ ...base, declaredMmr: 20000 });
+    expect(extreme.system).toBe(1000);
+
+    const zero = computeRating({ ...base, declaredMmr: 0 });
+    expect(zero.system).toBe(0);
+  });
+
+  it('算法版本已升到 v3', () => {
+    expect(ALGO_VERSION).toBe('warroom-v3');
+  });
+});
+
+describe('computeRating · 出勤独立', () => {
+  it('全勤 / 缺席不改变实力分，只改变 attendanceBp', () => {
+    const full = computeRating({ ...veteran, communityPlayed: 10, communityRegistered: 10 });
+    const half = computeRating({ ...veteran, communityPlayed: 5, communityRegistered: 10 });
+    const none = computeRating({ ...veteran, communityPlayed: 0, communityRegistered: 10 });
+
+    expect(full.system).toBe(half.system);
+    expect(half.system).toBe(none.system);
+    expect(full.attendanceBp).toBe(10000);
+    expect(half.attendanceBp).toBe(5000);
+    expect(none.attendanceBp).toBe(0);
+    expect(full.attendancePlayed).toBe(10);
+    expect(half.attendancePlayed).toBe(5);
+    expect(none.attendancePlayed).toBe(0);
+    expect(none.attendanceRegistered).toBe(10);
+  });
+
+  it('没有报名记录时 attendanceBp 为 null，不按缺席处理', () => {
+    const result = computeRating({ ...veteran, communityPlayed: 0, communityRegistered: 0 });
+    expect(result.attendanceBp).toBeNull();
+    expect(result.attendancePlayed).toBe(0);
+    expect(result.attendanceRegistered).toBe(0);
+    expect(result.system).toBe(520);
+  });
+
+  it('出场数不会超过报名数', () => {
+    const result = computeRating({ ...veteran, communityPlayed: 12, communityRegistered: 10 });
+    expect(result.attendancePlayed).toBe(10);
+    expect(result.attendanceBp).toBe(10000);
   });
 });
 

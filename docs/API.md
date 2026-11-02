@@ -47,7 +47,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp}`，老数据为 `null` |
+| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
 | PATCH | `/api/me` | `{displayName?, bio?, qqNumber?}` |
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
 | GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
@@ -55,9 +55,10 @@
 | GET | `/api/players/:id` | 公开档案：段位、位置、英雄池 Top 10、近期战绩、评分构成 |
 | POST | `/api/me/steam/sync` | 投递同步任务，返回 `202 {queued: true}` |
 | GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`（默认 `rating`）；返回 `{rank, user, effective, wins, losses, played, winRateBp}`。`mvp` 排序暂不提供——`match_player_stats` 还没有数据 |
-| POST | `/api/me/game-account/claim` | `{accountId: 109902856}` 声明式绑定：先查 OpenDota 确认账号存在，写入 `provider=DOTA_ACCOUNT_ID`、`verification=CLAIMED` |
+| POST | `/api/me/game-account/claim` | `{accountId: 109902856}` 声明式绑定：先查段位源（配了 `STRATZ_API_TOKEN` 走 STRATZ，否则退回 OpenDota）确认账号存在，写入 `provider=DOTA_ACCOUNT_ID`、`verification=CLAIMED`。抓到公开段位才覆盖 `player_stats` 并清掉手填 MMR；**抓不到时只更新场次，保留原有的自报段位**（旧绑定同步来的 `OPENDOTA` / `STRATZ` 段位会清掉），返回 `hiddenData: true` |
 | DELETE | `/api/me/game-account` | 解绑；已有进行中报名时返回 `CONFLICT` |
 | PUT | `/api/me/rank` | `{rankTier?, declaredMmr?}` 手动填写段位，写 `rank_source=SELF_REPORTED` |
+| DELETE | `/api/me/rank` | 清空段位：`rank_tier` / `declared_mmr` / `rank_source` 一起置空并立即重算（回到 500 中性值）。只允许清自报数据，`OPENDOTA` / `STRATZ` / `ADMIN_SET` 返回 `CONFLICT`；本来就没数据时幂等返回 `{cleared: false}` |
 | GET | `/api/me/verification` | 徽章状态：`{level, hasPublicData, rankSource, adminAdjustmentLimit}` |
 
 `claim` 的语义要说死在契约里：**它验证的是"这个账号存在且有公开数据"，不验证"这是你的账号"**。所以响应必须原样返回 `verification: "CLAIMED"`，前端据此渲染黄色徽章，不允许把它显示成"已认证"。
@@ -68,18 +69,21 @@
 
 ```json
 { "rating": {
-    "system": 720, "adjustment": 50, "effective": 770,
-    "confidence": 0.62, "uncertainty": 114,
-    "algorithmVersion": "warroom-v1", "computedAt": "2026-10-30T08:00:00Z",
-    "breakdown": [
-      { "key": "RANK", "weight": 350, "score": 262, "basis": "MMR" },
-      { "key": "FORM", "weight": 250, "score": 171, "basis": "OPENDOTA_RECENT" },
-      { "key": "POSITION", "weight": 200, "score": 150, "basis": "PROFICIENCY" },
-      { "key": "HERO_POOL", "weight": 120, "score": 74, "basis": "OPENDOTA" },
-      { "key": "COMMUNITY", "weight": 80, "score": 63, "basis": "ATTENDANCE" } ],
-    "adjustmentReason": "社区内战实际表现较强",
-    "referencedMmr": 4300 } }
+    "system": 520, "adjustment": 50, "effective": 570,
+    "confidenceBp": 10000, "uncertainty": 0,
+    "algorithmVersion": "warroom-v3", "computedAt": 1761822000000,
+    "breakdown": {
+      "components": [
+        { "key": "MMR", "weight": 1000, "value": 0.52, "score": 520, "basis": "SELF_MMR" }
+      ],
+      "estimatedMmr": 5200,
+      "attendanceBp": 8000,
+      "attendancePlayed": 8,
+      "attendanceRegistered": 10
+    } } }
 ```
+
+`breakdown` 的 `components` 在 v3 只有 `MMR` 一项（权重 1000）；`attendanceBp` 是独立的出勤率（基点，NULL = 无记录），只用于候补排序。`system` 是实力分，不含出勤。
 
 `adjustmentReason` 的可见性由角色决定：本人与管理员有值，其他玩家为 `null`（字段存在但为空，前端据此决定是否显示原因行，不要靠隐藏整块来"看起来没问题"）。**服务端过滤，不要交给前端判断**——前端过滤等于没有过滤。
 
@@ -91,7 +95,7 @@
 | GET | `/api/events/:id` | 详情：容量、已报名数、候补数、场次列表 |
 | POST | `/api/events/:id/registrations` | `{positionPreference, secondaryPosition?, note?}` |
 | DELETE | `/api/events/:id/registrations` | 退赛；若已入正选阵容则拒绝（`CONFLICT`） |
-| GET | `/api/events/:id/registrations` | 报名名单（公开：昵称 + 位置；评分仅管理员可见） |
+| GET | `/api/events/:id/registrations` | 报名名单（玩家卡片数据源）：昵称、简介、位置、段位、MMR、评分、验证等级、`personaName`、`dotaAccountId`（只在玩家绑定/声明过时返回，公开给其他人去第三方核对） |
 
 报名时机：`events.status = REGISTRATION_OPEN` 且当前时间在窗口内。写入时**必须**从 `player_ratings` 读取并写入三个快照字段 + `position_snapshot` + `snapshot_at`。
 
@@ -140,7 +144,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/players/:id/rating` | 三层评分 + 五项 `breakdown` + 最近修正 |
+| GET | `/api/admin/players/:id/rating` | 三层评分 + 实力 / 出勤明细 + 最近修正 |
 | PUT | `/api/admin/players/:id/rating-adjustment` | `{adjustment, reason, eventId?}` |
 | GET | `/api/admin/players/:id/rating-adjustments` | 修正历史，倒序分页 |
 | POST | `/api/admin/players/:id/rating-recompute` | 投递重算任务（改算法后使用） |
@@ -171,8 +175,8 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/dashboard` | `{members:{active,admins,newThisMonth}, events:{ongoing,total,openNow}, registrations:{thisMonth}, pendingPublish, jobs:{pending,running,dead,failed}, recentEvents}` |
-| POST | `/api/admin/events` | 创建赛事（`title, capacity, registrationOpensAt, startsAt`） |
-| PATCH | `/api/admin/events/:id` | 编辑 `{title?, summary?, capacity?, registrationOpensAt?, registrationClosesAt?, startsAt?}`，至少一个字段；时间字段传 `null` 表示清空。容量须为 10 的整数倍且不低于已确认人数；**报名关闭后容量与赛程不可改**（`CONFLICT`），标题/简介仍可改 |
+| POST | `/api/admin/events` | 创建赛事（`title, capacity, registrationOpensAt, startsAt, serverRegion?`）；`serverRegion` 缺省为 `GLOBAL` |
+| PATCH | `/api/admin/events/:id` | 编辑 `{title?, summary?, capacity?, registrationOpensAt?, registrationClosesAt?, startsAt?, serverRegion?}`，至少一个字段；时间字段传 `null` 表示清空。容量须为 10 的整数倍且不低于已确认人数；**报名关闭后容量与赛程不可改**（`CONFLICT`），标题/简介/服务器仍可改 |
 | POST | `/api/admin/events/:id/transition` | `{to: "REGISTRATION_OPEN" \| "REGISTRATION_CLOSED" \| "COMPLETED" \| "ARCHIVED" \| "CANCELLED"}` |
 | GET | `/api/admin/events/:id/registrations` | 含评分、位置分布统计、候补队列 |
 | POST | `/api/admin/events/:id/registrations/:rid/promote` | 候补转正：置 `CONFIRMED` 并清空 `waitlist_position`，同一 batch 内把剩余候补重排为 1..n；正选已满、非候补、赛事已发布时返回 `CONFLICT` |

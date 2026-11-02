@@ -31,11 +31,17 @@ pnpm dev
 pnpm dlx wrangler secret put IP_HASH_SALT       --config packages/api/wrangler.jsonc
 pnpm dlx wrangler secret put PASSWORD_PEPPER    --config packages/api/wrangler.jsonc
 pnpm dlx wrangler secret put STEAM_WEB_API_KEY  --config packages/api/wrangler.jsonc
+# 段位抓取：配了就走 STRATZ（额度跟 token 走），没配自动退回 OpenDota（额度按 IP 计）
+pnpm dlx wrangler secret put STRATZ_API_TOKEN   --config packages/api/wrangler.jsonc
 # staging 用独立的一套，不要复用生产密钥
 pnpm dlx wrangler secret put IP_HASH_SALT       --config packages/api/wrangler.jsonc --env staging
 pnpm dlx wrangler secret put PASSWORD_PEPPER    --config packages/api/wrangler.jsonc --env staging
 pnpm dlx wrangler secret put STEAM_WEB_API_KEY  --config packages/api/wrangler.jsonc --env staging
+pnpm dlx wrangler secret put STRATZ_API_TOKEN   --config packages/api/wrangler.jsonc --env staging
 ```
+
+本地不用 secret，直接写到 `.dev.vars`：`STRATZ_API_TOKEN=<你的 token>`（这个文件已 gitignore）。
+token 在 stratz.com 的账号设置里生成，有效期到期后接口会返回 401/403，报错文案会直接提示更新 token。
 
 ## 3. 脚本契约（package.json 必须提供这些名字）
 

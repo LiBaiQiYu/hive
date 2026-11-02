@@ -154,7 +154,7 @@ onBeforeRouteLeave(async () => {
 </script>
 
 <template>
-  <section class="card section">
+  <section id="positions" class="card section">
     <h2 class="card-title">
       位置偏好
       <HelpTip
@@ -162,8 +162,9 @@ onBeforeRouteLeave(async () => {
         title="志愿和熟练度怎么用？"
         :steps="[
           '① 志愿顺序决定分队时你被安排的位置；只填一个位置，队伍里就必然有人打不上本命位',
-          '② 熟练度是你在这个位置的真实水平：100 = 完全胜任，0 = 勉强能顶',
-          '③ 契合度 = 志愿基准（第一志愿 100，之后每降一档 −20）+ 熟练度修正（±25）',
+          '② 建议填满 3–5 个：少于 3 个时，分队很可能把你挪到没填过的位置',
+          '③ 熟练度是你在这个位置的真实水平：100 = 完全胜任，0 = 勉强能顶',
+          '④ 契合度 = 志愿基准（第一志愿 100，之后每降一档 −20）+ 熟练度修正（±25）',
         ]"
         note="熟练度只影响分队时的位置契合度，不影响 WARROOM 评分。建议填 3–5 个位置；保存后下次生成阵容才生效，已公布的阵容不会变。"
       />
@@ -215,7 +216,12 @@ onBeforeRouteLeave(async () => {
       <NButton type="primary" :disabled="!canSave" :loading="saving" @click="save()">
         {{ saving ? '保存中…' : '保存位置偏好' }}
       </NButton>
-      <span class="muted" style="font-size: 12px">已选 {{ chosen.length }} 个位置</span>
+      <span class="muted" style="font-size: 12px">
+        已选 {{ chosen.length }} 个位置
+        <span v-if="chosen.length < 3" style="color: var(--amber)">
+          · 少于 3 个时，分队可能把你排到没填过的位置
+        </span>
+      </span>
       <span v-if="dirty" class="pos-dirty">有未保存的改动</span>
     </div>
   </section>
