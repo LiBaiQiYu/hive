@@ -16,6 +16,8 @@ export interface Env {
   /** outbox 每次抽干的任务数 / 租约秒数（wrangler.jsonc 的 vars） */
   SYNC_JOB_BATCH_SIZE?: string;
   SYNC_JOB_LEASE_SECONDS?: string;
+  /** 审计日志保留天数，每日维护按它裁剪 */
+  AUDIT_RETENTION_DAYS?: string;
 }
 
 export interface Variables {

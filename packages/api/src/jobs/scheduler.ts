@@ -50,18 +50,26 @@ export async function drainJobs(env: Env, limit?: number): Promise<DrainSummary>
 
 /**
  * 每日维护（`0 18 * * *` = 次日 02:00 Asia/Shanghai）：
- *   · 清掉过期一周以上的会话
+ *   · 清掉过期一周以上的会话（**不区分是否已撤销**——撤销只是标记，行还是要回收的）
+ *   · 按 AUDIT_RETENTION_DAYS 裁剪审计日志
  *   · 清掉一周前就完成的 outbox 记录（DONE 只用于排查，不需要永久保留）
  *   · 给"绑了游戏账号、但 7 天没同步"的玩家排一次 PLAYER_SYNC
  */
-export async function dailyMaintenance(env: Env): Promise<{ sessions: number; jobs: number; queued: number }> {
+export async function dailyMaintenance(
+  env: Env,
+): Promise<{ sessions: number; audits: number; jobs: number; queued: number }> {
   const now = Date.now();
   const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
-  const sessions = await env.DB.prepare(
-    `DELETE FROM sessions WHERE expires_at < ? AND revoked_at IS NULL`,
-  )
+  // 注意不要加 `AND revoked_at IS NULL`：那样"用户主动退出/改密码"留下的撤销行会永久堆积
+  const sessions = await env.DB.prepare(`DELETE FROM sessions WHERE expires_at < ?`)
     .bind(weekAgo)
+    .run();
+
+  // 审计日志按保留天数裁剪（这个 var 之前声明了却没人读，等于无限增长）
+  const retentionDays = intVar(env.AUDIT_RETENTION_DAYS, 365);
+  const audits = await env.DB.prepare(`DELETE FROM audit_logs WHERE created_at < ?`)
+    .bind(now - retentionDays * 24 * 60 * 60 * 1000)
     .run();
 
   const jobs = await env.DB.prepare(
@@ -99,6 +107,7 @@ export async function dailyMaintenance(env: Env): Promise<{ sessions: number; jo
 
   return {
     sessions: sessions.meta.changes ?? 0,
+    audits: audits.meta.changes ?? 0,
     jobs: jobs.meta.changes ?? 0,
     queued,
   };
