@@ -419,6 +419,45 @@
   background: rgba(168, 98, 10, 0.07);
 }
 
+/* 第三方数据来源署名。
+   刻意用品牌紫而不是 HIVE 的金色：这是个"数据是别人给的"提示，
+   和站内自己的信息（金色）区分开才不会看着像自夸。 */
+.identity-powered {
+  display: flex;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.powered-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 13px;
+  border: 1px solid rgba(123, 108, 240, 0.48);
+  border-radius: 999px;
+  background: rgba(123, 108, 240, 0.16);
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.powered-badge b {
+  color: #b7aefc;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+:root[data-theme='light'] .powered-badge {
+  border-color: rgba(108, 92, 231, 0.34);
+  background: rgba(108, 92, 231, 0.09);
+}
+
+:root[data-theme='light'] .powered-badge b {
+  color: #5546c4;
+}
+
 @media (max-width: 560px) {
   /* 窄屏一行放不下「徽章 + 段位」，硬挤会贴在一起：改成上下两段 */
   .identity-state {

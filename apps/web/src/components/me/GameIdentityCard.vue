@@ -325,6 +325,12 @@ async function rebindSteam() {
             <a class="btn" href="/api/auth/steam/start">绑定 Steam</a>
           </div>
         </template>
+
+        <div class="identity-powered">
+          <span class="powered-badge" title="绑定的 DOTA ID、游戏昵称与段位由 STRATZ 的公开接口提供">
+            Powered by <b>STRATZ</b>
+          </span>
+        </div>
       </NTabPane>
 
       <!-- ------------------------------------------------------- 数字 ID -->
@@ -384,6 +390,12 @@ async function rebindSteam() {
           <p v-if="claimErr" class="alert identity-note">{{ claimErr }}</p>
           <p v-if="claimMsg" class="muted identity-note">{{ claimMsg }}</p>
         </template>
+
+        <div v-if="!isVerified" class="identity-powered">
+          <span class="powered-badge" title="段位与游戏昵称由 STRATZ 的公开接口提供">
+            Powered by <b>STRATZ</b>
+          </span>
+        </div>
       </NTabPane>
 
       <!-- --------------------------------------------------------- 手动 -->
