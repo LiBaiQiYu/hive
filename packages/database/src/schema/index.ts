@@ -9,5 +9,6 @@ export * from './_shared';
 export * from './users';
 export * from './players';
 export * from './competition';
+export * from './social';
 export * from './jobs';
 export * from './audit';

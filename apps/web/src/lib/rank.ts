@@ -43,3 +43,14 @@ export function rankLabel(tier: number | null | undefined): string {
   // 冠绝只有勋章没有星级，别拼出「冠绝 0 星」
   return parts.medal === 8 ? parts.name : `${parts.name} ${parts.star} 星`;
 }
+
+/** 天梯分的悬停说明：为什么有人有段位却没有 MMR */
+export function mmrHint(
+  mmr: number | null,
+  tier: number | null,
+  source: string | null | undefined,
+): string {
+  if (mmr !== null) return source === 'SELF_REPORTED' ? '自己填写的天梯分' : '账号同步来的天梯分';
+  if (tier !== null) return '段位来自 Steam / OpenDota / STRATZ 同步，这类数据不含天梯分';
+  return '还没有段位数据：绑定 Steam，或在「我的主页 → 游戏身份」里手动填写';
+}

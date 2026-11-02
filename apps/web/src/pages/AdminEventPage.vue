@@ -14,7 +14,19 @@ import {
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
+import RankMedal from '../components/RankMedal.vue';
+import VerificationFilter from '../components/VerificationFilter.vue';
+import VerificationTag from '../components/VerificationTag.vue';
+import {
+  filterPlayers,
+  sortPlayers,
+  verificationCounts,
+  type PlayerSortKey,
+} from '../lib/player-table';
+import { mmrHint } from '../lib/rank';
 import { SERVER_HELP, SERVER_OPTIONS, type ServerRegion } from '../lib/server';
+import { nextSort, type SortState } from '../lib/sort';
+import type { VerificationFilter as FilterValue } from '../lib/verification';
 
 interface RegRow {
   id: string;
@@ -24,8 +36,14 @@ interface RegRow {
   status: string;
   position: number | null;
   waitlistPosition: number | null;
+  /** 报名时冻结的评分快照（分队用的就是它） */
   effectiveRating: number;
   attendanceBp: number | null;
+  /** 段位 / 天梯分 / 来源 / 身份验证：管理员判断"这个人的分可不可信"要看这些 */
+  rankTier: number | null;
+  declaredMmr: number | null;
+  rankSource: string | null;
+  verification: string | null;
 }
 
 interface MatchRow {
@@ -144,6 +162,36 @@ const attendanceOf = (reg: RegRow) => {
   const bp = reg.attendanceBp;
   return typeof bp === 'number' ? `${Math.round(bp / 100)}%` : '—';
 };
+
+/* ---------------------------------------------------- 报名名单：筛选 / 排序 */
+
+/** 玩家列表的筛选排序要的是 `effective`，报名快照字段叫 effectiveRating */
+type RegListView = RegRow & { effective: number };
+
+const regList = computed<RegListView[]>(() =>
+  regs.value.map((reg) => ({ ...reg, effective: reg.effectiveRating })),
+);
+
+/** 默认不排序：保持服务端的「正选按评分 → 候补按顺序」 */
+const regFilter = ref<FilterValue>('ALL');
+const regSort = ref<SortState<PlayerSortKey> | null>(null);
+const regCounts = computed(() => verificationCounts(regList.value));
+
+const regRows = computed<RegListView[]>(() => {
+  const filtered = filterPlayers(regList.value, regFilter.value);
+  if (!regSort.value) return filtered;
+  // 排序只作用于组内：正选永远在候补前面，否则"谁在候补第几位"会看不出来
+  const sorted = sortPlayers(filtered, regSort.value);
+  const rank = (status: string) => (status === 'CONFIRMED' ? 0 : status === 'WAITLIST' ? 1 : 2);
+  return [...sorted].sort((a, b) => rank(a.status) - rank(b.status));
+});
+
+function onRegSort(key: PlayerSortKey) {
+  regSort.value = regSort.value ? nextSort(regSort.value, key) : { key, direction: 'desc' };
+}
+
+const regSortArrow = (key: PlayerSortKey) =>
+  regSort.value?.key === key ? (regSort.value.direction === 'desc' ? '▼' : '▲') : '';
 
 async function refresh() {
   loading.value = true;
@@ -873,65 +921,101 @@ const statusPill = (status: string) => {
         </div>
 
         <div v-if="regs.length === 0" class="empty">还没有人报名。</div>
-        <div v-else class="card" style="padding: 8px 12px">
-          <p class="muted" style="font-size: 12px; margin: 4px 4px 10px">
-            候补顺序：出勤率 → 评分 → 报名时间；出勤低的人会排在后面。
-          </p>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>玩家</th>
-                <th>状态</th>
-                <th class="num">评分</th>
-                <th class="num">出勤</th>
-                <th>位置</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="reg in regs" :key="reg.id">
-                <td>
-                  {{ reg.displayName }}
-                  <span class="muted" style="font-size: 12px">@{{ reg.username }}</span>
-                </td>
-                <td>
-                  <span
-                    class="tag"
-                    :class="
-                      reg.status === 'CONFIRMED'
-                        ? 'tag-confirmed'
-                        : reg.status === 'WAITLIST'
-                          ? 'tag-waitlist'
-                          : 'tag-other'
-                    "
-                  >
-                    {{
-                      reg.status === 'CONFIRMED'
-                        ? '正选'
-                        : reg.status === 'WAITLIST'
-                          ? `候补 ${reg.waitlistPosition ?? ''}`
-                          : reg.status
-                    }}
-                  </span>
-                </td>
-                <td class="num mono">{{ reg.effectiveRating }}</td>
-                <td class="num mono muted">{{ attendanceOf(reg) }}</td>
-                <td class="muted">{{ reg.position ? `${reg.position} 号位` : '未填' }}</td>
-                <td>
-                  <NButton
-                    v-if="reg.status === 'WAITLIST'"
-                    quaternary
-                    size="small"
-                    :disabled="busy"
-                    @click="promote(reg.id)"
-                  >
-                    转正
-                  </NButton>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+
+        <template v-else>
+          <div class="list-tools">
+            <VerificationFilter v-model="regFilter" :counts="regCounts" />
+            <span class="muted list-tools-hint">点表头按段位 / MMR / 评分排序，排序只在正选、候补内部生效</span>
+          </div>
+
+          <div v-if="regRows.length === 0" class="empty">这个筛选下没有报名者。</div>
+
+          <div v-else class="card" style="padding: 8px 12px">
+            <p class="muted" style="font-size: 12px; margin: 4px 4px 10px">
+              候补顺序：出勤率 → 评分 → 报名时间；出勤低的人会排在后面。
+            </p>
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>玩家</th>
+                    <th>状态</th>
+                    <th class="th-sort" @click="onRegSort('rankTier')">
+                      段位 <span class="sort-arrow">{{ regSortArrow('rankTier') }}</span>
+                    </th>
+                    <th class="num th-sort" @click="onRegSort('mmr')">
+                      MMR <span class="sort-arrow">{{ regSortArrow('mmr') }}</span>
+                    </th>
+                    <th
+                      class="num th-sort"
+                      title="报名时冻结的评分快照——分队用的就是它，之后改评分不会回写"
+                      @click="onRegSort('effective')"
+                    >
+                      评分 <span class="sort-arrow">{{ regSortArrow('effective') }}</span>
+                    </th>
+                    <th class="num">出勤</th>
+                    <th>位置</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="reg in regRows" :key="reg.id">
+                    <td>
+                      {{ reg.displayName }}
+                      <VerificationTag :verification="reg.verification" />
+                      <span class="muted" style="font-size: 12px">@{{ reg.username }}</span>
+                    </td>
+                    <td>
+                      <span
+                        class="tag"
+                        :class="
+                          reg.status === 'CONFIRMED'
+                            ? 'tag-confirmed'
+                            : reg.status === 'WAITLIST'
+                              ? 'tag-waitlist'
+                              : 'tag-other'
+                        "
+                      >
+                        {{
+                          reg.status === 'CONFIRMED'
+                            ? '正选'
+                            : reg.status === 'WAITLIST'
+                              ? `候补 ${reg.waitlistPosition ?? ''}`
+                              : reg.status
+                        }}
+                      </span>
+                    </td>
+                    <td><RankMedal :rank-tier="reg.rankTier" /></td>
+                    <td
+                      class="num mono"
+                      :title="mmrHint(reg.declaredMmr, reg.rankTier, reg.rankSource)"
+                    >
+                      <span :class="{ muted: reg.declaredMmr === null }">
+                        {{ reg.declaredMmr === null ? '—' : reg.declaredMmr.toLocaleString('en-US') }}
+                      </span>
+                    </td>
+                    <td class="num mono" style="color: var(--gold-2)">
+                      {{ reg.effectiveRating }}
+                    </td>
+                    <td class="num mono muted">{{ attendanceOf(reg) }}</td>
+                    <td class="muted">{{ reg.position ? `${reg.position} 号位` : '未填' }}</td>
+                    <td>
+                      <NButton
+                        v-if="reg.status === 'WAITLIST'"
+                        quaternary
+                        size="small"
+                        :disabled="busy"
+                        @click="promote(reg.id)"
+                      >
+                        转正
+                      </NButton>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
       </section>
     </template>
   </div>

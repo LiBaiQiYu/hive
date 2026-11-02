@@ -21,11 +21,13 @@ adminUserRoutes.get('/', async (c) => {
             u.qq_number AS qqNumber, u.created_at AS createdAt, u.last_login_at AS lastLoginAt,
             COALESCE(pr.effective_rating, 500) AS effective,
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr, ps.rank_source AS rankSource,
+            ga.verification AS verification,
             (SELECT count(*) FROM registrations r WHERE r.user_id = u.id AND r.status = 'CONFIRMED') AS registrations,
             (SELECT count(*) FROM team_members tm WHERE tm.user_id = u.id AND tm.is_substitute = 0) AS appearances
        FROM users u
        LEFT JOIN player_ratings pr ON pr.user_id = u.id
        LEFT JOIN player_stats ps ON ps.user_id = u.id
+       LEFT JOIN game_accounts ga ON ga.user_id = u.id
       ORDER BY CASE u.role WHEN 'ADMIN' THEN 0 ELSE 1 END, u.created_at ASC`,
   ).all();
 

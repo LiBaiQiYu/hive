@@ -11,6 +11,7 @@ import './styles-frame-fx.css';
 import './styles-ui.css';
 import './styles-hero.css';
 import './styles-changelog.css';
+import './styles-player.css';
 import { loadMe } from './lib/session';
 import { session } from './lib/session';
 import { initTheme } from './lib/theme';
@@ -23,6 +24,7 @@ import SettingsPage from './pages/SettingsPage.vue';
 import LeaderboardPage from './pages/LeaderboardPage.vue';
 import RecordsPage from './pages/RecordsPage.vue';
 import MatchPage from './pages/MatchPage.vue';
+import PlayerPage from './pages/PlayerPage.vue';
 
 // 后台是少数人用的重页面（日期选择器等组件很占体积），按需加载
 const AdminPage = () => import('./pages/AdminPage.vue');
@@ -43,6 +45,7 @@ const router = createRouter({
     { path: '/settings', name: 'settings', component: SettingsPage, meta: { auth: true } },
     { path: '/leaderboard', name: 'leaderboard', component: LeaderboardPage },
     { path: '/records', name: 'records', component: RecordsPage },
+    { path: '/players/:id', name: 'player', component: PlayerPage },
     { path: '/matches/:id', name: 'match', component: MatchPage },
     { path: '/login', name: 'login', component: LoginPage },
     { path: '/admin', name: 'admin', component: AdminPage, meta: { admin: true } },

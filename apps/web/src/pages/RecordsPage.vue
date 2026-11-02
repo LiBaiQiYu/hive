@@ -3,9 +3,21 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { NSpin } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
-import RankCell from '../components/RankCell.vue';
+import RankMedal from '../components/RankMedal.vue';
+import VerificationFilter from '../components/VerificationFilter.vue';
+import VerificationTag from '../components/VerificationTag.vue';
 import { ApiError, api, formatDate } from '../lib/api';
+import { mmrHint } from '../lib/rank';
+import {
+  filterPlayers,
+  sortPlayers,
+  verificationCounts,
+  type PlayerListRow,
+  type PlayerSortKey,
+} from '../lib/player-table';
 import { loadMe, session } from '../lib/session';
+import { nextSort, type SortState } from '../lib/sort';
+import type { VerificationFilter as FilterValue } from '../lib/verification';
 
 interface MyMatch {
   matchId: string;
@@ -25,20 +37,11 @@ interface Summary {
   winRateBp: number | null;
 }
 
-interface LeaderRow {
-  rank: number;
-  id: string;
+interface LeaderRow extends PlayerListRow {
   displayName: string;
   username: string;
-  wins: number;
   losses: number;
   played: number;
-  winRateBp: number | null;
-  /** 与排行榜同源：段位 / 天梯分 / WARROOM 评分 */
-  effective: number;
-  rankTier: number | null;
-  declaredMmr: number | null;
-  rankSource?: string | null;
 }
 
 const loading = ref(true);
@@ -47,6 +50,21 @@ const summary = ref<Summary | null>(null);
 const matches = ref<MyMatch[]>([]);
 const board = ref<LeaderRow[]>([]);
 
+/** 全员胜场默认按胜场降序；点表头可以换段位 / MMR / WARROOM / 胜率 */
+const filter = ref<FilterValue>('ALL');
+const sort = ref<SortState<PlayerSortKey>>({ key: 'wins', direction: 'desc' });
+const counts = computed(() => verificationCounts(board.value));
+const boardRows = computed(() =>
+  sortPlayers(filterPlayers(board.value, filter.value), sort.value),
+);
+
+function onSort(key: PlayerSortKey) {
+  sort.value = nextSort(sort.value, key);
+}
+
+const sortArrow = (key: PlayerSortKey) =>
+  sort.value.key === key ? (sort.value.direction === 'desc' ? '▼' : '▲') : '';
+
 const loggedIn = computed(() => !!session.me);
 const meId = computed(() => session.me?.user.id ?? null);
 
@@ -54,9 +72,10 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    // 全员胜场对游客也可见；"我的对局"要登录
+    // 全员胜场对游客也可见；"我的对局"要登录。
+    // 排序在前端做（十几个人），接口只负责把数据给全。
     const [community] = await Promise.all([
-      api<{ entries: LeaderRow[] }>('/leaderboard?sort=wins&limit=50'),
+      api<{ entries: LeaderRow[] }>('/leaderboard?limit=100'),
     ]);
     board.value = community.entries;
 
@@ -200,45 +219,78 @@ function duration(seconds: number | null): string {
 
         <div v-if="board.length === 0" class="empty">还没有打完的比赛。</div>
 
-        <div v-else class="card" style="padding: 8px 12px">
-          <table class="table">
-            <thead>
-              <tr>
-                <th style="width: 56px" class="num">#</th>
-                <th>玩家</th>
-                <th title="天梯段位与天梯分，来自账号同步或自己填写">段位 / MMR</th>
-                <th class="num">WARROOM</th>
-                <th class="num">胜 / 负</th>
-                <th class="num">胜率</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in board"
-                :key="row.id"
-                :style="row.id === meId ? 'background: rgba(212, 173, 51, 0.07)' : ''"
-              >
-                <td class="num mono">{{ row.rank }}</td>
-                <td>
-                  {{ row.displayName }}
-                  <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ row.username }}</span>
-                </td>
-                <td>
-                  <RankCell
-                    :rank-tier="row.rankTier"
-                    :declared-mmr="row.declaredMmr"
-                    :rank-source="row.rankSource"
-                  />
-                </td>
-                <td class="num mono" style="color: var(--gold-2); font-size: 15px">
-                  {{ row.effective }}
-                </td>
-                <td class="num mono">{{ row.wins }} / {{ row.losses }}</td>
-                <td class="num mono">{{ pct(row.winRateBp) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <template v-else>
+          <div class="list-tools">
+            <VerificationFilter v-model="filter" :counts="counts" />
+            <span class="muted list-tools-hint">点表头切换排序</span>
+          </div>
+
+          <div v-if="boardRows.length === 0" class="empty">这个筛选下没有玩家。</div>
+
+          <div v-else class="card" style="padding: 8px 12px">
+            <div class="table-wrap">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 56px" class="num">#</th>
+                    <th>玩家</th>
+                    <th class="th-sort" @click="onSort('rankTier')">
+                      段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
+                    </th>
+                    <th class="num th-sort" @click="onSort('mmr')">
+                      MMR <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
+                    </th>
+                    <th class="num th-sort" @click="onSort('effective')">
+                      WARROOM <span class="sort-arrow">{{ sortArrow('effective') }}</span>
+                    </th>
+                    <th class="num th-sort" @click="onSort('wins')">
+                      胜 / 负 <span class="sort-arrow">{{ sortArrow('wins') }}</span>
+                    </th>
+                    <th class="num th-sort" @click="onSort('winRate')">
+                      胜率 <span class="sort-arrow">{{ sortArrow('winRate') }}</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(row, index) in boardRows"
+                    :key="row.id"
+                    :style="row.id === meId ? 'background: rgba(212, 173, 51, 0.07)' : ''"
+                  >
+                    <td class="num mono">{{ index + 1 }}</td>
+                    <td>
+                      <RouterLink
+                        :to="`/players/${row.id}`"
+                        style="color: var(--text); text-decoration: none"
+                        :title="row.id === meId ? '这是你' : `看看 ${row.displayName} 的主页`"
+                      >
+                        {{ row.displayName }}
+                      </RouterLink>
+                      <VerificationTag :verification="row.verification" />
+                      <span class="muted" style="font-size: 12px; margin-left: 6px">
+                        @{{ row.username }}
+                      </span>
+                    </td>
+                    <td><RankMedal :rank-tier="row.rankTier" /></td>
+                    <td
+                      class="num mono"
+                      :title="mmrHint(row.declaredMmr, row.rankTier, row.rankSource)"
+                    >
+                      <span :class="{ muted: row.declaredMmr === null }">
+                        {{ row.declaredMmr === null ? '—' : row.declaredMmr.toLocaleString('en-US') }}
+                      </span>
+                    </td>
+                    <td class="num mono" style="color: var(--gold-2); font-size: 15px">
+                      {{ row.effective }}
+                    </td>
+                    <td class="num mono">{{ row.wins }} / {{ row.losses }}</td>
+                    <td class="num mono">{{ pct(row.winRateBp ?? null) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </template>
       </section>
     </template>
   </div>

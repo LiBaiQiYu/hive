@@ -1,0 +1,230 @@
+/* ==========================================================================
+   玩家详情页（/players/:id）：档案 + 战绩 + 点赞点踩 + 留言板
+   --------------------------------------------------------------------------
+   和「我的主页」不同，这页是**给别人看的**，所以信息密度更高、社交动作在最上面。
+   ========================================================================== */
+
+.player-hero {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 10px;
+}
+
+.player-card-wrap {
+  max-width: 340px;
+}
+
+.player-side {
+  min-width: 0;
+}
+
+/* 四项战绩：窄屏自动两列，不硬塞 */
+.player-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 16px;
+}
+
+.player-stat {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.player-stat-value {
+  display: block;
+  margin-top: 6px;
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--gold-2);
+}
+
+.player-votes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 已投过的那一票要高亮，否则用户不知道自己投过没 */
+.player-votes .n-button.is-active {
+  color: var(--gold-2);
+  border-color: var(--line-strong);
+  background: rgba(212, 173, 51, 0.1);
+}
+
+.player-joined {
+  margin: 16px 0 0;
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.player-joined a {
+  color: var(--gold-2);
+  text-decoration: none;
+}
+
+.player-joined a:hover {
+  text-decoration: underline;
+}
+
+/* 报名名单里的玩家卡整张可点：外面套一层链接 */
+.card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius);
+  transition: transform 0.18s ease;
+}
+
+.card-link:hover {
+  transform: translateY(-2px);
+}
+
+.card-link:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 4px;
+}
+
+/* 阵容页里的人名 */
+.slot-name-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.slot-name-link:hover {
+  color: var(--gold-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------------------------------------------------------------- 留言板 */
+
+.comment-composer {
+  padding: 16px 18px;
+}
+
+.comment-composer-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.comment-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.comment {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.comment-author {
+  color: var(--gold-2);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.comment-author:hover {
+  text-decoration: underline;
+}
+
+.comment-meta {
+  font-size: 11px;
+}
+
+.comment-body {
+  margin: 8px 0 10px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.comment-deleted {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.comment-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+/* 行内小动作：按钮长得像文字，但要看得出能点 */
+.comment-action {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.comment-action:hover {
+  color: var(--gold-2);
+}
+
+.comment-action.is-liked {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.comment-reply-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+/* 回复：左侧一条竖线表示层级，不再缩进一整块 */
+.comment-replies {
+  margin-top: 12px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.comment-reply {
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+@media (max-width: 900px) {
+  .player-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .player-card-wrap {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 620px) {
+  .player-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,13 +1,23 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { NButton, NPopconfirm, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
+import VerificationFilter from '../components/VerificationFilter.vue';
+import VerificationTag from '../components/VerificationTag.vue';
 import { ApiError, api, formatDate } from '../lib/api';
+import {
+  filterPlayers,
+  sortPlayers,
+  verificationCounts,
+  type PlayerListRow,
+  type PlayerSortKey,
+} from '../lib/player-table';
 import { rankLabel } from '../lib/rank';
 import { session } from '../lib/session';
+import { nextSort, type SortState } from '../lib/sort';
+import type { VerificationFilter as FilterValue } from '../lib/verification';
 
-interface MemberRow {
-  id: string;
+interface MemberRow extends PlayerListRow {
   username: string;
   displayName: string;
   role: 'PLAYER' | 'ADMIN';
@@ -15,11 +25,8 @@ interface MemberRow {
   qqNumber: string | null;
   createdAt: number;
   lastLoginAt: number | null;
-  effective: number;
-  /** 段位编码（勋章×10+星级）；null = 没采集到 */
-  rankTier: number | null;
-  /** 自己申报的天梯分；同步到权威段位后会被清空 */
-  declaredMmr: number | null;
+  /** 身份验证：VERIFIED（Steam）/ CLAIMED（数字 ID）/ null（自报） */
+  verification: string | null;
   rankSource: string | null;
   registrations: number;
   appearances: number;
@@ -38,6 +45,22 @@ const loading = ref(true);
 const busy = ref(false);
 const error = ref('');
 const toast = useMessage();
+
+/** 默认不排序：保持"管理员在前、其余按注册时间"的服务端顺序，点表头才开始排 */
+const filter = ref<FilterValue>('ALL');
+const sort = ref<SortState<PlayerSortKey> | null>(null);
+const counts = computed(() => verificationCounts(users.value));
+const rows = computed(() => {
+  const filtered = filterPlayers(users.value, filter.value);
+  return sort.value ? sortPlayers(filtered, sort.value) : filtered;
+});
+
+function onSort(key: PlayerSortKey) {
+  sort.value = sort.value ? nextSort(sort.value, key) : { key, direction: 'desc' };
+}
+
+const sortArrow = (key: PlayerSortKey) =>
+  sort.value?.key === key ? (sort.value.direction === 'desc' ? '▼' : '▲') : '';
 
 const meId = session.me?.user.id ?? null;
 
@@ -87,27 +110,42 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
 
     <p v-if="error" class="alert">{{ error }}</p>
 
+    <div class="list-tools">
+      <VerificationFilter v-model="filter" :counts="counts" />
+      <span class="muted list-tools-hint">点表头按段位 / 天梯分 / 评分排序</span>
+    </div>
+
     <div v-if="loading" class="empty">加载中…</div>
 
+    <div v-else-if="rows.length === 0" class="empty">这个筛选下没有成员。</div>
+
     <div v-else class="card" style="padding: 8px 12px">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>成员</th>
-            <th>段位</th>
-            <th class="num">天梯分</th>
-            <th class="num">评分</th>
-            <th class="num">报名</th>
-            <th class="num">出场</th>
-            <th>最近登录</th>
-            <th style="text-align: right">角色</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="user in users" :key="user.id">
-            <td>
-              {{ user.displayName }}
-              <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ user.username }}</span>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>成员</th>
+              <th class="th-sort" @click="onSort('rankTier')">
+                段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
+              </th>
+              <th class="num th-sort" @click="onSort('mmr')">
+                天梯分 <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
+              </th>
+              <th class="num th-sort" @click="onSort('effective')">
+                评分 <span class="sort-arrow">{{ sortArrow('effective') }}</span>
+              </th>
+              <th class="num">报名</th>
+              <th class="num">出场</th>
+              <th>最近登录</th>
+              <th style="text-align: right">角色</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="user in rows" :key="user.id">
+              <td>
+                {{ user.displayName }}
+                <VerificationTag :verification="user.verification" />
+                <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ user.username }}</span>
               <span v-if="user.id === meId" class="tag tag-other" style="margin-left: 6px">我</span>
             </td>
             <td class="mono" style="white-space: nowrap">
@@ -143,6 +181,7 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 </template>

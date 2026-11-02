@@ -14,7 +14,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 免得每次刷新都糊一脸。
  */
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.2.0';
 
 export interface ReleaseNote {
   version: string;
@@ -24,6 +24,16 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.2.0',
+    date: '2026-11-02',
+    items: [
+      '新增玩家主页：看卡片、对局记录与胜负',
+      '排行榜、战绩、报名卡、阵容里的人名都能点进去',
+      '可以给玩家点赞 / 点踩，一人一票，随时改',
+      '玩家主页有留言板，支持回复与给评论点赞',
+    ],
+  },
   {
     version: '1.1.0',
     date: '2026-11-02',

@@ -33,9 +33,11 @@ interface Row {
   played: number;
   /** 天梯段位编码（十位勋章 + 个位星级）；没同步过就是 null */
   rankTier: number | null;
-  /** 天梯分：只有「自报」路线才有值，Steam / OpenDota 同步不带 MMR */
+  /** 天梯分：只有「自报」路线才有值，Steam / OpenDota / STRATZ 同步不带 MMR */
   declaredMmr: number | null;
   rankSource: string | null;
+  /** 身份验证等级：VERIFIED（Steam）/ CLAIMED（数字 ID）/ null（自报） */
+  verification: string | null;
 }
 
 leaderboardRoutes.get('/', async (c) => {
@@ -55,12 +57,14 @@ leaderboardRoutes.get('/', async (c) => {
             ps.rank_tier AS rankTier,
             ps.declared_mmr AS declaredMmr,
             ps.rank_source AS rankSource,
+            ga.verification AS verification,
             COALESCE(w.wins, 0) AS wins,
             COALESCE(w.losses, 0) AS losses,
             COALESCE(w.played, 0) AS played
        FROM users u
        LEFT JOIN player_ratings pr ON pr.user_id = u.id
        LEFT JOIN player_stats ps ON ps.user_id = u.id
+       LEFT JOIN game_accounts ga ON ga.user_id = u.id
        LEFT JOIN (
          SELECT tm.user_id AS userId,
                 SUM(CASE WHEN (tm.team_side = 'RADIANT' AND m.radiant_win = 1)

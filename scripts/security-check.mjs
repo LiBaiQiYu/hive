@@ -339,6 +339,57 @@ const tester = await login(newUser, newPass)
   check('隐私', '管理员视图可见 QQ 号（设计如此）', /"qqNumber"\s*:\s*"?\d{5,12}/.test(asAdmin.text))
 }
 
+/* ------------------------ 11. 玩家主页 / 社交接口 ------------------------ */
+{
+  // 目标选一个不是当前登录者、也不是我们自己的玩家
+  const users = (await call('GET', '/api/admin/users', { cookie: admin.cookie })).json?.data?.users ?? []
+  const target = users.find((u) => u.username !== PLAYER_USER && u.id !== admin.res.json?.data?.user?.id)
+  const viewer = (await call('GET', '/api/auth/session', { cookie: player.cookie })).json?.data?.user
+
+  if (!target) {
+    check('社交', '找到可测试的玩家', false, '本地用户不足')
+  } else {
+    const profile = await call('GET', `/api/players/${target.id}`)
+    check('社交', '公开档案游客可读', profile.status === 200, `HTTP ${profile.status}`)
+    check(
+      '社交',
+      '档案不泄露邮箱 / QQ / SteamID',
+      !/@[a-z0-9.-]+\.[a-z]{2,}/i.test(profile.text) && !/qqNumber|steam_id64|password/.test(profile.text),
+      '干净',
+    )
+
+    const anonVote = await call('POST', `/api/players/${target.id}/reaction`, { body: { kind: 'LIKE' } })
+    check('社交', '未登录不能投票', anonVote.status === 401, `HTTP ${anonVote.status}`)
+
+    const anonComment = await call('POST', `/api/players/${target.id}/comments`, { body: { body: 'x' } })
+    check('社交', '未登录不能留言', anonComment.status === 401, `HTTP ${anonComment.status}`)
+
+    const selfVote = await call('POST', `/api/players/${viewer?.id}/reaction`, {
+      cookie: player.cookie,
+      body: { kind: 'LIKE' },
+    })
+    check('社交', '不能给自己投票', selfVote.status === 403, `HTTP ${selfVote.status}`)
+
+    const hugeComment = await call('POST', `/api/players/${target.id}/comments`, {
+      cookie: player.cookie,
+      body: { body: 'x'.repeat(1001) },
+    })
+    check('社交', '超长留言被拒', hugeComment.status === 400, `HTTP ${hugeComment.status}`)
+
+    const xssComment = await call('POST', `/api/players/${target.id}/comments`, {
+      cookie: player.cookie,
+      body: { body: '<img src=x onerror=alert(1)>' },
+    })
+    if (xssComment.status === 201) {
+      const listed = await call('GET', `/api/players/${target.id}/comments`)
+      check('社交', '留言里的 XSS 原样存储（前端转义）', listed.text.includes('<img src=x onerror=alert(1)>'))
+      await call('DELETE', `/api/players/${target.id}/comments/${xssComment.json.data.id}`, { cookie: player.cookie })
+    } else {
+      check('社交', '留言里的 XSS 原样存储（前端转义）', false, `HTTP ${xssComment.status}`)
+    }
+  }
+}
+
 /* ---------------------------- 10. 响应头 / 错误 ---------------------------- */
 {
   const home = await call('GET', '/')

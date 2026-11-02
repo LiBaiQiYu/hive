@@ -154,7 +154,11 @@ function duration(seconds: number | null): string {
             <div v-for="slot in slots(teamOf(side))" :key="slot.position" class="slot">
               <span class="slot-pos">{{ slot.position }} 号位</span>
               <template v-if="slot.member">
-                <span class="slot-name">{{ slot.member.displayName }}</span>
+                <RouterLink
+                  class="slot-name slot-name-link"
+                  :to="`/players/${slot.member.userId}`"
+                  :title="`看看 ${slot.member.displayName} 的主页`"
+                >{{ slot.member.displayName }}</RouterLink>
                 <span
                   class="slot-rating"
                   :style="slot.member.fitScore < 40 ? 'color: var(--amber)' : ''"

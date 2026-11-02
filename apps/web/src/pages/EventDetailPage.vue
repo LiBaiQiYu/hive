@@ -361,7 +361,15 @@ async function withdraw() {
           <span class="muted" style="font-size: 13px">{{ players.length }} 人</span>
         </div>
         <div class="card-grid">
-          <PlayerCard v-for="(player, i) in players" :key="player.userId" :player="player" :index="i" />
+          <RouterLink
+            v-for="(player, i) in players"
+            :key="player.userId"
+            :to="`/players/${player.userId}`"
+            class="card-link"
+            :title="`看看 ${player.displayName} 的主页`"
+          >
+            <PlayerCard :player="player" :index="i" />
+          </RouterLink>
         </div>
       </section>
 

@@ -426,10 +426,14 @@ adminEventRoutes.get('/:id/registrations', async (c) => {
     `SELECT r.id, r.user_id AS userId, u.display_name AS displayName, u.username,
             r.status, r.position_preference AS position, r.waitlist_position AS waitlistPosition,
             r.effective_rating_snapshot AS effectiveRating, r.created_at AS createdAt,
-            pr.attendance_bp AS attendanceBp
+            pr.attendance_bp AS attendanceBp,
+            ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr, ps.rank_source AS rankSource,
+            ga.verification AS verification
        FROM registrations r
        JOIN users u ON u.id = r.user_id
        LEFT JOIN player_ratings pr ON pr.user_id = r.user_id
+       LEFT JOIN player_stats ps ON ps.user_id = r.user_id
+       LEFT JOIN game_accounts ga ON ga.user_id = r.user_id
       WHERE r.event_id = ?
       ORDER BY CASE r.status WHEN 'CONFIRMED' THEN 0 WHEN 'WAITLIST' THEN 1 ELSE 2 END,
                CASE WHEN r.status = 'WAITLIST' THEN r.waitlist_position END ASC,
