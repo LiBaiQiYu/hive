@@ -14,7 +14,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 免得每次刷新都糊一脸。
  */
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.0.1';
 
 export interface ReleaseNote {
   version: string;
@@ -24,6 +24,15 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.0.1',
+    date: '2026-11-02',
+    items: [
+      '绑定 Steam 后，段位一律以同步结果为准，手填自动作废',
+      '已绑定账号的玩家不能再手填段位，想手填需先解除绑定',
+      '管理员设定的段位玩家无法改动，需联系管理员',
+    ],
+  },
   {
     version: '1.0.0',
     date: '2026-11-02',

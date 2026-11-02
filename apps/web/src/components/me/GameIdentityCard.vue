@@ -17,6 +17,7 @@ import { computed, ref, watch } from 'vue';
 import { NButton, NInputNumber, NPopconfirm, NSelect, NTabPane, NTabs, useMessage } from 'naive-ui';
 import HelpTip from '../HelpTip.vue';
 import { ApiError, api } from '../../lib/api';
+import { MEDAL_NAMES, rankLabel as formatRank } from '../../lib/rank';
 import { loadMe, session } from '../../lib/session';
 
 const message = useMessage();
@@ -25,19 +26,12 @@ const account = computed(() => session.me?.gameAccount ?? null);
 const isVerified = computed(() => account.value?.verification === 'VERIFIED');
 const isClaimed = computed(() => account.value?.verification === 'CLAIMED');
 
-const MEDALS = ['先锋', '卫士', '中军', '统帅', '传奇', '万古流芳', '超凡入圣', '冠绝'];
 const MEDAL_FLOORS = [0, 770, 1540, 2310, 3080, 3850, 4620, 5420];
-const medalOptions = MEDALS.map((name, index) => ({ label: name, value: index + 1 }));
+const medalOptions = MEDAL_NAMES.map((name, index) => ({ label: name, value: index + 1 }));
 const starOptions = [1, 2, 3, 4, 5].map((s) => ({ label: `${s} 星`, value: s }));
 
 /* ---------------------------------------------------------------- 结论行 */
-const rankLabel = computed(() => {
-  const tier = session.me?.stats?.rankTier;
-  if (!tier) return '未采集';
-  const medal = Math.floor(tier / 10);
-  const star = tier % 10;
-  return medal === 8 ? (MEDALS[medal - 1] ?? '未知') : `${MEDALS[medal - 1] ?? '未知'} ${star} 星`;
-});
+const rankLabel = computed(() => formatRank(session.me?.stats?.rankTier) || '未采集');
 
 const rankSourceLabel = computed(() => {
   const source = session.me?.stats?.rankSource;
@@ -48,24 +42,24 @@ const rankSourceLabel = computed(() => {
   return null;
 });
 
-/**
- * 上游段位（决定手动填写能不能用）。
- * 注意要同时要求 rank_tier 有值：同步成功但对方没开公开数据时，
- * rank_source 会写成 OPENDOTA 而段位是空的，那种情况必须继续允许手填。
- */
-const upstreamRank = computed(() => {
-  const stats = session.me?.stats;
-  if (!stats?.rankTier) return null;
-  if (stats.rankSource === 'OPENDOTA' || stats.rankSource === 'STRATZ') return 'synced';
-  if (stats.rankSource === 'ADMIN_SET') return 'admin';
-  return null;
-});
+/** 段位由管理员设定：玩家改不了，只能找管理员 */
+const adminSet = computed(() => session.me?.stats?.rankSource === 'ADMIN_SET');
 
-/** 手填被锁：上游已经给了段位 */
-const manualLocked = computed(() => upstreamRank.value !== null);
+/**
+ * 手填能不能用：只要绑了游戏账号就不行。
+ *
+ * 优先级是 Steam > 数字 ID > 手填，**不看上游现在有没有抓到段位**：
+ * 允许"上游没数据就手填"的话，绑了 Steam 的人还能把手填值写回去，
+ * 徽章挂着 Steam 验证、段位却显示自报，自相矛盾。要自己填就先解绑。
+ *
+ * 管理员设定另外算：那是人工判断，玩家不该一键覆盖，只能找管理员。
+ */
+const manualLocked = computed(() => adminSet.value || account.value !== null);
 const lockReason = computed(() => {
-  if (upstreamRank.value === 'admin') return '当前段位由管理员设定';
-  return `当前段位来自 ${rankSourceLabel.value ?? '上游同步'}`;
+  if (adminSet.value) return '当前段位由管理员设定';
+  if (isVerified.value) return '已绑定 Steam，段位以同步结果为准';
+  if (isClaimed.value) return '已用数字 ID 声明账号，段位以同步结果为准';
+  return '已绑定游戏账号，段位以同步结果为准';
 });
 
 const badgeText = computed(() => {
@@ -95,8 +89,14 @@ watch(
 /* ---------------------------------------------------------------- 手动段位 */
 const rankForm = ref({ medal: 4, star: 1, mmr: null as number | null });
 const rankSaving = ref(false);
+const rankClearing = ref(false);
 const rankMsg = ref('');
 const rankErr = ref('');
+
+/** 当前有没有可清空的段位（同步 / 管理员设定的清不掉，见后端守卫） */
+const hasStoredRank = computed(
+  () => Boolean(session.me?.stats?.rankTier || session.me?.stats?.declaredMmr),
+);
 
 /**
  * MMR → 勋章/星级，与服务端 rankTierFromMmr 保持一致。
@@ -168,6 +168,33 @@ async function saveRank() {
   }
 }
 
+/**
+ * 清空段位 = 回到"没有任何实力数据"的初始状态。
+ * 服务端只允许清掉自己填的（SELF_REPORTED）；同步或管理员设定的段位会被 409 拦下，
+ * 那种情况得先解绑，这里把错误原文展示出来即可。
+ */
+async function clearRank() {
+  rankClearing.value = true;
+  rankErr.value = '';
+  rankMsg.value = '';
+  try {
+    const result = await api<{ cleared: boolean; rating: { effective: number } }>('/me/rank', {
+      method: 'DELETE',
+    });
+    await loadMe();
+    // 表单也回到初值，否则刚清空又显示着上一次填的段位
+    rankForm.value = { medal: 4, star: 1, mmr: null };
+    rankMsg.value = result.cleared
+      ? `已清空段位与天梯分，WARROOM 评分回到 ${result.rating.effective}（无数据时的中性值）`
+      : '本来就没有段位，不需要清空';
+    if (result.cleared) message.success('已清空段位');
+  } catch (err) {
+    rankErr.value = err instanceof ApiError ? err.message : '清空失败';
+  } finally {
+    rankClearing.value = false;
+  }
+}
+
 /* ---------------------------------------------------------------- 数字 ID */
 const accountForm = ref({ id: null as number | null });
 const claiming = ref(false);
@@ -197,9 +224,9 @@ async function claimAccount() {
     await loadMe();
     changingAccount.value = false;
     claimMsg.value = result.hiddenData
-      ? `${result.personaName ?? '该账号'} 没有公开段位，请在 Dota2 里开启「公开比赛数据」，或切到「手动」自己填`
+      ? `${result.personaName ?? '该账号'} 没开「公开比赛数据」：抓不到段位，原有的自报段位会保留。这个 ID 仍会显示在卡片上，但第三方平台也只能看到公开数据`
       : `已同步 ${result.personaName ?? ''} 的段位，评分更新为 ${result.rating.effective}`;
-    message.success('已从 OpenDota 同步');
+    message.success(result.hiddenData ? '已记录数字 ID' : '已从 OpenDota 同步');
   } catch (err) {
     claimErr.value = err instanceof ApiError ? err.message : '获取失败';
   } finally {
@@ -239,7 +266,7 @@ async function rebindSteam() {
 </script>
 
 <template>
-  <section class="card">
+  <section id="game-identity" class="card">
     <h2 class="card-title">
       游戏身份
       <HelpTip
@@ -315,6 +342,15 @@ async function rebindSteam() {
             <span class="stat-label">游戏昵称</span>
             <span class="mono">{{ account?.personaName ?? '—' }}</span>
           </div>
+          <p class="muted identity-note">
+            这个 ID 会显示在你的玩家卡上：其他人可以拿去 OpenDota / Dotabuff
+            核对段位与战绩——这是"归属未验证"时唯一的可信度来源。
+          </p>
+          <p v-if="!session.me?.stats?.rankTier" class="muted identity-note">
+            没抓到公开段位：账号大概率没开「公开比赛数据」。这种情况下第三方平台也查不到东西，
+            别人最多核对到你确实有这个账号。段位要在「手动」页填——但已绑定账号时手填是锁着的，
+            需要先解除绑定。
+          </p>
           <div class="identity-actions">
             <NButton @click="changingAccount = true">更换数字 ID</NButton>
             <NPopconfirm @positive-click="unbind">
@@ -328,7 +364,9 @@ async function rebindSteam() {
 
         <template v-else>
           <p class="muted identity-hint">
-            填 Dota2 个人资料地址栏里那串 9 位数字，只读取公开数据，不需要密码。
+            填 Dota2 个人资料里那串数字 ID（例如 109902856），只读取公开数据，不需要密码。
+            填了会显示在你的玩家卡上，别人能拿去 OpenDota / Dotabuff 核对段位与战绩；
+            账号没开「公开比赛数据」的话，第三方平台也查不到东西。
           </p>
           <div class="identity-claim">
             <NInputNumber
@@ -353,10 +391,10 @@ async function rebindSteam() {
         <template v-if="manualLocked">
           <p class="identity-lock">
             {{ lockReason }}，手动填写已锁定。
-            <template v-if="upstreamRank === 'admin'">如需改动请联系管理员。</template>
+            <template v-if="adminSet">如需改动请联系管理员。</template>
             <template v-else>要自己填，先解除绑定。</template>
           </p>
-          <div v-if="upstreamRank !== 'admin'" class="identity-actions">
+          <div v-if="!adminSet" class="identity-actions">
             <NPopconfirm @positive-click="unbind">
               <template #trigger>
                 <NButton :disabled="steamBusy">解除绑定后手填</NButton>
@@ -389,6 +427,14 @@ async function rebindSteam() {
             <NButton :disabled="rankSaving" :loading="rankSaving" @click="saveRank">
               {{ rankSaving ? '保存中…' : '保存段位' }}
             </NButton>
+          </div>
+          <div v-if="hasStoredRank" class="identity-actions" style="margin-top: 10px">
+            <NPopconfirm @positive-click="clearRank">
+              <template #trigger>
+                <NButton :disabled="rankClearing" :loading="rankClearing">清空段位</NButton>
+              </template>
+              清空后段位与天梯分都会删掉，WARROOM 评分回到 500 中性值；报名时也会被当成「没有段位」，排在有段位的玩家后面。确定吗？
+            </NPopconfirm>
           </div>
           <p class="muted identity-note">
             填了天梯分就不用再选段位，系统按分数折算勋章与星级；段位为自报，绑定 Steam 后可以验证。

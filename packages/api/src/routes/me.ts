@@ -14,6 +14,8 @@ interface RatingBreakdown {
   components: Array<{ key: string; weight: number; value: number; score: number; basis: string }>;
   estimatedMmr: number | null;
   attendanceBp: number | null;
+  attendancePlayed?: number | null;
+  attendanceRegistered?: number | null;
 }
 
 /* --------------------------------------------------------------------------
@@ -59,7 +61,7 @@ meRoutes.get('/', async (c) => {
     }>();
 
   /**
-   * 评分构成（段位 / 出勤各占多少）——数据一直在 breakdown_json 里躺着，
+   * 评分构成（实力分 + 出勤明细）——数据一直在 breakdown_json 里躺着，
    * 以前只写不读，玩家只能看到一个孤零零的总分。解析失败就当作没有，
    * 不能让一条脏 JSON 把整个档案接口打成 500。
    */
@@ -501,16 +503,51 @@ meRoutes.post('/game-account/claim', async (c) => {
       .run();
   }
 
-  const stats = await env.DB.prepare(`SELECT id FROM player_stats WHERE user_id = ?`).bind(userId).first<{ id: string }>();
+  const stats = await env.DB.prepare(
+    `SELECT id, rank_source AS rankSource FROM player_stats WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ id: string; rankSource: string | null }>();
+
   if (stats) {
-    // 同步到权威段位后，手填的 MMR 就该作废——留着只会和段位打架
-    await env.DB.prepare(
-      `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = 'OPENDOTA',
-              career_matches = ?, rank_checked_at = ?, fetched_at = ?, updated_at = ?
-        WHERE user_id = ?`,
-    )
-      .bind(rankTier, careerMatches, rankTier !== null ? now : null, now, now, userId)
-      .run();
+    if (rankTier !== null) {
+      // 同步到权威段位后，手填的 MMR 就该作废——留着只会和段位打架
+      await env.DB.prepare(
+        `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = 'OPENDOTA',
+                career_matches = ?, rank_checked_at = ?, fetched_at = ?, updated_at = ?
+          WHERE user_id = ?`,
+      )
+        .bind(rankTier, careerMatches, now, now, now, userId)
+        .run();
+    } else {
+      // 对方没开「公开比赛数据」：这个 ID 只能用于别人去第三方核对，抓不到段位。
+      // 此时绝不能像以前那样无条件覆盖 —— 那会把玩家手填的段位和 MMR 一起抹掉。
+      // 只有上一次绑定同步来的段位（OPENDOTA / STRATZ）属于旧账号，必须清掉；
+      // 手填（SELF_REPORTED）和管理员设定（ADMIN_SET）原样保留。
+      const stale = stats.rankSource === 'OPENDOTA' || stats.rankSource === 'STRATZ';
+      const staleFlag = stale ? 1 : 0;
+      await env.DB.prepare(
+        `UPDATE player_stats
+            SET rank_tier = CASE WHEN ? THEN NULL ELSE rank_tier END,
+                declared_mmr = CASE WHEN ? THEN NULL ELSE declared_mmr END,
+                rank_source = CASE WHEN ? THEN 'SELF_REPORTED' ELSE rank_source END,
+                career_matches = CASE WHEN ? > 0 THEN ? ELSE career_matches END,
+                fetched_at = ?,
+                updated_at = ?
+          WHERE user_id = ?`,
+      )
+        .bind(
+          staleFlag,
+          staleFlag,
+          staleFlag,
+          careerMatches,
+          careerMatches,
+          now,
+          now,
+          userId,
+        )
+        .run();
+    }
   } else {
     await env.DB.prepare(
       `INSERT INTO player_stats (id, user_id, rank_tier, rank_source, career_matches,
@@ -534,7 +571,7 @@ meRoutes.post('/game-account/claim', async (c) => {
       rating,
       note:
         rankTier === null
-          ? '这个账号没有公开段位（对方可在 Dota2 设置里开启「公开比赛数据」），只能手动填写段位'
+          ? '这个账号没开「公开比赛数据」，抓不到段位；已有的自报段位会保留。这个数字仍会显示在你的卡片上，别人去第三方平台也只能看到公开数据'
           : '段位来自 OpenDota；账号归属未验证，徽章会显示「归属未验证」',
     },
   });
@@ -596,23 +633,31 @@ meRoutes.put('/rank', async (c) => {
     .first<{ id: string; rankTier: number | null; rankSource: string | null }>();
 
   /**
-   * 手动填写优先级最低。
+   * 手动填写优先级最低：Steam > 数字 ID > 手填。
    *
-   * 段位一旦由 Steam / OpenDota 同步而来，或被管理员设定，就不允许再用手填覆盖——
-   * 否则会出现"昨天同步了超凡 1 星，今天被手滑改成统帅 3 星"这种自相矛盾的数据。
-   * 想自己填只有一条路：先解除绑定（解绑会把 rank_source 退回 SELF_REPORTED）。
+   * 只要绑定了游戏账号（Steam 或数字 ID），段位一律以上游为准，手填直接拒绝——
+   * **不看上游现在有没有抓到数据**。以前允许"上游没数据时手填"，结果是绑了 Steam 的人
+   * 还能把手填值写回去，出现"挂着 Steam 验证、段位却显示自报"的自相矛盾状态。
+   * 想自己填只有一条路：先解除绑定（解绑会把段位来源退回自报）。
    *
-   * 判断里必须带 `rankTier !== null`：同步成功但对方没开「公开比赛数据」时，
-   * rank_source 已经是 OPENDOTA 而段位是空的，那种情况得让玩家自己填，
-   * 否则他没有任何办法提供段位信息。
+   * 管理员设定（ADMIN_SET）单独拦：那是人工判断，玩家不该一键覆盖。
    */
-  if (existing && existing.rankTier !== null) {
-    if (existing.rankSource === 'ADMIN_SET') {
-      throw new ApiError('CONFLICT', '当前段位由管理员设定，如需修改请联系管理员');
-    }
-    if (existing.rankSource === 'OPENDOTA' || existing.rankSource === 'STRATZ') {
-      throw new ApiError('CONFLICT', '段位来自账号同步，如需手动填写请先解除绑定');
-    }
+  const binding = await env.DB.prepare(
+    `SELECT verification FROM game_accounts WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ verification: string }>();
+
+  if (existing?.rankSource === 'ADMIN_SET') {
+    throw new ApiError('CONFLICT', '当前段位由管理员设定，如需修改请联系管理员');
+  }
+  if (binding) {
+    throw new ApiError(
+      'CONFLICT',
+      binding.verification === 'VERIFIED'
+        ? '已绑定 Steam，段位以同步结果为准；如需手动填写请先解除绑定'
+        : '已用数字 ID 声明账号，段位以同步结果为准；如需手动填写请先解除绑定',
+    );
   }
 
   if (existing) {
@@ -646,5 +691,60 @@ meRoutes.put('/rank', async (c) => {
         ? '段位已按天梯分自动折算；段位为自报，绑定 Steam 后可验证'
         : '段位为自报，徽章会显示"自报"；绑定 Steam 后可以验证',
     },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * DELETE /api/me/rank —— 清空段位，回到"没有实力数据"的初始状态
+ *
+ * 只允许清掉**自己填的**（SELF_REPORTED）：
+ *   · 同步来的段位属于那个 Dota 账号，抹掉它不会让账号消失，下次同步又回来；
+ *   · 管理员设定的段位属于管理判断，玩家不该一键推翻。
+ * 想清掉同步段位只有一条路：先解绑（解绑本身就会把段位来源退回自报/清空）。
+ *
+ * 清空后立刻重算评分——没有段位/MMR 时是 500 中性值，置信度归零。
+ * 报名时也会被当成「没有段位」，按上一轮定的规则排在有段位的玩家之后。
+ * ------------------------------------------------------------------------ */
+meRoutes.delete('/rank', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+
+  const existing = await env.DB.prepare(
+    `SELECT rank_tier AS rankTier, declared_mmr AS declaredMmr, rank_source AS rankSource
+       FROM player_stats WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ rankTier: number | null; declaredMmr: number | null; rankSource: string | null }>();
+
+  // 本来就没段位：幂等返回，前端不必为"清了个空"报错
+  if (!existing || (existing.rankTier === null && existing.declaredMmr === null)) {
+    const rating = await recomputeUserRating(env, userId);
+    return c.json({
+      data: { cleared: false, rankTier: null, declaredMmr: null, rating },
+      meta: { requestId: c.get('requestId') },
+    });
+  }
+
+  if (existing.rankSource === 'ADMIN_SET') {
+    throw new ApiError('CONFLICT', '当前段位由管理员设定，如需清空请联系管理员');
+  }
+  if (existing.rankSource === 'OPENDOTA' || existing.rankSource === 'STRATZ') {
+    throw new ApiError('CONFLICT', '段位来自账号同步，先解除绑定才能清空');
+  }
+
+  await env.DB.prepare(
+    `UPDATE player_stats
+        SET rank_tier = NULL, declared_mmr = NULL, rank_source = NULL,
+            rank_checked_at = NULL, updated_at = ?
+      WHERE user_id = ?`,
+  )
+    .bind(Date.now(), userId)
+    .run();
+
+  const rating = await recomputeUserRating(env, userId);
+
+  return c.json({
+    data: { cleared: true, rankTier: null, declaredMmr: null, rating },
+    meta: { requestId: c.get('requestId') },
   });
 });

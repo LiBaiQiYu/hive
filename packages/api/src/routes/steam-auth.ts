@@ -175,6 +175,29 @@ steamRoutes.get('/callback', async (c) => {
       .run();
   }
 
+  // 绑定之后，手填的段位立即作废：Steam > 数字 ID > 手填，这是产品规则。
+  //
+  // 只清"自己填的"（SELF_REPORTED）。管理员设定不动——那是人工判断；
+  // 上一次绑定同步来的旧段位也不动，下一句排的 PLAYER_SYNC 会用真实数据覆盖它。
+  // 清空后要立刻重算，否则档案里还挂着手填值算出来的分数，和显示的"未采集"打架。
+  const selfReported = await env.DB.prepare(
+    `SELECT rank_source AS rankSource FROM player_stats WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ rankSource: string | null }>();
+
+  if (selfReported?.rankSource === 'SELF_REPORTED') {
+    await env.DB.prepare(
+      `UPDATE player_stats
+          SET rank_tier = NULL, declared_mmr = NULL, rank_source = NULL,
+              rank_checked_at = NULL, updated_at = ?
+        WHERE user_id = ?`,
+    )
+      .bind(now, userId)
+      .run();
+    await recomputeUserRating(env, userId);
+  }
+
   // 刚绑上 Steam，手里有了 dota_account_id：排一条 PLAYER_SYNC 去拉段位与累计场次，
   // 拉到之后 handler 会顺手重算评分。幂等：同一玩家只会有一条在途任务。
   const dedupeKey = `player:${userId}`;
