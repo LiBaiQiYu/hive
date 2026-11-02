@@ -25,3 +25,11 @@ Thumbs.db
 .shots/
 .holo2/
 .audit/
+# 无头浏览器的工作目录与临时产物（截图脚本跑完会留下一堆）
+apps/web/.chrome-tmp/
+apps/web/.tmp-edge-*/
+apps/web/tmp-*.html
+apps/web/tmp-*.png
+apps/web/tmp-*.py
+# pnpm 在项目所在盘建的本地 store（`pnpm add` 会顺手生成，几十万个文件）
+.pnpm-store/

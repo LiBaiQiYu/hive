@@ -19,6 +19,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply hive --remote -c packages/database/wrangler.d1.jsonc",
     "db:backup": "wrangler d1 export hive --remote --output backups/hive.sql -c packages/database/wrangler.d1.jsonc",
     "db:check": "python packages/database/scripts/check_schema.py && python packages/database/scripts/check_parity.py",
+    "sec:check": "node scripts/security-check.mjs",
     "deploy": "wrangler deploy --config packages/api/wrangler.jsonc"
   },
   "devDependencies": {
