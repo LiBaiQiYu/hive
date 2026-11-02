@@ -43,10 +43,10 @@
     "head_sampling_rate": 1
   },
   "upload_source_maps": true,
-  // 生产环境原本关闭 workers.dev 备用域名：避免出现绕过 Cookie / CORS 预期的第二入口。
-  // 2026-10-31 临时打开：还没有自定义域名，先用 hive.<account>.workers.dev 联调。
-  // 拿到域名后改回 false，并解开下面的 routes。
-  "workers_dev": true,
+  // 已经有自定义域名，关掉 workers.dev 备用域名：
+  // 两个入口同时活着时，在旧地址登录拿到的 Cookie 属于旧域名，
+  // Steam 却会把浏览器送回 APP_ORIGIN（新域名）——表现就是"授权完变成未登录"。
+  "workers_dev": false,
   "preview_urls": false,
 
   // --- 绑定：D1 （唯一数据源） ---
@@ -90,22 +90,21 @@
     ]
   },
 
-  // 自定义域名。**在拿到真实域名之前必须保持注释状态**：
-  //   1) 生产部署会因域名不存在而失败；
-  //   2) 更隐蔽的是——wrangler dev 会把这里的 route 套到本地请求上，
-  //      于是 Worker 看到的 request.url 变成 http://hive.example.com，
-  //      Steam 的 return_to 会指向一个被代理接管成 fake-ip 的域名，
-  //      浏览器直接 ERR_EMPTY_RESPONSE。
-  // 有了域名后解开注释，并把 APP_ORIGIN / STEAM_OPENID_REALM 同步改成真实域名。
-  // "routes": [{ "pattern": "hive.example.com", "custom_domain": true }],
+  // 自定义域名（2026-11-02 已上线 hive.cwa1e.top）。
+  // 为什么必须显式写在这里：Worker 只认配置里的域名与路由，靠控制台手工挂的
+  // 自定义域名在下一次 `wrangler deploy` 时可能被覆盖掉。
+  // 注意 wrangler dev 会把这里的 route 套到本地请求上（Worker 看到的 request.url
+  // 会变成 https://hive.cwa1e.top），所以本地脚本必须显式注入
+  // `--var APP_ORIGIN:http://127.0.0.1:8787`，否则 Steam 回调会被导到线上。
+  "routes": [{ "pattern": "hive.cwa1e.top", "custom_domain": true }],
 
   // 非敏感配置。业务代码通过 env.* 读取，禁止在代码中硬编码这些值
   "vars": {
     "APP_ENV": "production",
-    // 还没有自定义域名，先用 workers.dev 联调；拿到域名后两处一起改
-    "APP_ORIGIN": "https://hive.carloswhitea1e.workers.dev",
-    // Steam OpenID 的 realm 必须与 return_to 同源，且与 Cookie 域一致
-    "STEAM_OPENID_REALM": "https://hive.carloswhitea1e.workers.dev",
+    // 唯一对外入口。Steam OpenID 的 realm 与 return_to 都由它推导
+    // （见 packages/api/src/steam.ts 的 resolveOrigin），不要再单独配一份 realm：
+    // 配成两份迟早对不上，对不上的表现就是"Steam 授权完回来变成未登录"。
+    "APP_ORIGIN": "https://hive.cwa1e.top",
     "SESSION_TTL_DAYS": 14,
     "SESSION_IDLE_TIMEOUT_HOURS": 72,
     "ADMIN_ADJUSTMENT_LIMIT": 150,
@@ -161,8 +160,9 @@
       },
       "vars": {
         "APP_ENV": "staging",
+        // 上线前把 domain / database_id 换成真的；现在这套只是占位，
+        // 误执行 `--env staging` 会直接部署失败（这是好事）。
         "APP_ORIGIN": "https://hive-staging.example.com",
-        "STEAM_OPENID_REALM": "https://hive-staging.example.com",
         "SESSION_TTL_DAYS": 3,
         "SESSION_IDLE_TIMEOUT_HOURS": 12,
         "ADMIN_ADJUSTMENT_LIMIT": 150,
