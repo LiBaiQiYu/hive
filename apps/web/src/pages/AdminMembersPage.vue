@@ -124,7 +124,10 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
         <table class="table">
           <thead>
             <tr>
-              <th>成员</th>
+              <th>昵称</th>
+              <th>用户名</th>
+              <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
+              <th>角色</th>
               <th class="th-sort" @click="onSort('rankTier')">
                 段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
               </th>
@@ -137,48 +140,52 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
               <th class="num">报名</th>
               <th class="num">出场</th>
               <th>最近登录</th>
-              <th style="text-align: right">角色</th>
+              <th style="text-align: right">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="user in rows" :key="user.id">
               <td>
                 {{ user.displayName }}
-                <VerificationTag :verification="user.verification" />
-                <span class="muted" style="font-size: 12px; margin-left: 6px">@{{ user.username }}</span>
-              <span v-if="user.id === meId" class="tag tag-other" style="margin-left: 6px">我</span>
-            </td>
-            <td class="mono" style="white-space: nowrap">
-              <template v-if="user.rankTier">
-                {{ rankLabel(user.rankTier) }}
-                <span v-if="SOURCE_LABEL[user.rankSource ?? '']" class="muted" style="font-size: 11px; margin-left: 5px">
-                  {{ SOURCE_LABEL[user.rankSource ?? ''] }}
-                </span>
-              </template>
-              <span v-else class="muted" style="font-size: 12px">未采集</span>
-            </td>
-            <td class="num mono">{{ user.declaredMmr ?? '—' }}</td>
-            <td class="num mono">{{ user.effective }}</td>
-            <td class="num mono">{{ user.registrations }}</td>
-            <td class="num mono">{{ user.appearances }}</td>
-            <td class="muted" style="font-size: 12px">
-              {{ user.lastLoginAt ? formatDate(user.lastLoginAt) : '从未' }}
-            </td>
-            <td style="text-align: right">
-              <span v-if="user.id === meId" class="tag tag-other">管理员</span>
-              <template v-else-if="user.role === 'ADMIN'">
-                <NPopconfirm @positive-click="setRole(user, 'PLAYER')">
-                  <template #trigger>
-                    <NButton size="small" :disabled="busy">取消管理员</NButton>
-                  </template>
-                  取消后该成员将无法进入后台，确定吗？
-                </NPopconfirm>
-              </template>
-              <NButton v-else size="small" type="primary" :disabled="busy" @click="setRole(user, 'ADMIN')">
-                设为管理员
-              </NButton>
-            </td>
-          </tr>
+                <span v-if="user.id === meId" class="tag tag-other" style="margin-left: 6px">我</span>
+              </td>
+              <td class="mono muted" style="font-size: 12px">@{{ user.username }}</td>
+              <td><VerificationTag :verification="user.verification" /></td>
+              <td>
+                <span v-if="user.role === 'ADMIN'" class="tag tag-other">管理员</span>
+                <span v-else class="muted" style="font-size: 12px">玩家</span>
+              </td>
+              <td class="mono" style="white-space: nowrap">
+                <template v-if="user.rankTier">
+                  {{ rankLabel(user.rankTier) }}
+                  <span v-if="SOURCE_LABEL[user.rankSource ?? '']" class="muted" style="font-size: 11px; margin-left: 5px">
+                    {{ SOURCE_LABEL[user.rankSource ?? ''] }}
+                  </span>
+                </template>
+                <span v-else class="muted" style="font-size: 12px">未采集</span>
+              </td>
+              <td class="num mono">{{ user.declaredMmr ?? '—' }}</td>
+              <td class="num mono">{{ user.effective }}</td>
+              <td class="num mono">{{ user.registrations }}</td>
+              <td class="num mono">{{ user.appearances }}</td>
+              <td class="muted" style="font-size: 12px">
+                {{ user.lastLoginAt ? formatDate(user.lastLoginAt) : '从未' }}
+              </td>
+              <td style="text-align: right">
+                <span v-if="user.id === meId" class="muted" style="font-size: 12px">—</span>
+                <template v-else-if="user.role === 'ADMIN'">
+                  <NPopconfirm @positive-click="setRole(user, 'PLAYER')">
+                    <template #trigger>
+                      <NButton size="small" :disabled="busy">取消管理员</NButton>
+                    </template>
+                    取消后该成员将无法进入后台，确定吗？
+                  </NPopconfirm>
+                </template>
+                <NButton v-else size="small" type="primary" :disabled="busy" @click="setRole(user, 'ADMIN')">
+                  设为管理员
+                </NButton>
+              </td>
+            </tr>
         </tbody>
       </table>
       </div>

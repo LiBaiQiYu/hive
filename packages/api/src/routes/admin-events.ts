@@ -423,7 +423,7 @@ adminEventRoutes.get('/:id/registrations', async (c) => {
   const event = await loadEvent(c.env, c.req.param('id'));
 
   const rows = await c.env.DB.prepare(
-    `SELECT r.id, r.user_id AS userId, u.display_name AS displayName, u.username,
+    `SELECT r.id, r.user_id AS userId, u.display_name AS displayName, u.username, u.role,
             r.status, r.position_preference AS position, r.waitlist_position AS waitlistPosition,
             r.effective_rating_snapshot AS effectiveRating, r.created_at AS createdAt,
             pr.attendance_bp AS attendanceBp,

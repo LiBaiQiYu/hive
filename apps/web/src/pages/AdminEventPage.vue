@@ -33,6 +33,7 @@ interface RegRow {
   userId: string;
   displayName: string;
   username: string;
+  role: 'PLAYER' | 'ADMIN';
   status: string;
   position: number | null;
   waitlistPosition: number | null;
@@ -155,6 +156,12 @@ function toggleEdit() {
 
 const confirmed = computed(() => regs.value.filter((r) => r.status === 'CONFIRMED'));
 const waitlist = computed(() => regs.value.filter((r) => r.status === 'WAITLIST'));
+
+/**
+ * 已退赛的报名行。数据要保留（重新报名会复用同一行，见 POST /registrations），
+ * 但它不在名单里：既不占正选/候补名额，也不该混在表格里当成"还报着名"。
+ */
+const withdrawn = computed(() => regs.value.filter((r) => r.status === 'WITHDRAWN'));
 const canForm = computed(() => Math.floor(confirmed.value.length / 10));
 const odd = computed(() => confirmed.value.length % 10 !== 0 && confirmed.value.length >= 10);
 
@@ -169,8 +176,28 @@ const attendanceOf = (reg: RegRow) => {
 type RegListView = RegRow & { effective: number };
 
 const regList = computed<RegListView[]>(() =>
-  regs.value.map((reg) => ({ ...reg, effective: reg.effectiveRating })),
+  regs.value
+    .filter((reg) => reg.status !== 'WITHDRAWN')
+    .map((reg) => ({ ...reg, effective: reg.effectiveRating })),
 );
+
+/** 报名状态文案：未知值不要把英文枚举直接甩到界面上 */
+const REG_STATUS_LABEL: Record<string, string> = {
+  CONFIRMED: '正选',
+  WAITLIST: '候补',
+  WITHDRAWN: '已退赛',
+};
+
+function regStatusLabel(reg: RegRow): string {
+  if (reg.status === 'WAITLIST') return reg.waitlistPosition ? `候补 ${reg.waitlistPosition}` : '候补';
+  return REG_STATUS_LABEL[reg.status] ?? '未知状态';
+}
+
+function regStatusClass(status: string): string {
+  if (status === 'CONFIRMED') return 'tag-confirmed';
+  if (status === 'WAITLIST') return 'tag-waitlist';
+  return 'tag-other';
+}
 
 /** 默认不排序：保持服务端的「正选按评分 → 候补按顺序」 */
 const regFilter = ref<FilterValue>('ALL');
@@ -917,10 +944,21 @@ const statusPill = (status: string) => {
           <h2 class="section-title">报名名单</h2>
           <span class="muted" style="font-size: 13px">
             {{ confirmed.length }} 正选 / {{ waitlist.length }} 候补
+            <template v-if="withdrawn.length > 0">
+              ·
+              <span :title="`已退赛：${withdrawn.map((r) => r.displayName).join('、')}`">
+                {{ withdrawn.length }} 人已退赛
+              </span>
+            </template>
           </span>
         </div>
 
-        <div v-if="regs.length === 0" class="empty">还没有人报名。</div>
+        <div v-if="regList.length === 0" class="empty">
+          <template v-if="withdrawn.length > 0">
+            报名者都已退赛：{{ withdrawn.map((r) => r.displayName).join('、') }}
+          </template>
+          <template v-else>还没有人报名。</template>
+        </div>
 
         <template v-else>
           <div class="list-tools">
@@ -938,7 +976,10 @@ const statusPill = (status: string) => {
               <table class="table">
                 <thead>
                   <tr>
-                    <th>玩家</th>
+                    <th>昵称</th>
+                    <th>用户名</th>
+                    <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
+                    <th>角色</th>
                     <th>状态</th>
                     <th class="th-sort" @click="onRegSort('rankTier')">
                       段位 <span class="sort-arrow">{{ regSortArrow('rankTier') }}</span>
@@ -960,29 +1001,16 @@ const statusPill = (status: string) => {
                 </thead>
                 <tbody>
                   <tr v-for="reg in regRows" :key="reg.id">
+                    <td>{{ reg.displayName }}</td>
+                    <td class="mono muted" style="font-size: 12px">@{{ reg.username }}</td>
+                    <td><VerificationTag :verification="reg.verification" /></td>
                     <td>
-                      {{ reg.displayName }}
-                      <VerificationTag :verification="reg.verification" />
-                      <span class="muted" style="font-size: 12px">@{{ reg.username }}</span>
+                      <span v-if="reg.role === 'ADMIN'" class="tag tag-other">管理员</span>
+                      <span v-else class="muted" style="font-size: 12px">玩家</span>
                     </td>
                     <td>
-                      <span
-                        class="tag"
-                        :class="
-                          reg.status === 'CONFIRMED'
-                            ? 'tag-confirmed'
-                            : reg.status === 'WAITLIST'
-                              ? 'tag-waitlist'
-                              : 'tag-other'
-                        "
-                      >
-                        {{
-                          reg.status === 'CONFIRMED'
-                            ? '正选'
-                            : reg.status === 'WAITLIST'
-                              ? `候补 ${reg.waitlistPosition ?? ''}`
-                              : reg.status
-                        }}
+                      <span class="tag" :class="regStatusClass(reg.status)">
+                        {{ regStatusLabel(reg) }}
                       </span>
                     </td>
                     <td><RankMedal :rank-tier="reg.rankTier" /></td>

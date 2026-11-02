@@ -249,7 +249,6 @@
 .vtag {
   display: inline-flex;
   align-items: center;
-  margin-left: 6px;
   padding: 0 6px;
   border: 1px solid currentColor;
   border-radius: 4px;
@@ -319,7 +318,9 @@
 
 @media (max-width: 620px) {
   .table-wrap .table {
-    min-width: 560px;
+    /* 昵称 / 用户名 / 验证 / 角色 / 段位 / MMR / 评分 … 拆列后窄屏放不下，
+       与其把字挤成竖排，不如让它横向滚 */
+    min-width: 860px;
   }
 }
 

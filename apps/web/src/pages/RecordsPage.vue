@@ -40,6 +40,7 @@ interface Summary {
 interface LeaderRow extends PlayerListRow {
   displayName: string;
   username: string;
+  role: string;
   losses: number;
   played: number;
 }
@@ -233,7 +234,10 @@ function duration(seconds: number | null): string {
                 <thead>
                   <tr>
                     <th style="width: 56px" class="num">#</th>
-                    <th>玩家</th>
+                    <th>昵称</th>
+                    <th>用户名</th>
+                    <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
+                    <th>角色</th>
                     <th class="th-sort" @click="onSort('rankTier')">
                       段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
                     </th>
@@ -266,10 +270,12 @@ function duration(seconds: number | null): string {
                       >
                         {{ row.displayName }}
                       </RouterLink>
-                      <VerificationTag :verification="row.verification" />
-                      <span class="muted" style="font-size: 12px; margin-left: 6px">
-                        @{{ row.username }}
-                      </span>
+                    </td>
+                    <td class="mono muted" style="font-size: 12px">@{{ row.username }}</td>
+                    <td><VerificationTag :verification="row.verification" /></td>
+                    <td>
+                      <span v-if="row.role === 'ADMIN'" class="tag tag-other">管理员</span>
+                      <span v-else class="muted" style="font-size: 12px">玩家</span>
                     </td>
                     <td><RankMedal :rank-tier="row.rankTier" /></td>
                     <td
