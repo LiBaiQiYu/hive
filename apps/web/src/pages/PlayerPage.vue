@@ -425,6 +425,7 @@ watch(playerId, async () => {
 
             <footer class="comment-foot">
               <button
+                v-if="!thread.deleted"
                 type="button"
                 class="comment-action"
                 :class="{ 'is-liked': thread.likedByMe }"
@@ -480,7 +481,7 @@ watch(playerId, async () => {
                 </header>
                 <p v-if="reply.deleted" class="comment-body comment-deleted">该留言已删除</p>
                 <p v-else class="comment-body">{{ reply.body }}</p>
-                <footer class="comment-foot">
+                <footer v-if="!reply.deleted" class="comment-foot">
                   <button
                     type="button"
                     class="comment-action"

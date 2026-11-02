@@ -286,8 +286,9 @@ function shapeComment(row: CommentRow) {
       displayName: row.authorName,
       username: row.authorUsername,
     },
-    likeCount: row.likeCount,
-    likedByMe: row.likedByMe === 1,
+    // 墓碑只是给对话留个位置，点赞数没有意义
+    likeCount: deleted ? 0 : row.likeCount,
+    likedByMe: deleted ? false : row.likedByMe === 1,
   };
 }
 
@@ -332,14 +333,25 @@ playerRoutes.get('/:id/comments', async (c) => {
     repliesByParent.set(reply.parentId, list);
   }
 
+  /**
+   * 删除后的留言只当"路标"，不是内容：
+   *   · 回复没有下级，删了直接不返回；
+   *   · 一级评论只有**还留着存活回复**时才留墓碑，否则整条隐藏——
+   *     删掉的留言还挂在墙上显示"该留言已删除"，看着像系统坏了。
+   */
+  const threads = roots
+    .map((root) => ({
+      root,
+      alive: (repliesByParent.get(root.id) ?? []).filter((reply) => reply.deletedAt === null),
+    }))
+    .filter((item) => item.root.deletedAt === null || item.alive.length > 0)
+    .map((item) => ({
+      ...shapeComment(item.root),
+      replies: item.alive.map(shapeComment),
+    }));
+
   return c.json({
-    data: {
-      // 一级评论新的在上，回复按对话顺序（正序）
-      threads: roots.map((root) => ({
-        ...shapeComment(root),
-        replies: (repliesByParent.get(root.id) ?? []).map(shapeComment),
-      })),
-    },
+    data: { threads },
     meta: { requestId: c.get('requestId') },
   });
 });
@@ -445,9 +457,15 @@ playerRoutes.delete('/:id/comments/:commentId', async (c) => {
   const isAdmin = c.get('role') === 'ADMIN';
   if (!isAuthor && !isAdmin) throw new ApiError('FORBIDDEN', '只能删自己的留言');
 
-  await env.DB.prepare(`UPDATE comments SET deleted_at = ?, updated_at = ? WHERE id = ?`)
-    .bind(Date.now(), Date.now(), commentId)
-    .run();
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE comments SET deleted_at = ?, updated_at = ? WHERE id = ?`).bind(
+      Date.now(),
+      Date.now(),
+      commentId,
+    ),
+    // 删掉的留言不再有"点赞"这回事，顺手清干净，别留一堆指向墓碑的赞
+    env.DB.prepare(`DELETE FROM comment_likes WHERE comment_id = ?`).bind(commentId),
+  ]);
 
   return c.json({
     data: { ok: true, deletedByAdmin: !isAuthor && isAdmin },
