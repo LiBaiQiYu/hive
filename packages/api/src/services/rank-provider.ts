@@ -6,8 +6,8 @@
  * 发请求的——额度和别人共用，会出现"我们没怎么用却 429"。STRATZ 用 Bearer token，
  * 额度跟着 token 走，可控得多。
  *
- * 没配 STRATZ_API_TOKEN 时自动退回 OpenDota，保证功能不中断；响应里会写明来源，
- * 不做"看起来一样其实换了个源"的静默降级。
+ * 没配 STRATZ_API_TOKEN 时全走 OpenDota；配了则以 STRATZ 为准，
+ * 只有 STRATZ 明确答"查不到段位"时才用 OpenDota 补一次（见 fetchRankSnapshot）。
  */
 import { ApiError } from '@hive/shared';
 import type { Env } from '../env';
@@ -181,8 +181,30 @@ async function fetchFromOpenDota(accountId: number): Promise<RankSnapshot> {
  * 对外入口
  * ========================================================================== */
 
-/** 配了 token 就走 STRATZ，否则退回 OpenDota */
+/**
+ * 段位抓取：配了 token 就以 STRATZ 为准，没配则退回 OpenDota。
+ *
+ * 唯一的例外是**STRATZ 明确答"查不到段位"**（`ranks` 是空数组、或对方匿名）：
+ * 这种情况下再用 OpenDota 问一次。理由是实测两者覆盖范围不一样——
+ * 账号 218675066 在 OpenDota 有 `rank_tier = 64`，STRATZ 却返回空 `ranks`。
+ * 如果只认 STRATZ，这类账号会永远同步不到段位。
+ *
+ * 注意这个回退只在"STRATZ 答了但没数据"时发生：
+ *   · token 无效 / 429 / 网络错误 —— 直接失败，不回退（避免拿 OpenDota 的额度去填坑）；
+ *   · STRATZ 拿到了段位 —— 直接用，不再多发一次请求。
+ */
 export async function fetchRankSnapshot(env: Env, accountId: number): Promise<RankSnapshot> {
-  if (env.STRATZ_API_TOKEN) return fetchFromStratz(env.STRATZ_API_TOKEN, accountId);
-  return fetchFromOpenDota(accountId);
+  if (!env.STRATZ_API_TOKEN) return fetchFromOpenDota(accountId);
+
+  const stratz = await fetchFromStratz(env.STRATZ_API_TOKEN, accountId);
+  if (stratz.rankTier !== null && stratz.rankTier !== undefined) return stratz;
+
+  try {
+    const fallback = await fetchFromOpenDota(accountId);
+    // 兜底源也没段位就保留 STRATZ 的结果（至少昵称/头像的判定口径一致）
+    return fallback.rankTier !== null ? fallback : stratz;
+  } catch {
+    // 兜底失败不影响主流程：STRATZ 那边的结果照样可用（只是没段位）
+    return stratz;
+  }
 }

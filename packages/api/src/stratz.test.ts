@@ -159,6 +159,57 @@ describe('段位抓取入口', () => {
     }
   });
 
+  /**
+   * STRATZ 的覆盖不如 OpenDota 全：实测同一账号 OpenDota 有 rank_tier=64，
+   * STRATZ 的 ranks 是空数组。这种情况下要补一次 OpenDota，否则这些人永远同步不到段位。
+   */
+  it('STRATZ 答了但没段位 → 用 OpenDota 补一次，来源标 OPENDOTA', async () => {
+    const stub = stubFetch((url) => {
+      if (url.includes('stratz')) {
+        return json({ data: { player: { steamAccount: { id: 1, name: 'Night King', avatar: null }, ranks: [] } } });
+      }
+      if (url.endsWith('/wl')) return json({ win: 10, lose: 5 });
+      return json({ profile: { personaname: 'Night King', avatarfull: null }, rank_tier: 64 });
+    });
+    try {
+      const snapshot = await fetchRankSnapshot(envWithToken, 218675066);
+      expect(snapshot).toMatchObject({ source: 'OPENDOTA', rankTier: 64, careerMatches: 15 });
+      expect(stub.calls.some((call) => call.url.includes('opendota'))).toBe(true);
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it('STRATZ 与 OpenDota 都没段位 → 保留 STRATZ 的结果，不报错', async () => {
+    const stub = stubFetch((url) => {
+      if (url.includes('stratz')) {
+        return json({ data: { player: { steamAccount: { id: 1, name: 'X', avatar: null }, ranks: [] } } });
+      }
+      return json({ profile: { personaname: 'X', avatarfull: null }, rank_tier: null });
+    });
+    try {
+      const snapshot = await fetchRankSnapshot(envWithToken, 1);
+      expect(snapshot).toMatchObject({ source: 'STRATZ', rankTier: null });
+    } finally {
+      stub.restore();
+    }
+  });
+
+  it('补位时 OpenDota 挂了也不影响：仍然返回 STRATZ 的结果', async () => {
+    const stub = stubFetch((url) => {
+      if (url.includes('stratz')) {
+        return json({ data: { player: { steamAccount: { id: 1, name: 'X', avatar: null }, ranks: [] } } });
+      }
+      return json({ error: 'boom' }, 500);
+    });
+    try {
+      const snapshot = await fetchRankSnapshot(envWithToken, 1);
+      expect(snapshot).toMatchObject({ source: 'STRATZ', rankTier: null });
+    } finally {
+      stub.restore();
+    }
+  });
+
   it('没配 token 时退回 OpenDota（来源标 OPENDOTA）', async () => {
     const stub = stubFetch((url) => {
       if (url.endsWith('/wl')) return json({ win: 10, lose: 5 });
