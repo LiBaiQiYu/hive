@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import {
   NButton,
@@ -12,6 +12,8 @@ import {
   zhCN,
 } from 'naive-ui';
 import BrandLogo from './components/BrandLogo.vue';
+import ChangelogDialog from './components/ChangelogDialog.vue';
+import { APP_VERSION } from './lib/changelog';
 import { logout, session } from './lib/session';
 import { theme, toggleTheme } from './lib/theme';
 import { darkOverrides, lightOverrides } from './lib/ui';
@@ -21,6 +23,33 @@ const router = useRouter();
 
 /** 版权年份跟着系统走，别每年手改一次 */
 const year = new Date().getFullYear();
+
+/* ------------------------------------------------------------------ 版本 / 更新日志 */
+
+const CHANGELOG_SEEN_KEY = 'hive-seen-version';
+const showChangelog = ref(false);
+
+/**
+ * 版本号和上次看过的一致就什么都不做；不一致才弹一次，并立刻记账。
+ * "立刻"是有意的：用户按 Esc 关掉也算看过了，不然每次刷新都再弹一次。
+ */
+onMounted(() => {
+  let seen: string | null = null;
+  try {
+    seen = localStorage.getItem(CHANGELOG_SEEN_KEY);
+  } catch {
+    /* 隐私模式下 localStorage 不可用，那就别自动弹了 */
+    return;
+  }
+  if (seen === APP_VERSION) return;
+  showChangelog.value = true;
+  try {
+    localStorage.setItem(CHANGELOG_SEEN_KEY, APP_VERSION);
+  } catch {
+    /* 记不上就记不上，下次再弹一次而已 */
+  }
+});
+
 
 const naiveTheme = computed(() => (theme.value === 'dark' ? darkTheme : null));
 const overrides = computed(() => (theme.value === 'dark' ? darkOverrides : lightOverrides));
@@ -240,9 +269,19 @@ async function onMenuSelect(key: string) {
                 <span>© {{ year }} HIVE</span>
                 <span class="footer-dot" aria-hidden="true">·</span>
                 <span>群内自用，非官方项目，与 Valve 无关</span>
+                <button
+                  type="button"
+                  class="footer-ver mono"
+                  title="看看这个版本更新了什么"
+                  @click="showChangelog = true"
+                >
+                  v{{ APP_VERSION }}
+                </button>
               </div>
             </div>
           </footer>
+
+          <ChangelogDialog v-model:show="showChangelog" />
         </div>
       </NDialogProvider>
     </NMessageProvider>

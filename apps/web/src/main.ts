@@ -10,6 +10,7 @@ import './styles-skins.css';
 import './styles-frame-fx.css';
 import './styles-ui.css';
 import './styles-hero.css';
+import './styles-changelog.css';
 import { loadMe } from './lib/session';
 import { session } from './lib/session';
 import { initTheme } from './lib/theme';

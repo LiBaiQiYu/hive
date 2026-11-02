@@ -1,0 +1,103 @@
+/* ==========================================================================
+   版本号与更新日志弹窗
+   --------------------------------------------------------------------------
+   单独一个文件，是因为页脚那块 styles.css 里还有别人在改的样式；
+   这一块自成一体（页脚的版本号胶囊 + 弹窗内容），放一起更好找。
+   ========================================================================== */
+
+/* 版本号：点一下能看更新日志，所以是按钮不是纯文本 */
+.footer-ver {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.footer-ver:hover {
+  color: var(--gold-2);
+  border-color: var(--line-strong);
+}
+
+/* ---------------------------------------------------------------- 弹窗 */
+
+.changelog-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.changelog-title {
+  font-family: var(--display);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: var(--gold-2);
+}
+
+.changelog-badge {
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 条目多了要能滚，不然弹窗会顶到屏幕外面 */
+.changelog-body {
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.changelog-release + .changelog-release {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--line);
+}
+
+.changelog-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.changelog-items {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.changelog-items li {
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.changelog-items li::marker {
+  color: var(--gold);
+}
+
+.changelog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.changelog-note {
+  font-size: 11px;
+}
+
+@media (max-width: 560px) {
+  /* 窄屏一行放不下，版本号别再往右顶 */
+  .footer-ver {
+    margin-left: 0;
+  }
+}
