@@ -184,8 +184,8 @@ pnpm run deploy
 部署后自查：
 
 ```bash
-curl -I https://hive.carloswhitea1e.workers.dev/     # 应出现 content-security-policy / x-frame-options
-curl -s https://hive.carloswhitea1e.workers.dev/api/health
+curl -I https://hive.cwa1e.top/     # 应出现 content-security-policy / x-frame-options
+curl -s https://hive.cwa1e.top/api/health
 ```
 
 控制台侧另有两件事（代码里做不了）：加登录速率限制规则；拿到域名后关掉 `workers_dev`。
