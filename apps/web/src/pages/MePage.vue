@@ -103,6 +103,14 @@ const previewPlayer = computed<PlayerCardData>(() => {
         <span class="muted" style="font-size: 13px">
           {{ session.me.user.displayName }} · @{{ session.me.user.username }}
         </span>
+        <!-- 别人眼里的你：和从排行榜点进来的是同一个页面 -->
+        <RouterLink
+          :to="`/players/${session.me.user.id}`"
+          class="btn"
+          title="别人在排行榜点你时看到的样子"
+        >
+          公开主页
+        </RouterLink>
         <RouterLink to="/settings#profile" class="btn">编辑资料</RouterLink>
       </div>
     </div>

@@ -122,6 +122,17 @@ const winRate = computed(() =>
   summary.value.winRateBp === null ? '—' : `${(summary.value.winRateBp / 100).toFixed(0)}%`,
 );
 
+/**
+ * 返回目标跟着"这是不是我自己"走：
+ * 看自己的公开主页时，回「我的主页」比回排行榜顺手得多。
+ * 用 session 判断而不是接口返回的 isSelf —— 后者要等加载完，会让按钮闪一下。
+ */
+const backLink = computed(() =>
+  session.me?.user.id === playerId.value
+    ? { to: '/me', label: '返回我的主页' }
+    : { to: '/leaderboard', label: '返回排行榜' },
+);
+
 function duration(seconds: number | null): string {
   if (!seconds) return '—';
   const minutes = Math.floor(seconds / 60);
@@ -244,7 +255,7 @@ watch(playerId, async () => {
 
 <template>
   <div class="container">
-    <PageBack to="/leaderboard" label="返回排行榜" />
+    <PageBack :to="backLink.to" :label="backLink.label" />
 
     <div v-if="loading" class="empty" style="display: flex; justify-content: center; padding: 40px">
       加载中…
