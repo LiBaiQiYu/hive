@@ -40,8 +40,12 @@ pnpm dlx wrangler secret put STEAM_WEB_API_KEY  --config packages/api/wrangler.j
 pnpm dlx wrangler secret put STRATZ_API_TOKEN   --config packages/api/wrangler.jsonc --env staging
 ```
 
-本地不用 secret，直接写到 `.dev.vars`：`STRATZ_API_TOKEN=<你的 token>`（这个文件已 gitignore）。
-token 在 stratz.com 的账号设置里生成，有效期到期后接口会返回 401/403，报错文案会直接提示更新 token。
+本地不用 secret，直接写到 **`packages/api/.dev.vars`**（不是仓库根目录；该文件已 gitignore）：
+`PASSWORD_PEPPER` / `IP_HASH_SALT` / `STEAM_WEB_API_KEY` / `STRATZ_API_TOKEN`。
+**Cloudflare 控制台里配的 secret 只有线上 Worker 用得到**，`pnpm dev` 读的是这个文件——在线上配了 key、本地忘了填，
+症状是绑定成功但拿不到昵称头像。改完 `wrangler dev` 会自动重启，不用手动重启进程。
+token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在行尾留注释。
+`STRATZ_API_TOKEN` 在 stratz.com 的账号设置里生成，有效期到期后接口会返回 401/403，报错文案会直接提示更新 token。
 
 ## 3. 脚本契约（package.json 必须提供这些名字）
 
@@ -99,6 +103,8 @@ token 在 stratz.com 的账号设置里生成，有效期到期后接口会返�
 | 部署后 `/events/123` 404 | `assets.not_found_handling` 必须是 `single-page-application` |
 | 静态资源更新后仍是旧版 | 产物文件名带 hash，但 `index.html` 需短缓存；检查 `assets` 目录是否为新构建 |
 | Steam 绑定偶发失败 | 回调 Cookie 的 `SameSite`/`Path` 与 `realm` 不一致；或 return_to 与发起时不同（反代改写了 scheme） |
+| 本地点「绑定 Steam」走完 Steam 回来**什么都没发生** | 回调里用了 `c.req.url` 的 origin，而 `wrangler dev` 会把带 `routes` 的请求 URL 与 `Host` 一起改写成自定义域名（如 `hive.cwa1e.top`）→ `openid.return_to` 前缀校验必失败。`/start` 与 `/callback` 必须都走 `resolveOrigin(c.env.APP_ORIGIN, c.req.url)`。现在失败原因会带回 `/me?steam=error&reason=…` 并弹提示，直接看 `reason`：`return_to` = origin 配错，`state` = 换了地址（`localhost` vs `127.0.0.1`，Cookie 不通用），`not_valid` = Steam 说校验过期 |
+| 本地绑定后没有昵称/头像 | `STEAM_WEB_API_KEY` 只写在 Cloudflare 上，本地 `.dev.vars` 还是空的 |
 | 登录在免费版偶发 500 | PBKDF2 迭代次数超出单请求 CPU 限制。跑 `/api/dev/hash-calibration` 取实测值，把 `PASSWORD_PBKDF2_ITERATIONS` 设到「单次 ≤6ms」的最大值 |
 | 部署报 Queues 相关错误 | 免费版不支持 Queues。`wrangler.jsonc` 中的 `queues` 段必须保持注释状态 |
 | Cron 部署失败 | 免费版限制单个 Worker 最多 3 个 Cron。新增定时任务必须并入已有的 `scheduled` 分发，不能加第 4 条表达式 |

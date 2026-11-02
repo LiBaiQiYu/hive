@@ -13,7 +13,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
 ## 当前状态
 
 ```
-已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + OpenDota）
+已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + STRATZ，无 token 时退回 OpenDota）
         赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
         评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员修正 + 历史
@@ -31,8 +31,16 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         顶栏：主题切换是单图标圆按钮（日月交叉旋转），用户名是 `NDropdown`（我的主页 / 账号设置 / 后台 / 退出）
         「我的主页」`/me` 只放档案四块（评分 / 游戏身份 / 卡片外观 / 位置偏好），组件在 `components/me/`；
         资料与密码在「账号设置」`/settings`，只从下拉进入，带登录守卫（未登录跳 `/login?redirect=`）
+        段位图标是**官方的勋章 + 星星 PNG 叠出来**的（`assets/ranks/medal_1..8.png` + `star_1..5.png`，
+        256×256 透明图，星星画在画布顶部，同一尺寸叠放即可对齐）：`lib/rank-assets.ts` 负责映射，
+        `components/RankIcon.vue` 负责渲染；段位文字用 `rankLabel()`（冠绝与 0 星都不拼星级）。
+        玩家卡左上角是 Steam/STRATZ 的公开头像（40px 圆、`referrerpolicy=no-referrer`、`@error` 自隐藏），
+        没有头像时整块不渲染、布局回到原名+ID 的样子。
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
-        steam_id64 76561198659699463 / dota 699433735）；填上 STEAM_WEB_API_KEY 才有昵称头像
+        steam_id64 76561198659699463 / dota 699433735）。`STEAM_WEB_API_KEY` 生产与本地都已配置
+        （本地在 `packages/api/.dev.vars`，改完**必须重启** `pnpm dev` 才注入），绑定时会带昵称头像，
+        PLAYER_SYNC 也会把历史上缺的头像补回来。回调统一用 `?steam=linked|error&reason=…` 回 `/me`，
+        由前端翻译成人话弹 Toast —— 失败不再静默。
 未做    OpenDota 对局导入（**明确不做**：用户决定"赛后手工选胜负方"就够了，KDA 不展示）
         赛事详情页的场次列表已能跳到 `/matches/:id` 看公开阵容；阵容页本身没有独立导航入口
 ```
@@ -56,6 +64,7 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 | 坑 | 正确做法 |
 | --- | --- |
 | `wrangler dev` 会把 `wrangler.jsonc` 的 `routes` 套到本地请求上，`request.url` 变成 `hive.example.com`（fake-ip），Steam 回调直接 ERR_EMPTY_RESPONSE | **`routes` 必须保持注释**，直到有真实域名再去掉 |
+| 有了真实域名后（2026-11），本地 `pnpm dev` 里 `request.url` **和 `Host` 头都会被改写成 routes 的域名**（`hive.cwa1e.top`），只有 `APP_ORIGIN`（脚本用 `--var` 注入）还是 `127.0.0.1:8787`。Steam 回调若取 `c.req.url` 的 origin 去比对 `openid.return_to`，前缀永远对不上 → 40ms 内判死，浏览器被安静送回 `/me`，用户看到的就是「点了绑定没反应」 | `/start` 与 `/callback` 的 origin **都**走 `resolveOrigin(c.env.APP_ORIGIN, c.req.url)`；失败原因用 `?steam=error&reason=…` 带回 `/me`，页面必须翻译成人话弹出来（`MePage.vue` 的 `STEAM_ERROR_TEXT`）。想复现：拿 `/start` 的 `hive_steam_state` Cookie + 假 `openid.*` 打 `/callback`，40ms 出 `return_to` = origin 错了，300ms+ 出 `not_valid` = 校验逻辑走到了 Steam |
 | 本地 D1 状态按**配置文件目录**解析，`wrangler d1` 与 `wrangler dev` 会各用一份 | 一律带 `--persist-to packages/database/.wrangler/state`（已写进脚本） |
 | 用 PowerShell 的 `-replace`/`Set-Content` 改含中文的源码 → 按 GBK 解码，整文件乱码且不可逆 | **只能用 edit 工具改源码**。2026-10-31 又踩了一次：只是"读出来改 4 行再写回"，`Get-Content`(ANSI) + `Set-Content -Encoding UTF8` 就把整页中文变成 `淇濆瓨` 这类乱码，靠 `git checkout` 才救回来 |
 | `$pid` / `$host` / `$error` 是 PowerShell 只读变量，赋值静默失败 | 换名字（如 `$uid`） |
@@ -89,8 +98,10 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 - **本地 `.dev.vars` 已与生产共用同一套 pepper/salt**（为了让 `pnpm dev:remote` 能验过线上密码哈希）。代价：换 pepper 之前注册的本地账号哈希全部失效。2026-11-02 已用当前 pepper 把所有本地联调账号（`byc1030` / `smokeuser` / `p01`–`p11`，共 13 个）的密码重算为 **`Hive-2026-local`**；这批是纯本地测试库的口令，只对本机 `packages/database/.wrangler/state` 有效。
 - 重算办法（没有 `db:seed` 脚本）：读 `.dev.vars` 的 pepper，用 Node `webcrypto` 算 `pbkdf2_sha256$p1$<迭代>$<salt>$<hash>`，再 `wrangler d1 execute --local --file`。**别在生产库上这么干**。
 - `pnpm dev:remote` 是**直连生产库**的本地开发：点一下就是真写线上数据，别在里面做破坏性测试。
-- **生产已部署**：`https://hive.carloswhitea1e.workers.dev`（Cloudflare 账号 `carloswhitea1e@gmail.com`，Worker 名 `hive`）。还没有自定义域名，所以 `workers_dev` 暂时为 `true`；`routes` 仍保持注释，拿到域名后两者一起改。
-- 生产 secrets（`PASSWORD_PEPPER` / `IP_HASH_SALT` / 空 `STEAM_WEB_API_KEY`）与管理员账号密码都在 `backups/`（gitignore，**不要提交**）。**换 pepper = 现有用户全部登录失效**。
+- **生产已部署**：**`https://hive.cwa1e.top`**（自定义域名，`workers_dev: false`，`routes: [{ pattern: "hive.cwa1e.top", custom_domain: true }]`，
+  `APP_ORIGIN: https://hive.cwa1e.top`）；旧的 `hive.carloswhitea1e.workers.dev` 已不再是主入口。
+  本地 `pnpm dev` 用 `--var APP_ORIGIN:http://127.0.0.1:8787` 覆盖它——**别把这个覆盖删掉**，否则本地回调会被导到线上。
+- 生产 secrets（`PASSWORD_PEPPER` / `IP_HASH_SALT` / `STEAM_WEB_API_KEY` / `STRATZ_API_TOKEN`）与管理员账号密码都在 `backups/`（gitignore，**不要提交**）。**换 pepper = 现有用户全部登录失效**。
 - 现在库里的都是**联调数据**，调通后直接清空重来，不需要保留。
 - `packages/api/wrangler.jsonc` 是部署配置；`packages/database/wrangler.d1.jsonc` 是数据库专用配置（没有 `main`/`assets`，误用 deploy 会失败）。
 - 邀请码清单在 `backups/invite-codes-*.txt`（该目录已 gitignore，**不要提交**）。本地开发码：`HIVE-DEV-01`。
@@ -98,9 +109,11 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 
 ## 下一步优先级
 
-1. 填 `STEAM_WEB_API_KEY`（拿 Steam 昵称/头像）+ 自定义域名（解开 `routes`、`workers_dev` 改回 false）。
-2. 线上部署这批改动（job runner / 拖拽换人 / 排行榜 / 战绩页 / 后台四件套 / 公开阵容页 /
-   会话 Cookie 的 `Secure` 推导 / `_headers` 安全头 / 每日维护的审计裁剪）。
-3. 可选：给阵容页加独立入口（目前只能从赛事详情的场次列表点进去）。
-4. 控制台侧的两件事（代码里做不了）：给 `POST /api/auth/login` 加一条按 IP 的速率限制规则；
-   域名就位后关掉 `workers_dev`。
+1. 控制台侧（代码里做不了，**只剩这一件硬性项**）：给 `POST /api/auth/login` 加一条按 IP 的速率限制规则。
+   `workers_dev` 已关、自定义域名已就位，那两件不用再管。
+2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」，再决定要不要给 `_headers` 补 HSTS
+   （现在刻意没写，本地 http 会被钉死）。
+3. Cloudflare 会自动往 HTML 注入 Web Analytics 的 `beacon.min.js`，被我们的 `script-src 'self'` 挡掉。
+   二选一：控制台关掉 Web Analytics（推荐，保持零第三方脚本），或放开 `script-src`/`connect-src`。
+4. 可选体验项：阵容页独立入口、公开档案页的分享卡、赛事详情页移动端布局。
+5. 数据清理：联调数据确认无用后清空重来（生产导出在 `backups/`）。
