@@ -64,6 +64,7 @@ pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy
 | 换了 `PASSWORD_PEPPER` 后，旧哈希全部验不过（本地库尤其容易踩） | 本地 `.dev.vars` 的 pepper 必须与要连的那个库一致；跨库复用账号 = 共用同一套 pepper + 同一批用户行 |
 | **拉下别人提交的新迁移后忘了迁移本地库** → 登录 200 但 `/api/me` 500（`D1_ERROR: no such column: card_material`），前端表现成"登录没反应、还是没登录" | `pnpm dev` / `dev:api` 现在会先跑 `db:migrate:local`（幂等）；`dev:remote` 不管迁移，切机器后先手动 `pnpm db:migrate:local`。判断是迁移落后还是真 bug，直接看 wrangler dev 的 stderr 里的 `D1_ERROR` |
 | 会话 Cookie 写死 `Secure`，用非 https 的地址（局域网 IP、非 localhost 主机名）开发时浏览器直接丢弃 Cookie | `secure` 由 `cookieSecure(env, c.req.url)` 推出：看 `APP_ORIGIN` 的 scheme，https 才加 `Secure`（`packages/api/src/env.ts`） |
+| `run_worker_first: ["/api/*"]` 意味着**静态资源根本不进 Worker**，Hono 的 `secureHeaders()` 对页面一行都不生效——HTML/JS/CSS 长期没有 CSP、没有防点击劫持 | 资源层约定文件 `apps/web/public/_headers`（构建时拷进 `dist/`，边缘加头、不耗 Worker 调用）。改完重建 + 发版才生效 |
 
 ## 关键设计决策（改了会连累别处）
 

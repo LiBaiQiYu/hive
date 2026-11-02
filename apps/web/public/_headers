@@ -1,0 +1,32 @@
+# =============================================================================
+# 静态资源层（Workers Assets）的安全响应头。
+#
+# 为什么需要这个文件：`run_worker_first: ["/api/*"]` 意味着**只有** /api/* 会进
+# Hono，index.html / JS / CSS 由资源层直接返回，`secureHeaders()` 根本不会执行。
+# 于是页面本身长期是"裸奔"的——没有 CSP、没有防点击劫持、没有 nosniff。
+# 资源层支持 `_headers` / `_redirects` 这两个约定文件，构建时会原样拷进 dist/，
+# 由 Cloudflare 在边缘加头，不消耗 Worker 调用。
+#
+# 注意：
+#   · 这里**不写** Strict-Transport-Security。本地 pnpm dev 是 http，把 HSTS 发给
+#     127.0.0.1 有把浏览器钉死在 https 上的风险；等有真实域名后在 Cloudflare
+#     开「Always Use HTTPS」，或在下面单独加一条针对域名的 HSTS。
+#   · Naive UI 用 css-render 在运行时注入 <style>，Vue 的 :style 也是内联属性，
+#     所以 style-src 必须留 'unsafe-inline'；script 侧不需要，保持 'self'。
+# =============================================================================
+
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'
+
+# Vite 产出的文件名带内容哈希，可以长缓存
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 入口 HTML 绝不能缓存，否则发版后用户还会拿到旧的资源引用
+/
+  Cache-Control: public, max-age=0, must-revalidate
