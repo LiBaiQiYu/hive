@@ -5,6 +5,7 @@
  * 队列里的任务都来自已经过校验的入口。
  */
 import type { Env } from '../env';
+import { fetchRankSnapshot } from '../services/rank-provider';
 import { recomputeUserRating } from '../services/rating';
 import { newId } from '@hive/shared';
 
@@ -16,7 +17,10 @@ interface SyncPayload {
   userId: string;
 }
 
-/** 从 OpenDota 拉这个玩家的段位与累计场次；失败就抛，让队列按退避重试 */
+/**
+ * 从段位源（STRATZ 优先，OpenDota 兜底）拉这个玩家的段位与累计场次；
+ * 失败就抛，让队列按退避重试。
+ */
 async function syncPlayerStats(env: Env, userId: string): Promise<void> {
   const account = await env.DB.prepare(
     `SELECT dota_account_id AS dotaAccountId FROM game_accounts WHERE user_id = ?`,
@@ -27,23 +31,12 @@ async function syncPlayerStats(env: Env, userId: string): Promise<void> {
   if (!account) return; // 没绑游戏账号，没什么可同步的
 
   const id = account.dotaAccountId;
-  const [profileRes, wlRes] = await Promise.all([
-    fetch(`https://api.opendota.com/api/players/${id}`),
-    fetch(`https://api.opendota.com/api/players/${id}/wl`),
-  ]);
+  const snapshot = await fetchRankSnapshot(env, id);
 
-  if (profileRes.status === 429 || wlRes.status === 429) {
-    throw new Error('OpenDota 限流（429）');
-  }
-  if (!profileRes.ok) {
-    throw new Error(`OpenDota 返回 ${profileRes.status}`);
-  }
-
-  const profile = (await profileRes.json()) as { rank_tier?: number | null };
-  const wl = wlRes.ok ? ((await wlRes.json()) as { win?: number; lose?: number }) : null;
-
-  const rankTier = typeof profile.rank_tier === 'number' ? profile.rank_tier : null;
-  const careerMatches = (wl?.win ?? 0) + (wl?.lose ?? 0);
+  const rankTier = snapshot.rankTier;
+  /** null = 这次没拿到（STRATZ 路径不取场次），不允许它覆盖已有值 */
+  const careerMatches = snapshot.careerMatches;
+  const rankSource = snapshot.source;
   const now = Date.now();
 
   const existing = await env.DB.prepare(`SELECT id FROM player_stats WHERE user_id = ?`)
@@ -54,15 +47,17 @@ async function syncPlayerStats(env: Env, userId: string): Promise<void> {
     // 只有真的抓到段位才覆盖；抓不到（没开公开数据）就只更新场次，别把已有段位抹掉
     if (rankTier !== null) {
       await env.DB.prepare(
-        `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = 'OPENDOTA',
-           career_matches = ?, rank_checked_at = ?, fetched_at = ?, updated_at = ?
+        `UPDATE player_stats SET rank_tier = ?, declared_mmr = NULL, rank_source = ?,
+           career_matches = COALESCE(?, career_matches),
+           rank_checked_at = ?, fetched_at = ?, updated_at = ?
          WHERE user_id = ?`,
       )
-        .bind(rankTier, careerMatches, now, now, now, userId)
+        .bind(rankTier, rankSource, careerMatches, now, now, now, userId)
         .run();
     } else {
       await env.DB.prepare(
-        `UPDATE player_stats SET career_matches = ?, fetched_at = ?, updated_at = ?
+        `UPDATE player_stats SET career_matches = COALESCE(?, career_matches),
+           fetched_at = ?, updated_at = ?
           WHERE user_id = ?`,
       )
         .bind(careerMatches, now, now, userId)
@@ -72,9 +67,19 @@ async function syncPlayerStats(env: Env, userId: string): Promise<void> {
     await env.DB.prepare(
       `INSERT INTO player_stats (id, user_id, rank_tier, rank_source, career_matches,
          rank_checked_at, fetched_at, created_at, updated_at)
-       VALUES (?, ?, ?, 'OPENDOTA', ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, COALESCE(?, 0), ?, ?, ?, ?)`,
     )
-      .bind(newId(now), userId, rankTier, careerMatches, rankTier !== null ? now : null, now, now, now)
+      .bind(
+        newId(now),
+        userId,
+        rankTier,
+        rankSource,
+        careerMatches,
+        rankTier !== null ? now : null,
+        now,
+        now,
+        now,
+      )
       .run();
   }
 

@@ -16,3 +16,11 @@ IP_HASH_SALT=change-me-local-salt
 # 申请：https://steamcommunity.com/dev/apikey （域名随便填，比如 localhost）
 # 注意：它不参与身份校验，OpenID 的校验永远走反向 POST，与这个 key 无关。
 STEAM_WEB_API_KEY=
+
+# STRATZ API token —— 可选，但**强烈建议配**。
+# 作用：抓段位的主源。段位不从 Steam 来，是查第三方拿的：
+#   · STRATZ：Bearer token 计额度，跟出口 IP 无关
+#   · OpenDota（兜底）：额度按 IP 算，而 Worker 出口 IP 是共享的，很容易 429
+# 没配时会自动退回 OpenDota，功能不中断，只是可能同步失败。
+# 申请：https://stratz.com 登录后在账号设置里生成 API token（免费档够用）
+STRATZ_API_TOKEN=
