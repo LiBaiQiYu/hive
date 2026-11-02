@@ -537,6 +537,9 @@ meRoutes.post('/game-account/claim', async (c) => {
  * 这是"不想绑 Steam"的人的正式路径：段位由自己申报，徽章会显示"自报"，
  * 置信度按 SELF_REPORTED 计，评分随即重算（否则填了也不生效）。
  * 填了天梯分时以天梯分为准，自动折算勋章与星级。
+ *
+ * 优先级：上游同步（Steam / OpenDota）与管理员设定压过手填；手填只在
+ * "还没有任何权威段位"时可用，详见下方守卫。
  * ------------------------------------------------------------------------ */
 const rankSchema = z.object({
   /** 手选段位（勋章 × 10 + 星级）；填了天梯分时可以不填，会被天梯分覆盖 */
@@ -577,9 +580,31 @@ meRoutes.put('/rank', async (c) => {
   const derivedFromMmr = declaredMmr !== null;
 
   const now = Date.now();
-  const existing = await env.DB.prepare(`SELECT id FROM player_stats WHERE user_id = ?`)
+  const existing = await env.DB.prepare(
+    `SELECT id, rank_tier AS rankTier, rank_source AS rankSource FROM player_stats WHERE user_id = ?`,
+  )
     .bind(userId)
-    .first<{ id: string }>();
+    .first<{ id: string; rankTier: number | null; rankSource: string | null }>();
+
+  /**
+   * 手动填写优先级最低。
+   *
+   * 段位一旦由 Steam / OpenDota 同步而来，或被管理员设定，就不允许再用手填覆盖——
+   * 否则会出现"昨天同步了超凡 1 星，今天被手滑改成统帅 3 星"这种自相矛盾的数据。
+   * 想自己填只有一条路：先解除绑定（解绑会把 rank_source 退回 SELF_REPORTED）。
+   *
+   * 判断里必须带 `rankTier !== null`：同步成功但对方没开「公开比赛数据」时，
+   * rank_source 已经是 OPENDOTA 而段位是空的，那种情况得让玩家自己填，
+   * 否则他没有任何办法提供段位信息。
+   */
+  if (existing && existing.rankTier !== null) {
+    if (existing.rankSource === 'ADMIN_SET') {
+      throw new ApiError('CONFLICT', '当前段位由管理员设定，如需修改请联系管理员');
+    }
+    if (existing.rankSource === 'OPENDOTA' || existing.rankSource === 'STRATZ') {
+      throw new ApiError('CONFLICT', '段位来自账号同步，如需手动填写请先解除绑定');
+    }
+  }
 
   if (existing) {
     await env.DB.prepare(

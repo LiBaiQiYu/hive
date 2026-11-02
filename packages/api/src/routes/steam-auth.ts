@@ -4,6 +4,7 @@ import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { cookieSecure } from '../env';
 import { requireAdmin, requireUser } from '../guard';
+import { recomputeUserRating } from '../services/rating';
 import {
   STEAM_STATE_COOKIE,
   STATE_TTL_SECONDS,
@@ -195,15 +196,58 @@ steamRoutes.get('/callback', async (c) => {
 });
 
 /* -------------------------------------------------------------------------- */
+/**
+ * 解除游戏账号绑定（Steam 或数字 ID 都有这一行）。
+ *
+ * 关键副作用：段位来源要一起退回 SELF_REPORTED。
+ * 否则解绑之后 player_stats 里还挂着 OPENDOTA，界面显示"已同步"、手动填写又打不开，
+ * 玩家会卡在一个既不能改也不能用的状态里。
+ * 段位数字保留（没必要让人重填），但来源如实标成"自报"，评分按新来源重算。
+ */
 steamRoutes.delete('/unlink', async (c) => {
   const userId = requireUser(c);
+  const env = c.env;
+  const now = Date.now();
 
-  const linked = await c.env.DB.prepare(`SELECT id FROM game_accounts WHERE user_id = ?`)
+  const linked = await env.DB.prepare(
+    `SELECT id, provider, verification FROM game_accounts WHERE user_id = ?`,
+  )
     .bind(userId)
-    .first<{ id: string }>();
-  if (!linked) throw new ApiError('NOT_FOUND', '还没有绑定 Steam');
+    .first<{ id: string; provider: string; verification: string }>();
+  if (!linked) throw new ApiError('NOT_FOUND', '还没有绑定游戏账号');
 
-  await c.env.DB.prepare(`DELETE FROM game_accounts WHERE user_id = ?`).bind(userId).run();
+  await env.DB.prepare(`DELETE FROM game_accounts WHERE user_id = ?`).bind(userId).run();
 
-  return c.json({ data: { ok: true } });
+  const stats = await env.DB.prepare(
+    `SELECT rank_source AS rankSource FROM player_stats WHERE user_id = ?`,
+  )
+    .bind(userId)
+    .first<{ rankSource: string | null }>();
+
+  let rating: { system: number; effective: number } | null = null;
+  if (stats && (stats.rankSource === 'OPENDOTA' || stats.rankSource === 'STRATZ')) {
+    await env.DB.prepare(
+      `UPDATE player_stats
+          SET rank_source = 'SELF_REPORTED', rank_checked_at = NULL, updated_at = ?
+        WHERE user_id = ?`,
+    )
+      .bind(now, userId)
+      .run();
+    rating = await recomputeUserRating(env, userId);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, before_json, created_at)
+     VALUES (?, ?, 'PLAYER', 'game_account.unlink', 'user', ?, ?, ?)`,
+  )
+    .bind(
+      newId(now),
+      userId,
+      userId,
+      JSON.stringify({ provider: linked.provider, verification: linked.verification }),
+      now,
+    )
+    .run();
+
+  return c.json({ data: { ok: true, rankSource: stats?.rankSource ?? null, rating } });
 });
