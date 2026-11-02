@@ -103,8 +103,13 @@ steamRoutes.get('/probe', async (c) => {
 steamRoutes.get('/callback', async (c) => {
   const userId = requireUser(c);
   const env = c.env;
+
+  // origin 必须和 /start 生成 return_to 时用的那个一致（都走 resolveOrigin）。
+  // 不能取 c.req.url 的 origin：带 routes 时 `wrangler dev` 会把请求 URL 改写成自定义域名
+  // （Host 头也一起改），于是 openid.return_to 的前缀永远对不上 → 每次都 reason=return_to，
+  // 浏览器被安静地送回 /me，看起来就是「绑定没反应」。同理会把用户从本地甩到线上域名。
+  const { origin } = resolveOrigin(c.env.APP_ORIGIN, c.req.url);
   const url = new URL(c.req.url);
-  const origin = url.origin;
 
   const cookieState = getCookie(c, STEAM_STATE_COOKIE);
   deleteCookie(c, STEAM_STATE_COOKIE, { path: STATE_PATH });
@@ -121,7 +126,7 @@ steamRoutes.get('/callback', async (c) => {
   // 校验点 2~6 都在 verifyCallback 里：op_endpoint / return_to / claimed_id / 反向 POST
   const verified = await verifyCallback({ origin, params: url.searchParams });
   if (!verified.ok || !verified.steamId64) {
-    return backToMe(origin, { steam: 'error', reason: 'verify' });
+    return backToMe(origin, { steam: 'error', reason: verified.reason ?? 'verify' });
   }
 
   const steamId64 = verified.steamId64;

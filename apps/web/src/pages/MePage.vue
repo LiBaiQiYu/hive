@@ -7,7 +7,8 @@
  * 资料和密码这类低频表单搬去 /settings，入口在右上角用户名下拉里。
  */
 import { computed, onMounted, ref, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
+import { useMessage } from 'naive-ui';
 import CardStudio from '../components/CardStudio.vue';
 import type { PlayerCardData } from '../components/PlayerCard.vue';
 import GameIdentityCard from '../components/me/GameIdentityCard.vue';
@@ -20,10 +21,51 @@ import { loadMe, session } from '../lib/session';
 import HelpTip from '../components/HelpTip.vue';
 
 const loading = ref(true);
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
+
+/**
+ * Steam 绑定走的是整页跳转（Steam → 本站 /me?steam=…），SPA 的会话是内存态，
+ * 回到这个页面时其实是一次全新的加载。**必须把结果读出来告诉用户**：
+ * 之前没有任何处理，校验失败时人只会被安静地送回 /me，看起来就是"点了没反应"。
+ */
+const STEAM_ERROR_TEXT: Record<string, string> = {
+  state: '绑定校验已过期，或发起绑定与回到本站用的不是同一个地址（Cookie 不通用）。请重新点一次；地址栏要用 APP_ORIGIN 里的那个地址',
+  return_to: '回调地址与本站配置的 APP_ORIGIN 不一致，请检查部署配置',
+  endpoint: 'Steam 返回的端点不对，请重新绑定',
+  claimed_id: 'Steam 没有返回有效的 17 位账号 ID，请重新绑定',
+  post_failed: '服务器无法访问 steamcommunity.com 做反向校验，请检查出网后再试',
+  not_valid: 'Steam 判定这次校验无效（通常已过期），请重新绑定',
+  taken: '这个 Steam 账号已经绑定了另一个 HIVE 账号，请先在那边解绑',
+  verify: 'Steam 校验没通过，请重新绑定',
+};
+
+/** 读 ?steam= 的结果、弹出提示，然后把参数从地址栏抹掉（否则刷新会重放同一句提示） */
+async function handleSteamResult() {
+  const result = route.query.steam;
+  if (typeof result !== 'string') return;
+
+  if (result === 'linked') {
+    message.success('Steam 绑定成功，段位会在几秒内由 STRATZ 拉取');
+  } else {
+    const reason = typeof route.query.reason === 'string' ? route.query.reason : 'verify';
+    message.error(STEAM_ERROR_TEXT[reason] ?? `Steam 绑定失败（reason=${reason}）`, {
+      duration: 8000,
+    });
+  }
+
+  const query = { ...route.query };
+  delete query.steam;
+  delete query.reason;
+  await router.replace({ path: route.path, query, hash: route.hash });
+}
 
 onMounted(async () => {
-  if (!session.ready) await loadMe();
+  // 带着绑定结果回来时一定要重新拉 /me：内存里的旧会话会把刚绑上的账号盖成"未绑定"
+  if (!session.ready || typeof route.query.steam === 'string') await loadMe();
   loading.value = false;
+  await handleSteamResult();
 });
 
 /* ---------------------------------------------------------------- 卡片外观 */
@@ -89,6 +131,8 @@ const previewPlayer = computed<PlayerCardData>(() => {
     rating: me?.rating?.effective ?? null,
     verification,
     personaName: me?.gameAccount?.personaName ?? null,
+    // 预览也要带头像，否则"卡片外观"看到的是无头像版，和别人看到的不一致
+    avatarUrl: me?.gameAccount?.avatarUrl ?? null,
     dotaAccountId: me?.gameAccount?.dotaAccountId ?? null,
     skin: cardSkin.value,
   };

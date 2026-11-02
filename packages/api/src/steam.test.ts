@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildAuthUrl,
   parseSteamId64,
   resolveOrigin,
   signState,
   toDotaAccountId,
+  verifyCallback,
   verifyState,
   STEAM_OPENID_ENDPOINT,
 } from './steam';
@@ -77,6 +78,83 @@ describe('toDotaAccountId', () => {
     // 直接用 Number 相减会丢精度
     expect(76561198070168584 - 76561197960265728).not.toBe(109902856);
     expect(toDotaAccountId('76561198070168584')).toBe(109902856);
+  });
+});
+
+describe('verifyCallback', () => {
+  const ORIGIN = 'http://127.0.0.1:8787';
+
+  function openidParams(overrides: Record<string, string> = {}): URLSearchParams {
+    return new URLSearchParams({
+      'openid.mode': 'id_res',
+      'openid.op_endpoint': STEAM_OPENID_ENDPOINT,
+      'openid.return_to': `${ORIGIN}/api/auth/steam/callback?state=abc.def`,
+      'openid.claimed_id': 'https://steamcommunity.com/openid/id/76561198070168584',
+      'openid.identity': 'https://steamcommunity.com/openid/id/76561198070168584',
+      'openid.sig': 'deadbeef',
+      ...overrides,
+    });
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('return_to 前缀与传入的 origin 不一致时立刻失败，不发网络请求', async () => {
+    // 这正是本地踩过的坑：wrangler dev 把请求 URL 改写成 routes 里的域名，
+    // 若用 c.req.url 的 origin 去比对，Steam 回来后每次都在这里被判无效。
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const result = await verifyCallback({
+      origin: ORIGIN,
+      params: openidParams({ 'openid.return_to': 'http://hive.cwa1e.top/api/auth/steam/callback' }),
+    });
+    expect(result).toEqual({ ok: false, reason: 'return_to' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('op_endpoint 不是 Steam 官方地址时拒绝', async () => {
+    const result = await verifyCallback({
+      origin: ORIGIN,
+      params: openidParams({ 'openid.op_endpoint': 'https://evil.example/login' }),
+    });
+    expect(result).toEqual({ ok: false, reason: 'endpoint' });
+  });
+
+  it('claimed_id 不是 17 位 SteamID 时拒绝', async () => {
+    const result = await verifyCallback({
+      origin: ORIGIN,
+      params: openidParams({ 'openid.claimed_id': 'https://steamcommunity.com/openid/id/123' }),
+    });
+    expect(result).toEqual({ ok: false, reason: 'claimed_id' });
+  });
+
+  it('反向 POST 认了之后才放行，并取出 steamId64', async () => {
+    const fetchMock = vi.fn(async () => new Response('ns:http://specs.openid.net/auth/2.0\nis_valid:true\n'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await verifyCallback({ origin: ORIGIN, params: openidParams() });
+
+    expect(result).toEqual({ ok: true, steamId64: '76561198070168584' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(STEAM_OPENID_ENDPOINT);
+    expect(init.method).toBe('POST');
+    // 原样回传 openid.*，只把 mode 换成 check_authentication
+    expect(String(init.body)).toContain('openid.mode=check_authentication');
+    expect(String(init.body)).toContain('openid.sig=deadbeef');
+  });
+
+  it('Steam 返回 is_valid:false 时算失败', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('is_valid:false\n')));
+    const result = await verifyCallback({ origin: ORIGIN, params: openidParams() });
+    expect(result).toEqual({ ok: false, reason: 'not_valid' });
+  });
+
+  it('反向 POST 本身失败时也有明确的 reason', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 503 })));
+    const result = await verifyCallback({ origin: ORIGIN, params: openidParams() });
+    expect(result).toEqual({ ok: false, reason: 'post_failed' });
   });
 });
 

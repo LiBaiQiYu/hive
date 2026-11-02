@@ -96,23 +96,36 @@ export interface VerifyInput {
   params: URLSearchParams;
 }
 
+/** 校验失败的阶段。要能一眼看出是「地址配错了」还是「Steam 说不行」 */
+export type SteamVerifyFailure = 'endpoint' | 'return_to' | 'claimed_id' | 'post_failed' | 'not_valid';
+
+export interface VerifyResult {
+  ok: boolean;
+  steamId64?: string;
+  reason?: SteamVerifyFailure;
+}
+
 /**
  * 服务端反向校验。
  * 依次检查：op_endpoint、return_to、claimed_id，最后把全部 openid.* 参数
  * 原样回传给 Steam 并确认返回体含 is_valid:true。
+ *
+ * origin 必须传「当初生成 return_to 的那个 origin」（路由层用 resolveOrigin 得出），
+ * **不能**用 c.req.url 的 origin：`wrangler dev` 会把带 routes 的请求改写成自定义域名，
+ * 于是 return_to 前缀校验必定失败，表现成「点了绑定、走完 Steam、回来什么都没发生」。
  */
-export async function verifyCallback(input: VerifyInput): Promise<{ ok: boolean; steamId64?: string }> {
+export async function verifyCallback(input: VerifyInput): Promise<VerifyResult> {
   const { origin, params } = input;
 
   const opEndpoint = params.get('openid.op_endpoint');
-  if (opEndpoint !== STEAM_OPENID_ENDPOINT) return { ok: false };
+  if (opEndpoint !== STEAM_OPENID_ENDPOINT) return { ok: false, reason: 'endpoint' };
 
   const returnTo = params.get('openid.return_to');
   const expectedPrefix = `${origin}/api/auth/steam/callback`;
-  if (!returnTo || !returnTo.startsWith(expectedPrefix)) return { ok: false };
+  if (!returnTo || !returnTo.startsWith(expectedPrefix)) return { ok: false, reason: 'return_to' };
 
   const steamId64 = parseSteamId64(params.get('openid.claimed_id'));
-  if (!steamId64) return { ok: false };
+  if (!steamId64) return { ok: false, reason: 'claimed_id' };
 
   // 反向 POST：原样回传，只把 mode 改成 check_authentication
   const body = new URLSearchParams();
@@ -127,10 +140,10 @@ export async function verifyCallback(input: VerifyInput): Promise<{ ok: boolean;
     body: body.toString(),
     redirect: 'manual',
   });
-  if (!response.ok) return { ok: false };
+  if (!response.ok) return { ok: false, reason: 'post_failed' };
 
   const text = await response.text();
-  if (!/is_valid\s*:\s*true/i.test(text)) return { ok: false };
+  if (!/is_valid\s*:\s*true/i.test(text)) return { ok: false, reason: 'not_valid' };
 
   return { ok: true, steamId64 };
 }
