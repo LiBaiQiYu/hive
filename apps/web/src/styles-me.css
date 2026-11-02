@@ -343,6 +343,15 @@
 }
 
 .identity-rank {
+  /* 图标 + 文字并排；图标在左、数值在右对齐 */
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.identity-rank-text {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -547,6 +556,29 @@
 }
 
 /* ------------------------------------------------------- 段位 / MMR 单元格 */
+
+/* 段位图标：勋章在下、星星在上，两张 256×256 的透明图同尺寸叠加 */
+.rank-icon {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  vertical-align: middle;
+}
+
+.rank-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 星星一定要压在勋章上面（DOM 顺序已经保证，z-index 只是防止以后被别的层盖住） */
+.rank-icon-star {
+  z-index: 1;
+}
 
 /* 排行榜与战绩页共用（components/RankCell.vue）。
    段位和 MMR 同占一列：拆成两列的话窄屏会被挤出横向滚动条 */

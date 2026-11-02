@@ -3,11 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import CardFrameFX from './CardFrameFX.vue';
 import CardLineFX from './CardLineFX.vue';
 import HolographicSticker from './HolographicSticker.vue';
+import RankIcon from './RankIcon.vue';
 import { normalizeCardSkin, type CardSkin } from '../lib/cards';
 import { renderMetalFrame } from '../lib/metal';
 import { renderPixelFrame } from '../lib/pixel';
 import { renderPsiFrame } from '../lib/psi';
-import { rankParts } from '../lib/rank';
+import { rankLabel, rankParts } from '../lib/rank';
 
 export interface PlayerCardData {
   userId: string;
@@ -22,6 +23,8 @@ export interface PlayerCardData {
   personaName: string | null;
   /** DOTA2 数字 ID：绑定 / 声明过才有，公开在卡片上供别人去第三方核对 */
   dotaAccountId?: number | null;
+  /** Steam / STRATZ 抓来的公开头像；null 时卡片退回没有头像的布局 */
+  avatarUrl?: string | null;
   /** 玩家自己选的皮肤；老接口没有这个字段时按默认皮肤渲染 */
   skin?: CardSkin | null;
 }
@@ -32,6 +35,8 @@ const props = withDefaults(defineProps<{ player: PlayerCardData; index?: number 
 
 /** rank_tier 编码：十位=勋章，个位=星级（拆解逻辑统一在 lib/rank.ts） */
 const rank = computed(() => rankParts(props.player.rankTier));
+/** 图标右边那句话：「传奇 3 星」；冠绝没有星级，只写「冠绝」 */
+const rankText = computed(() => rankLabel(props.player.rankTier));
 
 const verification = computed(() => {
   switch (props.player.verification) {
@@ -55,6 +60,16 @@ const mmrLabel = computed(() =>
  * 显示它是为了"可核对"：别人可以拿去 STRATZ 看这个账号的公开段位和战绩。
  */
 const dotaAccountId = computed(() => props.player.dotaAccountId ?? null);
+
+/**
+ * 头像：Steam / STRATZ 抓来的公开图。加载失败（图被删、CDN 挂了）就当没有，
+ * 不要留一个破图框；地址变化时允许重新尝试。
+ */
+const avatarUrl = computed(() => props.player.avatarUrl ?? null);
+const avatarBroken = ref(false);
+watch(avatarUrl, () => {
+  avatarBroken.value = false;
+});
 
 /** 皮肤只影响视觉：材质 / 边框 / 特效都是 CSS 变量，组件本身不认识具体皮肤 */
 const skin = computed(() => normalizeCardSkin(props.player.skin));
@@ -245,22 +260,35 @@ onBeforeUnmount(() => {
       </div>
 
       <header class="pcard-head">
-        <div class="pcard-head-main">
-          <h3 class="pcard-name">{{ props.player.displayName }}</h3>
-          <!-- 数字 ID 是公开的"可核对"入口：点开 STRATZ 能看到这个账号公开的段位与战绩。
-               @click.stop 是必需的——赛事页把整张卡包在 RouterLink 里，
-               不拦住冒泡的话点这个链接会同时跳玩家详情页。 -->
-          <a
-            v-if="dotaAccountId"
-            class="pcard-dota mono"
-            :href="`https://stratz.com/players/${dotaAccountId}`"
-            target="_blank"
-            rel="noopener noreferrer"
-            :title="`DOTA2 数字 ID ${dotaAccountId} · 在 STRATZ 查看公开资料`"
-            @click.stop
-          >
-            DOTA2 {{ dotaAccountId }}<span class="pcard-dota-arrow" aria-hidden="true">↗</span>
-          </a>
+        <div class="pcard-head-left">
+          <!-- 头像来自 Steam / STRATZ 的公开资料；没有就整块不渲染，布局回到原来的样子 -->
+          <img
+            v-if="avatarUrl && !avatarBroken"
+            class="pcard-avatar"
+            :src="avatarUrl"
+            alt=""
+            loading="lazy"
+            referrerpolicy="no-referrer"
+            draggable="false"
+            @error="avatarBroken = true"
+          />
+          <div class="pcard-head-main">
+            <h3 class="pcard-name">{{ props.player.displayName }}</h3>
+            <!-- 数字 ID 是公开的"可核对"入口：点开 STRATZ 能看到这个账号公开的段位与战绩。
+                 @click.stop 是必需的——赛事页把整张卡包在 RouterLink 里，
+                 不拦住冒泡的话点这个链接会同时跳玩家详情页。 -->
+            <a
+              v-if="dotaAccountId"
+              class="pcard-dota mono"
+              :href="`https://stratz.com/players/${dotaAccountId}`"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="`DOTA2 数字 ID ${dotaAccountId} · 在 STRATZ 查看公开资料`"
+              @click.stop
+            >
+              DOTA2 {{ dotaAccountId }}<span class="pcard-dota-arrow" aria-hidden="true">↗</span>
+            </a>
+          </div>
         </div>
         <span class="pcard-badge" :class="`badge-${verification.tone}`">
           {{ verification.label }}
@@ -268,11 +296,10 @@ onBeforeUnmount(() => {
       </header>
 
       <div class="pcard-medal">
+        <!-- 左边官方段位章（勋章 + 星星都在图里），右边补一句「传奇 3 星」 -->
         <template v-if="rank">
-          <span class="medal-text">{{ rank.name }}</span>
-          <span class="medal-star">
-            <i v-for="n in Math.max(rank.star, 0)" :key="n">★</i>
-          </span>
+          <RankIcon class="pcard-medal-icon" :rank-tier="props.player.rankTier" :size="26" />
+          <span class="medal-text">{{ rankText }}</span>
         </template>
         <span v-else class="medal-none">未公开段位</span>
       </div>

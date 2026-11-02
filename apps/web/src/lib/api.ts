@@ -142,6 +142,8 @@ export interface Me {
     verification: string;
     dotaAccountId: number;
     personaName: string | null;
+    /** Steam / STRATZ 抓来的公开头像；没抓到就是 null */
+    avatarUrl?: string | null;
     lastSyncedAt?: number | null;
   } | null;
   /** 外部同步来的段位数据；null 表示还没同步过 */

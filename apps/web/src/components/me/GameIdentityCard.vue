@@ -16,8 +16,9 @@
 import { computed, ref, watch } from 'vue';
 import { NButton, NInputNumber, NPopconfirm, NSelect, NTabPane, NTabs, useMessage } from 'naive-ui';
 import HelpTip from '../HelpTip.vue';
+import RankIcon from '../RankIcon.vue';
 import { ApiError, api } from '../../lib/api';
-import { MEDAL_NAMES, rankLabel as formatRank } from '../../lib/rank';
+import { MEDAL_NAMES, rankLabel } from '../../lib/rank';
 import { loadMe, session } from '../../lib/session';
 
 const message = useMessage();
@@ -31,7 +32,9 @@ const medalOptions = MEDAL_NAMES.map((name, index) => ({ label: name, value: ind
 const starOptions = [1, 2, 3, 4, 5].map((s) => ({ label: `${s} 星`, value: s }));
 
 /* ---------------------------------------------------------------- 结论行 */
-const rankLabel = computed(() => formatRank(session.me?.stats?.rankTier) || '未采集');
+const rankTier = computed(() => session.me?.stats?.rankTier ?? null);
+/** 图标右边那句话：「统帅 3 星」；冠绝只写「冠绝」 */
+const rankText = computed(() => rankLabel(rankTier.value) || '未采集');
 
 const rankSourceLabel = computed(() => {
   const source = session.me?.stats?.rankSource;
@@ -285,10 +288,17 @@ async function rebindSteam() {
     <div class="identity-state">
       <span class="pill" :class="badgeClass">{{ badgeText }}</span>
       <div class="identity-rank">
-        <span class="mono identity-rank-value" :class="rankLabel === '未采集' ? 'identity-rank-empty' : ''">
-          {{ rankLabel }}
-        </span>
-        <span class="muted identity-rank-src">{{ rankSourceLabel ?? '段位待采集' }}</span>
+        <!-- 勋章 + 星星叠出来的段位图标；星级在图里，文字只保留勋章名 -->
+        <RankIcon :rank-tier="rankTier" :size="42" />
+        <div class="identity-rank-text">
+          <span
+            class="mono identity-rank-value"
+            :class="rankTier === null ? 'identity-rank-empty' : ''"
+          >
+            {{ rankText }}
+          </span>
+          <span class="muted identity-rank-src">{{ rankSourceLabel ?? '段位待采集' }}</span>
+        </div>
       </div>
     </div>
 

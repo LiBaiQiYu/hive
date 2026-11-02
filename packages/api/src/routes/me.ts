@@ -85,7 +85,7 @@ meRoutes.get('/', async (c) => {
 
   const account = await env.DB.prepare(
     `SELECT provider, verification, dota_account_id AS dotaAccountId, persona_name AS personaName,
-            last_synced_at AS lastSyncedAt
+            avatar_url AS avatarUrl, last_synced_at AS lastSyncedAt
        FROM game_accounts WHERE user_id = ?`,
   )
     .bind(userId)
@@ -94,6 +94,7 @@ meRoutes.get('/', async (c) => {
       verification: string;
       dotaAccountId: number;
       personaName: string | null;
+      avatarUrl: string | null;
       lastSyncedAt: number | null;
     }>();
 

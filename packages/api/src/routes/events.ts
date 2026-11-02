@@ -179,7 +179,7 @@ eventRoutes.get('/:id/registrations', async (c) => {
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr,
             pr.effective_rating AS rating,
             ga.verification AS accountVerification, ga.persona_name AS personaName,
-            ga.dota_account_id AS dotaAccountId
+            ga.avatar_url AS avatarUrl, ga.dota_account_id AS dotaAccountId
        FROM registrations r
        JOIN users u ON u.id = r.user_id
        LEFT JOIN player_stats ps ON ps.user_id = r.user_id
@@ -206,6 +206,7 @@ eventRoutes.get('/:id/registrations', async (c) => {
       rating: number | null;
       accountVerification: string | null;
       personaName: string | null;
+      avatarUrl: string | null;
       dotaAccountId: number | null;
     }>();
 
@@ -229,6 +230,8 @@ eventRoutes.get('/:id/registrations', async (c) => {
       rating: row.rating,
       verification,
       personaName: row.personaName,
+      // Steam / STRATZ 抓来的公开头像；没绑或没抓到就是 null，卡片退回无头像布局
+      avatarUrl: row.avatarUrl,
       // 公开给其他人核对：数字 ID 只是"声明"，归属仍以 Steam 徽章为准
       dotaAccountId: row.dotaAccountId,
       // 卡片外观跟着人走：别人看到的永远是玩家自己选的那套皮肤

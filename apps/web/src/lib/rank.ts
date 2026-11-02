@@ -40,8 +40,8 @@ export function rankParts(tier: number | null | undefined): RankParts | null {
 export function rankLabel(tier: number | null | undefined): string {
   const parts = rankParts(tier);
   if (!parts) return '';
-  // 冠绝只有勋章没有星级，别拼出「冠绝 0 星」
-  return parts.medal === 8 ? parts.name : `${parts.name} ${parts.star} 星`;
+  // 冠绝只有勋章没有星级；脏数据里的 0 星也别拼成「传奇 0 星」
+  return parts.medal === 8 || parts.star === 0 ? parts.name : `${parts.name} ${parts.star} 星`;
 }
 
 /** 天梯分的悬停说明：为什么有人有段位却没有 MMR */
