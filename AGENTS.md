@@ -1,7 +1,8 @@
 # HIVE · 给下一个 agent 的记忆
 
 > 读这份文件就够了。它记录**为什么这么写**和**哪些坑已经踩过**，
-> 细节再看 `docs/` 下的 ARCHITECTURE / DATABASE / API / UI / SMOKE-TEST。
+> 细节再看 `docs/` 下的 ARCHITECTURE / DATABASE / API / UI / SMOKE-TEST，
+> 安全与生产可靠性的体检报告在 `docs/SECURITY-AUDIT.md`（含已验证有效的控制清单和未解决风险）。
 
 ## 这是什么
 
@@ -92,5 +93,8 @@ pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy
 ## 下一步优先级
 
 1. 填 `STEAM_WEB_API_KEY`（拿 Steam 昵称/头像）+ 自定义域名（解开 `routes`、`workers_dev` 改回 false）。
-2. 线上部署这批改动（job runner / 拖拽换人 / 排行榜 / 战绩页 / 后台四件套 / 公开阵容页）。
+2. 线上部署这批改动（job runner / 拖拽换人 / 排行榜 / 战绩页 / 后台四件套 / 公开阵容页 /
+   会话 Cookie 的 `Secure` 推导 / `_headers` 安全头 / 每日维护的审计裁剪）。
 3. 可选：给阵容页加独立入口（目前只能从赛事详情的场次列表点进去）。
+4. 控制台侧的两件事（代码里做不了）：给 `POST /api/auth/login` 加一条按 IP 的速率限制规则；
+   域名就位后关掉 `workers_dev`。
