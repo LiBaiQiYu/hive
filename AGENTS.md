@@ -62,6 +62,8 @@ pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy
 | Workers 的 `performance.now()` 被钳制，测不了 CPU | 用**二分 1102 边界**测（见 SMOKE-TEST.md） |
 | `wrangler dev --remote` 下 Worker 在边缘执行，`request.url` 是**生产域名**，浏览器发来的 Origin 却是 `http://127.0.0.1:8787` → CSRF 来源校验把登录挡成 403 | CSRF 的白名单同时接受 `APP_ORIGIN`（remote 模式下用 `--var APP_ORIGIN:http://127.0.0.1:8787`），见 `app.ts` |
 | 换了 `PASSWORD_PEPPER` 后，旧哈希全部验不过（本地库尤其容易踩） | 本地 `.dev.vars` 的 pepper 必须与要连的那个库一致；跨库复用账号 = 共用同一套 pepper + 同一批用户行 |
+| **拉下别人提交的新迁移后忘了迁移本地库** → 登录 200 但 `/api/me` 500（`D1_ERROR: no such column: card_material`），前端表现成"登录没反应、还是没登录" | `pnpm dev` / `dev:api` 现在会先跑 `db:migrate:local`（幂等）；`dev:remote` 不管迁移，切机器后先手动 `pnpm db:migrate:local`。判断是迁移落后还是真 bug，直接看 wrangler dev 的 stderr 里的 `D1_ERROR` |
+| 会话 Cookie 写死 `Secure`，用非 https 的地址（局域网 IP、非 localhost 主机名）开发时浏览器直接丢弃 Cookie | `secure` 由 `cookieSecure(env, c.req.url)` 推出：看 `APP_ORIGIN` 的 scheme，https 才加 `Secure`（`packages/api/src/env.ts`） |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -76,7 +78,8 @@ pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy
 ## 数据与环境
 
 - 生产 D1 = `hive`（`15164698-…`），本地 = `packages/database/.wrangler/state`。**两者完全独立**，本地注册的账号生产没有。
-- **本地 `.dev.vars` 已与生产共用同一套 pepper/salt**（为了让 `pnpm dev:remote` 能验过线上密码哈希）。代价：切换之前注册的本地账号哈希全部失效——2026-10-31 已用新 pepper 重算过 `byc1030` / `smokeuser` / `localadmin`，密码统一是 `Hive-0mr3zp5bf9`（与生产 `byc1030` 相同）。再注册新账号不会再有这个问题。
+- **本地 `.dev.vars` 已与生产共用同一套 pepper/salt**（为了让 `pnpm dev:remote` 能验过线上密码哈希）。代价：换 pepper 之前注册的本地账号哈希全部失效。2026-11-02 已用当前 pepper 把所有本地联调账号（`byc1030` / `smokeuser` / `p01`–`p11`，共 13 个）的密码重算为 **`Hive-2026-local`**；这批是纯本地测试库的口令，只对本机 `packages/database/.wrangler/state` 有效。
+- 重算办法（没有 `db:seed` 脚本）：读 `.dev.vars` 的 pepper，用 Node `webcrypto` 算 `pbkdf2_sha256$p1$<迭代>$<salt>$<hash>`，再 `wrangler d1 execute --local --file`。**别在生产库上这么干**。
 - `pnpm dev:remote` 是**直连生产库**的本地开发：点一下就是真写线上数据，别在里面做破坏性测试。
 - **生产已部署**：`https://hive.carloswhitea1e.workers.dev`（Cloudflare 账号 `carloswhitea1e@gmail.com`，Worker 名 `hive`）。还没有自定义域名，所以 `workers_dev` 暂时为 `true`；`routes` 仍保持注释，拿到域名后两者一起改。
 - 生产 secrets（`PASSWORD_PEPPER` / `IP_HASH_SALT` / 空 `STEAM_WEB_API_KEY`）与管理员账号密码都在 `backups/`（gitignore，**不要提交**）。**换 pepper = 现有用户全部登录失效**。

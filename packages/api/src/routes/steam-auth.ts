@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
+import { cookieSecure } from '../env';
 import { requireAdmin, requireUser } from '../guard';
 import {
   STEAM_STATE_COOKIE,
@@ -46,7 +47,8 @@ steamRoutes.get('/start', async (c) => {
 
   setCookie(c, STEAM_STATE_COOKIE, state, {
     httpOnly: true,
-    secure: true,
+    // 同 session cookie：本地 http 下不能加 Secure，否则浏览器直接丢弃
+    secure: cookieSecure(c.env, c.req.url),
     sameSite: 'Lax',
     path: STATE_PATH,
     maxAge: STATE_TTL_SECONDS,

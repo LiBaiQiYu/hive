@@ -30,3 +30,18 @@ export function intVar(raw: string | undefined, fallback: number): number {
   const n = Number.parseInt(raw ?? '', 10);
   return Number.isFinite(n) ? n : fallback;
 }
+
+/**
+ * Cookie 要不要加 Secure —— **只有实际对外地址是 https 才加**。
+ *
+ * 为什么不能写死 true：Secure 的语义是"只在 HTTPS 下保存和回传"，
+ * 而本地 `pnpm dev` 走的是 http://127.0.0.1:8787。部分浏览器会直接丢弃这种
+ * Cookie，症状是"登录接口返回 200，但下一个请求不带 Cookie，页面仍是未登录"。
+ *
+ * 判断优先用 APP_ORIGIN（本地脚本已注入 http://127.0.0.1:8787），
+ * 没配置时回退到请求自身的 origin。
+ */
+export function cookieSecure(env: Env, requestUrl: string): boolean {
+  const origin = env.APP_ORIGIN || new URL(requestUrl).origin;
+  return origin.startsWith('https:');
+}

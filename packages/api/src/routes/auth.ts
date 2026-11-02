@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/d1';
 import { playerRatings, users } from '@hive/db';
 import { ApiError, newId, loginSchema, registerSchema, changePasswordSchema, SESSION_COOKIE } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
-import { intVar } from '../env';
+import { cookieSecure, intVar } from '../env';
 import { requireUser } from '../guard';
 import { hashPassword, verifyPassword } from '../password';
 import { createSession, hashIp, hashToken, readSession, revokeSession } from '../session';
@@ -21,8 +21,9 @@ function iterations(env: Env): number {
 function setSessionCookie(c: Parameters<typeof setCookie>[0], env: Env, token: string, expiresAt: number) {
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
-    // localhost 在主流浏览器里属于安全上下文，本地开发也能带上 Secure Cookie
-    secure: true,
+    // 只有 https 才加 Secure；本地 http://127.0.0.1 下加了会被浏览器丢弃，
+    // 症状是"登录成功但仍然是未登录状态"
+    secure: cookieSecure(env, c.req.url),
     sameSite: 'Lax',
     path: '/',
     expires: new Date(expiresAt),
