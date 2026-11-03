@@ -45,8 +45,8 @@ const close = () => emit('update:show', false);
 
     <template #footer>
       <div class="changelog-foot">
-        <span class="muted changelog-note">只列对外可见的改动</span>
-        <NButton type="primary" @click="close">知道了</NButton>
+        <span class="muted changelog-note">仅列示对外可见的变更</span>
+        <NButton type="primary" @click="close">关闭</NButton>
       </div>
     </template>
   </NModal>
