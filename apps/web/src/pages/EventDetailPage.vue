@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
-import { NButton, NSelect, useDialog, useMessage } from 'naive-ui';
+import { NButton, NSelect, NTab, NTabs, useDialog, useMessage } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { SERVER_HELP, serverLabel } from '../lib/server';
 import { session } from '../lib/session';
+import { rankLabel } from '../lib/rank';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
+import PlayerAvatar from '../components/PlayerAvatar.vue';
+import RankIcon from '../components/RankIcon.vue';
+import VerificationTag from '../components/VerificationTag.vue';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
 
@@ -21,6 +25,13 @@ const router = useRouter();
 const event = ref<EventView | null>(null);
 const mine = ref<Registration | null>(null);
 const players = ref<PlayerCardData[]>([]);
+
+/**
+ * 报名名单的两种展示方式：卡片（默认，能看外观与简介）与列表（一屏看全，便于横向比较）。
+ * 两种视图的数据完全同源（`/events/:id/registrations`），列表列与卡片字段一一对应，
+ * 只是排版不同；不要为了列表再写一套计算。
+ */
+const rosterView = ref<'card' | 'list'>('card');
 const loading = ref(true);
 const error = ref('');
 const message = ref('');
@@ -358,9 +369,16 @@ async function withdraw() {
       <section v-if="players.length > 0" class="section">
         <div class="section-head">
           <h2 class="section-title">报名玩家</h2>
-          <span class="muted" style="font-size: 13px">{{ players.length }} 人</span>
+          <div class="roster-tools">
+            <span class="muted" style="font-size: 13px">{{ players.length }} 人</span>
+            <NTabs v-model:value="rosterView" type="segment" size="small">
+              <NTab name="card">卡片</NTab>
+              <NTab name="list">列表</NTab>
+            </NTabs>
+          </div>
         </div>
-        <div class="card-grid">
+
+        <div v-if="rosterView === 'card'" class="card-grid">
           <RouterLink
             v-for="(player, i) in players"
             :key="player.userId"
@@ -370,6 +388,79 @@ async function withdraw() {
           >
             <PlayerCard :player="player" :index="i" />
           </RouterLink>
+        </div>
+
+        <!-- 列表视图：列与卡片字段一一对应，只是换了排版 -->
+        <div v-else class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>玩家</th>
+                <th>DOTA2 ID</th>
+                <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
+                <th>段位</th>
+                <th class="num">WARROOM</th>
+                <th class="num">天梯 MMR</th>
+                <th>位置</th>
+                <th>状态</th>
+                <th>Steam</th>
+                <th>简介</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="player in players" :key="player.userId">
+                <td>
+                  <RouterLink
+                    :to="`/players/${player.userId}`"
+                    class="roster-player"
+                    :title="`看看 ${player.displayName} 的主页`"
+                  >
+                    <PlayerAvatar :src="player.avatarUrl" :size="26" />
+                    <span>{{ player.displayName }}</span>
+                  </RouterLink>
+                </td>
+                <td>
+                  <a
+                    v-if="player.dotaAccountId"
+                    class="mono"
+                    style="font-size: 12px; color: var(--muted)"
+                    :href="`https://stratz.com/players/${player.dotaAccountId}`"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    :title="`DOTA2 数字 ID ${player.dotaAccountId} · 在 STRATZ 查看公开资料`"
+                  >
+                    {{ player.dotaAccountId }}
+                  </a>
+                  <span v-else class="muted">—</span>
+                </td>
+                <td><VerificationTag :verification="player.verification" /></td>
+                <td>
+                  <span v-if="player.rankTier" class="roster-rank">
+                    <RankIcon :rank-tier="player.rankTier" :size="22" />
+                    <span style="font-size: 13px">{{ rankLabel(player.rankTier) }}</span>
+                  </span>
+                  <span v-else class="muted">未公开段位</span>
+                </td>
+                <td class="num mono" style="color: var(--gold-2)">{{ player.rating ?? '—' }}</td>
+                <td class="num mono">{{ player.declaredMmr ?? '—' }}</td>
+                <td class="mono" style="font-size: 13px">
+                  {{ player.position ? `${player.position} 号位` : '未填' }}
+                </td>
+                <td>
+                  <span v-if="player.status === 'WAITLIST'" class="pill pill-idle">候补</span>
+                  <span v-else class="pill pill-open">正选</span>
+                </td>
+                <td class="mono" style="font-size: 12px">
+                  <span v-if="player.personaName">{{ player.personaName }}</span>
+                  <span v-else class="muted">—</span>
+                </td>
+                <td>
+                  <span v-if="player.bio" class="roster-bio" :title="player.bio">{{ player.bio }}</span>
+                  <span v-else class="muted">—</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
 

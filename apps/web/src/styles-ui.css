@@ -329,6 +329,58 @@
   transform: translateY(1px);
 }
 
+/* ------------------------------------------ 赛事报名名单（卡片 / 列表切换） */
+
+/* 标题右侧：人数 + 视图切换。窄屏换行，别把标题挤掉 */
+.roster-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* 列表里人名这一格：头像 + 昵称，整块可点 */
+.roster-player {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roster-player:hover {
+  color: var(--gold-2);
+}
+
+/* 圆形头像：与玩家卡同款，只是小一号；没有图片时组件不渲染，文字自然左对齐 */
+.player-avatar {
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--line);
+}
+
+/* 段位：图标 + 「统帅 3 星」，跟玩家卡同一套写法 */
+.roster-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* 简介列：一行截断，完整内容放 title */
+.roster-bio {
+  display: inline-block;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-size: 13px;
+}
+
 .btn {
   transition:
     background 0.16s ease,
