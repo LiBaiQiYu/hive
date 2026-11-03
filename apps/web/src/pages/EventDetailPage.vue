@@ -435,9 +435,10 @@ async function withdraw() {
           </RouterLink>
         </div>
 
-        <!-- 列表视图：列与卡片字段一一对应，只是换了排版 -->
-        <div v-else class="table-wrap">
-          <table class="table roster-table">
+        <!-- 列表视图：列与卡片字段一一对应，只是换了排版；白卡片底与排行榜列表一致 -->
+        <div v-else class="card" style="padding: 8px 12px">
+          <div class="table-wrap">
+            <table class="table roster-table">
             <thead>
               <tr>
                 <th style="width: 48px">序号</th>
@@ -535,6 +536,7 @@ async function withdraw() {
               </tr>
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 

@@ -263,6 +263,21 @@ async function onMenuSelect(key: string) {
                     cwa1e.top
                   </a>
                 </div>
+
+                <div class="footer-dev">
+                  <span class="footer-dev-label">数据来源</span>
+                  <a
+                    class="footer-link"
+                    href="https://stratz.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="段位、天梯分与游戏昵称来自 STRATZ 的公开数据"
+                  >
+                    Powered by STRATZ
+                    <span class="footer-ext" aria-hidden="true">↗</span>
+                  </a>
+                  <span class="footer-link footer-link-sub">DOTA2 公开数据</span>
+                </div>
               </div>
 
               <div class="footer-bottom">
