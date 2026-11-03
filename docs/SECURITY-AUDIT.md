@@ -117,13 +117,13 @@ pnpm sec:check      # = node scripts/security-check.mjs
 
 ### P1 · 上线前应该处理
 
-1. **`workers_dev: true` 造成双入口**
-   生产同时存在 `hive.<account>.workers.dev` 与将来的自定义域名。拿到域名后改回 `false`
-   并解开 `routes`，否则等于留了一个绕过"域名锁定"假设的旁路。
+1. ~~**`workers_dev: true` 造成双入口**~~ ✅ **2026-11-02 已解决**：自定义域名 `hive.cwa1e.top` 已上线，
+   `workers_dev: false`、`routes` 打开，`APP_ORIGIN` 指向域名；本地 `pnpm dev` 用 `--var` 覆盖回 `127.0.0.1:8787`。
 2. **没有自动备份**
    只有手动 `pnpm db:backup`。D1 控制台的 Time Travel 能按时间点回滚（保留期以当时套餐为准），
    但那是"补救"不是"备份"。建议每周固定导一次。
-3. **本批修复尚未部署**：生产跑的还是旧构建（无 `_headers`、硬编码 `Secure` 的 Cookie）。
+3. ~~**本批修复尚未部署**~~ ✅ **2026-11-02 已部署**（版本 `603ae449-9464-4b76-a5b2-ebfcbecbfcaa`）：
+   线上页面已带 CSP / `X-Frame-Options` / `nosniff`，Cookie 的 `Secure` 按 `APP_ORIGIN` 推导。
 
 ### P2 · 建议近期做
 
@@ -138,18 +138,26 @@ pnpm sec:check      # = node scripts/security-check.mjs
    而且 Cloudflare 本身对请求体有上限。**处置建议：下次依赖刷新时一起迁 zod 4**，别为它单独折腾。
 6. **会话 Cookie 建议改用 `__Host-` 前缀**
    `__Host-hive_session` 强制"Secure + Path=/ + 不带 Domain"，从浏览器层面堵掉子域种 Cookie。
-   要等自定义域名、确认全站 https 之后再做（改名 = 现有会话全失效，挑没人用的时候）。
+   自定义域名与 https 已就位，**现在可以做了**（改名 = 现有会话全失效，挑没人用的时候）。
+7. **用户文本按原样入库、渲染时转义**（留言 / 昵称 / 简介 / 赛事名都是纯文本）
+   现在安全：全站没有 `v-html` / `innerHTML` / `eval`，正文走 `{{ }}`，加上 CSP `script-src 'self'`，
+   即使哪天出现 HTML 注入点，内联脚本与 `onerror` 也不会执行。
+   **风险在"以后"**：任何新渲染路径（新页面、导出、第三方客户端）只要把 `body` 当 HTML 用就是存储型 XSS。
+   约定：接口里的用户文本一律当纯文本，客户端只允许插值渲染；真要富文本必须过白名单消毒。
+   顺带一个体量问题：`GET /api/players/:id/comments` 只对"楼"分页（`limit` ≤100），
+   每楼的回复是全量返回的，长期刷屏会让响应变大——建议给回复也加 LIMIT 或折叠。
 
 ### P3 · 记录在案
 
-7. **账号锁定可被用来 DoS**：知道用户名就能锁对方 15 分钟。15 人封闭社区可接受。
-8. **登录有轻微时序差异**：账号不存在时不做 PBKDF2，比"密码错"快约 5ms，理论上可枚举用户名。
+8. **账号锁定可被用来 DoS**：知道用户名就能锁对方 15 分钟。15 人封闭社区可接受。
+9. **登录有轻微时序差异**：账号不存在时不做 PBKDF2，比"密码错"快约 5ms，理论上可枚举用户名。
    修法是给不存在的账号也跑一次假哈希，收益很低。
-9. **旧的本地开发口令进过 git 历史**（`AGENTS.md` 里那串 `Hive-0mr3zp5bf9`，已在本轮删除并轮换）。
-   它只是本机联调账号的口令，不可用于生产；介意的话等仓库哪天需要重写历史时一并清掉。
-10. **`staging` 环境是半成品**：`database_id: REPLACE_WITH_STAGING_D1_ID`。误执行 `--env staging`
+10. **旧的本地开发口令进过 git 历史**（`AGENTS.md` 里那串 `Hive-0mr3zp5bf9`，已在本轮删除并轮换）。
+    它只是本机联调账号的口令，不可用于生产；介意的话等仓库哪天需要重写历史时一并清掉。
+11. **`staging` 环境是半成品**：`database_id: REPLACE_WITH_STAGING_D1_ID`。误执行 `--env staging`
     会**直接部署失败**（这是好事），但别当成能用。
-11. **`STEAM_WEB_API_KEY` 为空**：Steam 绑定照样成功，只是拿不到昵称头像。不是安全问题。
+12. ~~**`STEAM_WEB_API_KEY` 为空**~~ ✅ **已配置**（生产 secret + 本地 `.dev.vars`，改完需重启 `pnpm dev`）：
+    绑定会带 Steam 昵称头像，`PLAYER_SYNC` 还会把历史缺的头像补回来。不是安全问题。
 
 ---
 
