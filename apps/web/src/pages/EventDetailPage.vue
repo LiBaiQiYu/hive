@@ -6,6 +6,8 @@ import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/
 import { SERVER_HELP, serverLabel } from '../lib/server';
 import { session } from '../lib/session';
 import { rankLabel } from '../lib/rank';
+import { sortRosterRows, type RosterSortKey } from '../lib/roster';
+import { nextSort, type SortState } from '../lib/sort';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import PlayerAvatar from '../components/PlayerAvatar.vue';
 import RankIcon from '../components/RankIcon.vue';
@@ -32,6 +34,49 @@ const players = ref<PlayerCardData[]>([]);
  * 只是排版不同；不要为了列表再写一套计算。
  */
 const rosterView = ref<'card' | 'list'>('card');
+
+/**
+ * 列表排序：默认不排，保持服务端的「正选按评分 → 候补按报名顺序」。
+ * 点了表头之后排序**只在正选、候补各自内部生效**（规则见 lib/roster.ts）。
+ */
+const rosterSort = ref<SortState<RosterSortKey> | null>(null);
+
+const rosterRows = computed<PlayerCardData[]>(() =>
+  sortRosterRows(
+    players.value.map((player) => ({
+      id: player.userId,
+      verification: player.verification,
+      // 评分理论上总有值（没有数据时是 500 中性值），兜底只在异常数据下生效
+      effective: player.rating ?? 0,
+      rankTier: player.rankTier,
+      declaredMmr: player.declaredMmr,
+      status: player.status,
+      player,
+    })),
+    rosterSort.value,
+  ).map((row) => row.player),
+);
+
+function onSortRoster(key: RosterSortKey) {
+  rosterSort.value = nextSort(rosterSort.value ?? { key, direction: 'desc' }, key);
+}
+
+const sortArrow = (key: RosterSortKey) => {
+  const current = rosterSort.value;
+  if (!current || current.key !== key) return '';
+  return current.direction === 'desc' ? '▼' : '▲';
+};
+
+/**
+ * 简介展开：表格里一行放不下长简介，但玩家确实可能写满 280 字。
+ * 用「展开 / 收起」原地变成多行，比 tooltip 好读，也不用弹窗打断浏览。
+ */
+const expandedBio = ref<Set<string>>(new Set());
+
+function toggleBio(userId: string) {
+  if (expandedBio.value.has(userId)) expandedBio.value.delete(userId);
+  else expandedBio.value.add(userId);
+}
 const loading = ref(true);
 const error = ref('');
 const message = ref('');
@@ -392,15 +437,26 @@ async function withdraw() {
 
         <!-- 列表视图：列与卡片字段一一对应，只是换了排版 -->
         <div v-else class="table-wrap">
-          <table class="table">
+          <table class="table roster-table">
             <thead>
               <tr>
+                <th style="width: 48px">序号</th>
                 <th>玩家</th>
                 <th>DOTA2 ID</th>
                 <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
-                <th>段位</th>
-                <th class="num">WARROOM</th>
-                <th class="num">天梯 MMR</th>
+                <th class="th-sort" title="点击按段位排序" @click="onSortRoster('rankTier')">
+                  段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
+                </th>
+                <th
+                  class="num th-sort"
+                  title="点击按 WARROOM 评分排序"
+                  @click="onSortRoster('effective')"
+                >
+                  WARROOM <span class="sort-arrow">{{ sortArrow('effective') }}</span>
+                </th>
+                <th class="num th-sort" title="点击按天梯 MMR 排序" @click="onSortRoster('mmr')">
+                  天梯 MMR <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
+                </th>
                 <th>位置</th>
                 <th>状态</th>
                 <th>Steam</th>
@@ -408,7 +464,8 @@ async function withdraw() {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="player in players" :key="player.userId">
+              <tr v-for="(player, index) in rosterRows" :key="player.userId">
+                <td class="mono muted" style="font-size: 14px">{{ index + 1 }}</td>
                 <td>
                   <RouterLink
                     :to="`/players/${player.userId}`"
@@ -455,7 +512,24 @@ async function withdraw() {
                   <span v-else class="muted">—</span>
                 </td>
                 <td>
-                  <span v-if="player.bio" class="roster-bio" :title="player.bio">{{ player.bio }}</span>
+                  <template v-if="player.bio">
+                    <span
+                      class="roster-bio"
+                      :class="{ 'is-expanded': expandedBio.has(player.userId) }"
+                      :title="expandedBio.has(player.userId) ? '' : player.bio"
+                    >
+                      {{ player.bio }}
+                    </span>
+                    <!-- 短简介本来就放得下，不用给「展开」按钮 -->
+                    <button
+                      v-if="player.bio.length > 24"
+                      type="button"
+                      class="roster-more"
+                      @click="toggleBio(player.userId)"
+                    >
+                      {{ expandedBio.has(player.userId) ? '收起' : '展开' }}
+                    </button>
+                  </template>
                   <span v-else class="muted">—</span>
                 </td>
               </tr>

@@ -381,6 +381,38 @@
   font-size: 13px;
 }
 
+/* 展开后原地换成多行：表格里也能读完整简介，不用弹窗打断浏览 */
+.roster-bio.is-expanded {
+  max-width: 380px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.55;
+  vertical-align: top;
+}
+
+/* 「展开 / 收起」：文字按钮，和表格里的正文区分开 */
+.roster-more {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gold-2);
+  font-size: 12px;
+  cursor: pointer;
+  vertical-align: bottom;
+}
+
+.roster-more:hover {
+  text-decoration: underline;
+}
+
+/* 报名表 11 列，窄屏直接横向滚 */
+@media (max-width: 620px) {
+  .table-wrap .roster-table {
+    min-width: 1080px;
+  }
+}
+
 .btn {
   transition:
     background 0.16s ease,
