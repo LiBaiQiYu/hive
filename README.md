@@ -1,59 +1,165 @@
 # HIVE
 
-**DOTA2 COMMUNITY WARROOM · V1.0** — 一个固定社区的 DOTA2 5v5 内战管理平台。
+**DOTA2 社区内战（WARROOM）平台**
 
-单个 QQ 群、约 15 人、仅 DOTA2 5v5、系统自动分队 + 管理员拖拽调整。
-前端与后端全部部署在 Cloudflare 生态内：**一个 Worker、一个域名、一个 D1 数据库**。
+把「凑十个人打一场内战」从群聊里的接龙，变成一条可报名、可分队、可追溯的流程。
 
-```
-Vue 3 + TypeScript + Vite   →  Workers Static Assets
-Hono + TypeScript           →  Cloudflare Worker (/api/*)
-Drizzle ORM + SQLite        →  Cloudflare D1
-Cron Triggers + D1 outbox  →  Steam / OpenDota 同步、评分重算（免费版无 Queues）
-```
+![首页](docs/assets/home.jpg)
 
-运行基线：**Workers 免费版**（每请求 CPU 10ms、Cron ≤3 个、无 Queues），注册采用**邀请码制**。
-实际规模：**15 人左右、每月 4～10 场**——基础设施远未触顶，真正的瓶颈是管理员的操作次数和"凑够 10 个人"。
+## 目录
 
-## 当前状态
+- [项目简介](#项目简介)
+- [核心特性](#核心特性)
+- [界面预览](#界面预览)
+- [评分与分队](#评分与分队)
+- [技术架构](#技术架构)
+- [仓库结构](#仓库结构)
+- [本地运行](#本地运行)
+- [质量保障](#质量保障)
+- [项目边界](#项目边界)
+- [数据来源与致谢](#数据来源与致谢)
+- [相关文档](#相关文档)
 
-本仓库目前是**工程设计基线**，尚未包含应用代码。目标是让实现阶段按既定架构推进，不中途推翻技术选型。
+## 项目简介
 
-已完成并经过机器校验：
+固定社区的内战有几个稳定的特征：人数固定、赛制固定（DOTA2 5v5）、组织者固定（管理员）。真正消耗精力的不是比赛本身，而是比赛之前的四件事：
 
-| 产物 | 说明 |
+1. **报名**——群接龙容易漏人、改时间、临时退赛；
+2. **分队**——凭手感分人，强弱失衡，打完还要争论；
+3. **实力评估**——谁强谁弱全凭印象，新人尤其吃亏；
+4. **记录**——比赛结果散落在聊天记录里，无法沉淀成数据。
+
+HIVE 将上述环节收敛到单一系统中：**报名 → 封盘 → 自动分队 → 阵容发布 → 结果录入 → 评分更新 → 排行榜与战绩**。所有评分、分队与快照规则均公开可解释，管理员的操作全程留有审计记录。
+
+系统面向**单一固定社区**设计，而非多租户的通用赛事平台；这一取舍体现在数据模型、权限模型与界面密度上。
+
+## 核心特性
+
+| 模块 | 能力 |
 | --- | --- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 决策记录、拓扑、认证（含 Steam OpenID 六项校验）、评分与分组算法、异步任务、发布流程 |
-| [docs/DATABASE.md](docs/DATABASE.md) | 19 张表的设计说明、17 条核心不变量、D1 硬约束、迁移与容量规划 |
-| [docs/API.md](docs/API.md) | REST 契约、错误码、并发与快照语义 |
-| [docs/UI.md](docs/UI.md) | 界面设计基线：路由/页面与接口的映射、组件清单、状态映射、设计缺口 |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 本地环境、脚本契约、AI 编码护栏 |
-| [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md) | 上线前两项冒烟测试：D1 迁移行为、免费版 PBKDF2 CPU 校准 |
-| [packages/database/migrations/0001_init.sql](packages/database/migrations/0001_init.sql) | D1 初始 Schema（唯一真源） |
-| [packages/database/src/schema/](packages/database/src/schema/index.ts) | Drizzle Schema（与 SQL 逐列对齐） |
-| [packages/api/wrangler.jsonc](packages/api/wrangler.jsonc) | 单一 Worker 配置，含 staging 环境隔离 |
+| **赛事组织** | 创建赛事、开放/关闭报名、封盘、发布阵容、录入结果、流局处理；服务器区域（国服 / 全球服）可选 |
+| **报名与候补** | 正选 / 候补两态；报名满员后按「出勤率 → 实力分 → 报名时间」自动排序候补；退赛自动回归并重排 |
+| **自动分队** | 按位置约束与实力均衡枚举全部可行组合，取分差最小者；结果附双方总分与位置冲突提示 |
+| **人工微调** | 管理员可视化拖拽换人，整份提交并带乐观锁版本号，避免多人同时编辑互相覆盖 |
+| **WARROOM 评分** | 由天梯 MMR 推导的实力分，出勤独立统计；评分构成、历史修正与调整原因均可查看 |
+| **身份体系** | Steam OpenID（归属已验证）> 数字 ID 声明（数据已校验、归属未验证）> 手动填写（自报），三级徽章如实标注数据可信度 |
+| **玩家档案** | 玩家卡（可自定义材质、边框与特效）、对局记录、胜负统计、位置偏好、公开主页、点赞与留言板 |
+| **排行榜与战绩** | 按评分或胜场排名，可筛选验证等级并按段位 / MMR 排序；全员胜场与个人对局记录 |
+| **管理后台** | 赛事、邀请码、评分、成员、任务队列与审计日志；操作留痕、可筛选、只读可追溯 |
+
+## 界面预览
+
+**赛事详情与报名名单**——同一份数据支持卡片与列表两种视图，段位使用官方勋章图标：
+
+![赛事详情](docs/assets/event-roster.jpg)
+
+**排行榜**——段位、天梯 MMR 与 WARROOM 分列展示，点击表头可切换排序：
+
+![排行榜](docs/assets/leaderboard.jpg)
+
+**玩家主页**——公开档案、对局记录与留言板：
+
+![玩家主页](docs/assets/player-profile.jpg)
+
+## 评分与分队
+
+评分体系的设计目标只有一条：**让分队结果可以被解释，也可以被质疑后验证**。
+
+- **实力分**：`clamp(round(估计 MMR / 10), 0, 1000)`。MMR 由段位换算或玩家自行填写；没有任何数据时给予 500 的中性值，而不是 0 分。
+- **出勤独立**：出勤率不进入实力分，只参与候补排序。缺席一场不会让一个人「变弱」，但会让他下次报名时排得更靠后。
+- **段位优先**：一旦通过 Steam 或数字 ID 同步到段位，手工填写的段位即失效；要恢复手填需先解除绑定。
+- **快照冻结**：报名与分队各保存一份快照，赛后修改评分不会回写历史快照，已发布的阵容不会悄然改变。
+- **分队**：在位置约束下枚举可行组合，最小化两队总分差；人数卡在两档之间时不做隐式决策，必须由管理员显式选择部分开局、延期或取消。
+
+## 技术架构
+
+单一运行时、单一数据库、无外部中间件：
+
+```mermaid
+flowchart TB
+  B[浏览器 · Vue 3 SPA] --> W[Cloudflare Worker<br/>静态资源 + Hono API]
+  W --> D[(Cloudflare D1<br/>SQLite)]
+  W -->|OpenID 校验| S1[Steam]
+  W -->|段位 / 昵称 / 头像| S2[STRATZ · OpenDota]
+  C[[Cron Triggers]] --> W
+```
+
+| 层 | 选型 |
+| --- | --- |
+| 前端 | Vue 3、TypeScript、Vite、vue-router、Naive UI，深浅色双主题 |
+| 接口 | Hono（边缘运行时），REST + Zod 校验，统一错误码与请求 ID |
+| 数据 | Cloudflare D1（SQLite），Drizzle ORM 描述结构，SQL 迁移为唯一真源 |
+| 异步 | D1 outbox 表 + Cron 触发器（每日维护、每分钟任务派发），无消息队列 |
+| 部署 | 单个 Worker 同时提供页面与接口，静态资源由 Workers Static Assets 承载 |
+
+运行基线为 **Workers 免费版**（单请求 CPU 10ms、Cron 至多 3 条、无 Queues）。这一约束直接影响了几个设计决策：密码哈希迭代次数按实测 CPU 校准、异步任务改用数据库表实现 outbox、每日维护合并进已有的 Cron 表达式。
+
+## 仓库结构
+
+```text
+apps/web/                 前端 SPA（页面、组件、样式、工具函数）
+packages/api/             Worker 入口、路由、服务层与异步任务
+packages/database/        迁移 SQL、Drizzle Schema、结构一致性校验脚本
+packages/shared/          前后端共享的类型、常量与错误码
+docs/                     架构、数据库、接口、界面、开发与安全文档
+```
+
+## 本地运行
+
+需要 Node.js 20 及以上、pnpm 9 及以上。
 
 ```bash
-python packages/database/scripts/check_schema.py   # 真实 SQLite 执行全部迁移 + 17 条不变量
-python packages/database/scripts/check_parity.py   # SQL ↔ Drizzle 一致性
+pnpm install
+pnpm build        # 构建前端产物
+pnpm dev          # 本地开发环境
+
+pnpm typecheck    # 类型检查
+pnpm test         # 单元测试
+pnpm db:check     # 迁移结构一致性校验
+pnpm sec:check    # 安全攻击用例（需先启动 pnpm dev）
 ```
 
-## 实现顺序
+数据库迁移使用 `pnpm db:migrate:local`，结构与 Drizzle Schema 的逐列一致性由 `pnpm db:check` 保证。详细的环境配置、脚本契约与常见问题见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
 
-| 阶段 | 任务 | 优先级 |
-| --- | --- | --- |
-| 1 | Monorepo、Vue、Hono、Worker 初始化 | P0 |
-| 2 | D1 + Drizzle 迁移落地（本仓库已给出 DDL） | P0 |
-| 3 | 注册登录（邀请码）、Steam OpenID、权限 | P0 |
-| 4 | 玩家档案、Steam 数据同步 | P0 |
-| 5 | 赛事创建、报名、候补 | P0 |
-| 6 | WARROOM Rating、管理员修正 | P0 |
-| 7 | 自动分组、位置约束 | P0 |
-| 8 | 分组编辑器（拖拽）、发布 | P0 |
-| 9 | 比赛结果、Match ID 导入 | P1 |
-| 10 | 排行榜、历史战绩 | P1 |
-| 11 | 生产部署、备份、日志、监控 | P0 |
+## 质量保障
 
-## 明确不做
+| 项目 | 现状 |
+| --- | --- |
+| 单元测试 | 15 个测试文件、156 个用例，覆盖评分公式、分队算法、快照冻结、排序规则与 Steam 回调校验 |
+| 安全用例 | 68 项，覆盖越权、CSRF、注入、隐私泄露、XSS 与异常输入 |
+| 结构校验 | SQL 迁移与 Drizzle Schema 逐列比对（22 表 / 261 列 / 50 索引） |
+| 交付门禁 | `typecheck`、`test`、`build`、`db:check`，涉及鉴权与接口变更时追加 `sec:check` |
 
-队长选人 · 多社区 · 跨游戏 · 实时语音 · 自动建房 · Redis · 微服务 · R2 · Durable Objects。
+安全设计与残余风险评估见 [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)。
+
+## 项目边界
+
+明确**不做**以下内容，以保持系统简单可控：
+
+- 队长选人与手动组队（分队由算法完成，人工只做微调）
+- 多社区 / 多租户、多赛制（仅 DOTA2 5v5）
+- KDA 与详细对局数据统计（胜负由管理员在赛后指定）
+- 自动建房、实时语音、跨游戏扩展
+- 引入 Redis、消息队列、微服务等额外基础设施
+
+## 数据来源与致谢
+
+段位、天梯分、游戏昵称与头像来自 [STRATZ](https://stratz.com) 的公开数据接口，段位缺失时回退 [OpenDota](https://www.opendota.com)。归属验证使用 Steam OpenID。
+
+DOTA2 与 Steam 是 Valve Corporation 的商标。本项目为社区自用的非官方项目，与 Valve 无关。
+
+## 相关文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构决策、认证流程、评分与分队算法、异步任务、发布流程 |
+| [docs/DATABASE.md](docs/DATABASE.md) | 表结构说明、核心不变量、D1 约束与迁移规范 |
+| [docs/API.md](docs/API.md) | REST 接口契约、错误码、并发与快照语义 |
+| [docs/UI.md](docs/UI.md) | 页面与路由、组件清单、状态映射与设计约定 |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 本地环境、脚本契约、编码规范 |
+| [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) | 安全控制清单、攻击用例结果与残余风险 |
+| [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md) | 上线前冒烟测试：迁移行为与 CPU 配额校准 |
+
+## 许可
+
+本仓库为社区内部项目，未附带开源许可，保留所有权利。如需复用其中的设计或代码，请先与维护者联系。
