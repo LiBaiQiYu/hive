@@ -146,12 +146,15 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/admin/players/:id/rating` | 三层评分 + 实力 / 出勤明细 + 最近修正 |
-| PUT | `/api/admin/players/:id/rating-adjustment` | `{adjustment, reason, eventId?}` |
-| GET | `/api/admin/players/:id/rating-adjustments` | 修正历史，倒序分页 |
-| POST | `/api/admin/players/:id/rating-recompute` | 投递重算任务（改算法后使用） |
+| GET | `/api/admin/ratings/players` | 评分总表：段位、天梯分、系统分、修正、最终分、置信度、出勤与数据来源（`rankSource`） |
+| PUT | `/api/admin/ratings/players/:id/declared-mmr` | `{mmr, reason}`：**设定目标天梯分**，评分按 MMR ÷ 10 自动重算 |
+| PUT | `/api/admin/ratings/players/:id/rating-adjustment` | `{adjustment, reason, eventId?}`：直接调修正值（幂等，受 ±limit 限制） |
+| GET | `/api/admin/ratings/players/:id/history` | 评分变更历史：修正变化与天梯分设定合并为一条时间线 |
+| POST | `/api/admin/ratings/recompute` | 重算全部（或传 `{userId}` 单人）的系统分与出勤率，不动人工修正 |
 
-`PUT rating-adjustment` 是**幂等写**：`adjustment` 表示"新的修正值"而非增量，重复提交不会叠加。实现上必须在一个 batch 内完成：① 校验 ±limit 与原因长度 ② 更新 `player_ratings` ③ 插入 `rating_adjustments` ④ 写 `audit_logs`。任何一步失败全部回滚。
+`PUT declared-mmr` 纠正的是**输入数据**而不是结果：写入 `declared_mmr` 与对应段位（`rankTierFromMmr`），来源记为 `SELF_REPORTED`，并把既有 `admin_adjustment` 清零，使最终分正好等于 `round(mmr / 10)`。来源是 `STRATZ` / `OPENDOTA` 的玩家返回 `CONFLICT`（下次同步会覆盖，需先解绑）。`player_stats`、`player_ratings`、`audit_logs` 在同一个 batch 内写入，随后调用统一重算补出置信度、出勤与 breakdown。
+
+`PUT rating-adjustment` 是**幂等写**：`adjustment` 表示"新的修正值"而非增量，重复提交不会叠加。校验 ±limit 与原因长度后，更新 `player_ratings` 并插入 `rating_adjustments` + `audit_logs`，任何一步失败全部回滚。
 
 ## 7. 比赛结果与数据同步
 

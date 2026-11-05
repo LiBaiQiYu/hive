@@ -634,6 +634,14 @@
   font-size: 12px;
 }
 
+/* 面板底部的说明：同步来源不能改 / 旧修正会被清零 */
+.adjust-note {
+  margin: 0;
+  color: var(--amber);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .adjust-body {
   display: flex;
   align-items: flex-end;

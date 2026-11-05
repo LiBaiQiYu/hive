@@ -17,18 +17,24 @@ interface RatingRow {
   attendanceBp: number | null;
   rankTier: number | null;
   declaredMmr: number | null;
+  /** STRATZ / OPENDOTA / SELF_REPORTED / ADMIN_SET：决定能不能在这里改天梯分 */
+  rankSource: string | null;
   limit: number;
 }
 
 interface HistoryRow {
   id: string;
-  oldAdjustment: number;
-  newAdjustment: number;
-  oldEffective: number;
-  newEffective: number;
-  reason: string;
+  /** ADJUSTMENT = 改修正值；MMR = 管理员设定天梯分（来自审计日志） */
+  kind: 'ADJUSTMENT' | 'MMR';
   createdAt: number;
   operatorName: string | null;
+  reason: string;
+  oldEffective: number;
+  newEffective: number;
+  oldAdjustment?: number | null;
+  newAdjustment?: number | null;
+  oldMmr?: number | null;
+  newMmr?: number | null;
 }
 
 const players = ref<RatingRow[]>([]);
@@ -39,7 +45,8 @@ const error = ref('');
 const message = ref('');
 
 const editing = ref<string | null>(null);
-const form = ref({ adjustment: 0, reason: '' });
+/** 管理员直接填目标天梯分，评分由 MMR ÷ 10 算出来，不再要求自己算差值 */
+const form = ref<{ mmr: number | null; reason: string }>({ mmr: null, reason: '' });
 
 const history = ref<HistoryRow[]>([]);
 const historyFor = ref<string | null>(null);
@@ -78,7 +85,7 @@ function openEdit(player: RatingRow) {
   }
   historyFor.value = null;
   editing.value = player.id;
-  form.value = { adjustment: player.adjustment ?? 0, reason: '' };
+  form.value = { mmr: player.declaredMmr ?? null, reason: '' };
   error.value = '';
   message.value = '';
 }
@@ -88,20 +95,37 @@ function cancelEdit() {
   error.value = '';
 }
 
+/** 同步来的段位不能在这里改：下次同步会把值覆盖回去 */
+function syncedSource(player: RatingRow): boolean {
+  return player.rankSource === 'STRATZ' || player.rankSource === 'OPENDOTA';
+}
+
+const rankSourceLabel: Record<string, string> = {
+  STRATZ: 'STRATZ 同步',
+  OPENDOTA: 'OpenDota 同步',
+  SELF_REPORTED: '自报',
+  ADMIN_SET: '管理员设定',
+};
+
 async function save(player: RatingRow) {
+  const mmr = form.value.mmr;
+  if (mmr === null || !Number.isFinite(mmr)) {
+    error.value = '请填写目标天梯分';
+    return;
+  }
   if (form.value.reason.trim().length < 4) {
-    error.value = '修正原因至少 4 个字';
+    error.value = '设定原因至少 4 个字';
     return;
   }
   saving.value = player.id;
   error.value = '';
   try {
-    const result = await api<{ effective: number }>(
-      `/admin/ratings/players/${player.id}/rating-adjustment`,
-      { method: 'PUT', body: { adjustment: form.value.adjustment, reason: form.value.reason } },
+    const result = await api<{ effective: number; mmr: number }>(
+      `/admin/ratings/players/${player.id}/declared-mmr`,
+      { method: 'PUT', body: { mmr: Math.round(mmr), reason: form.value.reason } },
     );
-    message.value = `${player.displayName} 的最终分已更新为 ${result.effective}`;
-    toast.success(`已更新 ${player.displayName}：${result.effective} 分`);
+    message.value = `${player.displayName} 的天梯分已设为 ${result.mmr}，WARROOM ${result.effective}`;
+    toast.success(`已更新 ${player.displayName}：${result.mmr} 分 → ${result.effective} WARROOM`);
     editing.value = null;
     await refresh(true);
     if (historyFor.value === player.id) await loadHistory(player.id);
@@ -178,10 +202,15 @@ function rankLabel(rankTier: number | null): string {
   return medal === 8 ? name : `${name} ${star} 星`;
 }
 
-/** 调整预览：和 computeEffective 同一口径（clamp 0..1000） */
-function previewEffective(player: RatingRow): number {
-  const system = player.system ?? 0;
-  return Math.min(1000, Math.max(0, Math.round(system + form.value.adjustment)));
+/** 与后端 computeRating 同一口径：WARROOM = clamp(round(MMR / 10), 0, 1000) */
+function ratingFromMmr(mmr: number | null): number {
+  if (mmr === null || !Number.isFinite(mmr)) return 0;
+  return Math.min(1000, Math.max(0, Math.round(mmr / 10)));
+}
+
+/** 设定天梯分后的最终评分：人工修正在这次操作里会被清零，所以就是 MMR ÷ 10 */
+function previewEffective(): number {
+  return ratingFromMmr(form.value.mmr);
 }
 
 function deltaClass(n: number | null): string {
@@ -200,14 +229,14 @@ function deltaClass(n: number | null): string {
           评分管理
           <HelpTip
             wide
-            title="重算和修正的关系"
+            title="重算、修正与天梯分"
             :steps="[
-              '① 重算只更新实力分（MMR ÷ 10）和出勤率，不动你手工设置的修正',
+              '① 重算只更新实力分（MMR ÷ 10）和出勤率，不动你设置的修正',
               '② 候补顺序：出勤率 → 实力分 → 报名时间；实力分本身不含出勤',
-              '③ 修正上限随数据置信度自动放宽：150 → 500',
-              '④ 修正必须填原因，记录不可删除',
+              '③ 「设定天梯分」= 直接改输入值，评分按 MMR ÷ 10 自动重算',
+              '④ 设定必须填原因，记录不可删除',
             ]"
-            note="录入比赛结果、赛事转「已结束」都会触发重算；旧算法版本会在每日维护里自动补算，也可以在这里立即重算全部。已公布的阵容与报名快照不受影响。"
+            note="有人手填 20000 分把 WARROOM 顶到 1000 时，用「设定天梯分」改成真实分数即可，不用自己算差值。同步来源（STRATZ / OpenDota）的段位不能在这里改，需要玩家先解除绑定。"
           />
         </h1>
       </div>
@@ -294,12 +323,12 @@ function deltaClass(n: number | null): string {
             <tr>
               <th>玩家</th>
               <th class="num">段位</th>
+              <th class="num">天梯分</th>
               <th class="num">系统分</th>
               <th class="num">修正</th>
               <th class="num">最终</th>
               <th class="num">置信度</th>
               <th class="num">出勤</th>
-              <th class="num">可修正</th>
               <th class="col-actions">操作</th>
             </tr>
           </thead>
@@ -323,6 +352,9 @@ function deltaClass(n: number | null): string {
                   </div>
                 </td>
                 <td class="num muted">{{ rankLabel(player.rankTier) }}</td>
+                <td class="num mono" :class="{ muted: player.declaredMmr === null }">
+                  {{ player.declaredMmr === null ? '未填' : player.declaredMmr.toLocaleString('en-US') }}
+                </td>
                 <td class="num mono">{{ player.system ?? '—' }}</td>
                 <td class="num mono" :class="deltaClass(player.adjustment)">
                   {{ signed(player.adjustment) }}
@@ -344,7 +376,6 @@ function deltaClass(n: number | null): string {
                 <td class="num mono muted" :title="player.attendanceBp === null ? '还没有已结束赛事' : '只影响候补顺序'">
                   {{ attendanceOf(player) }}
                 </td>
-                <td class="num mono muted">±{{ player.limit }}</td>
                 <td class="col-actions">
                   <div class="row-actions">
                     <NButton
@@ -371,7 +402,7 @@ function deltaClass(n: number | null): string {
                           />
                         </svg>
                       </template>
-                      调整
+                      设定
                     </NButton>
                     <NButton
                       size="small"
@@ -410,22 +441,26 @@ function deltaClass(n: number | null): string {
                 <td colspan="9">
                   <form class="adjust-panel" @submit.prevent="save(player)" @keydown.esc="cancelEdit">
                     <div class="adjust-head">
-                      <span class="adjust-title">调整「{{ player.displayName }}」的修正</span>
+                      <span class="adjust-title">设定「{{ player.displayName }}」的天梯分</span>
                       <span class="adjust-hint">
-                        可填 {{ -player.limit }} ～ +{{ player.limit }}，系统分
-                        <span class="mono">{{ player.system ?? '—' }}</span>
+                        当前 <span class="mono">{{ player.declaredMmr ?? '未填' }}</span> · 段位
+                        <span class="mono">{{ rankLabel(player.rankTier) }}</span> · 来源
+                        <span class="mono">{{ rankSourceLabel[player.rankSource ?? ''] ?? '—' }}</span>
                       </span>
                     </div>
                     <div class="adjust-body">
                       <label class="adjust-field">
-                        <span class="field-label">修正值</span>
+                        <span class="field-label">目标天梯分</span>
                         <NInputNumber
-                          v-model:value="form.adjustment"
+                          v-model:value="form.mmr"
                           class="mono"
-                          :min="-player.limit"
-                          :max="player.limit"
+                          :min="0"
+                          :max="20000"
+                          :step="100"
                           :show-button="false"
-                          style="width: 108px"
+                          :disabled="syncedSource(player)"
+                          placeholder="例如 3000"
+                          style="width: 132px"
                         />
                       </label>
                       <label class="adjust-field adjust-field-grow">
@@ -433,20 +468,20 @@ function deltaClass(n: number | null): string {
                           原因（必填）
                           <HelpTip
                             title="原因怎么写？"
-                            :steps="['至少 4 个字', '会永久留在修正历史里，不能删除']"
-                            note="写清楚依据，例如「线下赛主玩四号位，段位偏低」，方便以后回溯。"
+                            :steps="['至少 4 个字', '会永久留在变更历史里，不能删除']"
+                            note="写清楚依据，例如「本人确认实际 3000 分，手填的分错了」，方便以后回溯。"
                           />
                         </span>
                         <NInput
                           v-model:value="form.reason"
-                          placeholder="例如：线下赛主玩四号位，段位偏低"
+                          placeholder="例如：本人确认实际 3000 分，之前手填有误"
                           :maxlength="200"
                           show-count
                           @keydown.enter.prevent="save(player)"
                         />
                       </label>
                       <div class="adjust-preview">
-                        <span class="adjust-preview-label">改后</span>
+                        <span class="adjust-preview-label">WARROOM</span>
                         <span class="mono adjust-preview-old">{{ player.effective ?? '—' }}</span>
                         <svg class="preview-arrow" viewBox="0 0 16 16" aria-hidden="true">
                           <path
@@ -458,13 +493,13 @@ function deltaClass(n: number | null): string {
                             stroke-linejoin="round"
                           />
                         </svg>
-                        <span class="mono adjust-preview-new">{{ previewEffective(player) }}</span>
+                        <span class="mono adjust-preview-new">{{ previewEffective() }}</span>
                       </div>
                       <div class="adjust-actions">
                         <NButton
                           type="primary"
                           attr-type="submit"
-                          :disabled="saving !== null"
+                          :disabled="saving !== null || syncedSource(player)"
                           :loading="saving === player.id"
                         >
                           保存
@@ -472,6 +507,15 @@ function deltaClass(n: number | null): string {
                         <NButton :disabled="saving !== null" @click="cancelEdit">取消</NButton>
                       </div>
                     </div>
+
+                    <p v-if="syncedSource(player)" class="adjust-note">
+                      该玩家的段位来自{{ rankSourceLabel[player.rankSource ?? ''] ?? '第三方同步' }}，
+                      改天梯分会在下次同步时被覆盖。请先让玩家解除绑定，或改用评分修正。
+                    </p>
+                    <p v-else-if="(player.adjustment ?? 0) !== 0" class="adjust-note">
+                      该玩家当前有 {{ signed(player.adjustment) }} 的人工修正，保存后会清零，
+                      最终分正好等于「目标天梯分 ÷ 10」。
+                    </p>
                   </form>
                 </td>
               </tr>
@@ -481,7 +525,7 @@ function deltaClass(n: number | null): string {
                   <div class="history-panel">
                     <div class="history-head">
                       <span class="history-title">
-                        修正历史
+                        评分变更历史
                         <span class="muted">
                           · {{ player.displayName }} · 共 {{ history.length }} 条
                         </span>
@@ -496,7 +540,7 @@ function deltaClass(n: number | null): string {
                       <thead>
                         <tr>
                           <th>时间</th>
-                          <th class="num">修正变化</th>
+                          <th class="num">变更</th>
                           <th class="num">最终分</th>
                           <th>原因</th>
                           <th>操作人</th>
@@ -506,11 +550,19 @@ function deltaClass(n: number | null): string {
                         <tr v-for="item in history" :key="item.id">
                           <td class="muted mono">{{ fmt(item.createdAt) }}</td>
                           <td class="num mono delta-track">
-                            <span class="muted">{{ signed(item.oldAdjustment) }}</span>
-                            <span class="delta-arrow">→</span>
-                            <span :class="deltaClass(item.newAdjustment)">
-                              {{ signed(item.newAdjustment) }}
-                            </span>
+                            <template v-if="item.kind === 'MMR'">
+                              <span class="muted">天梯分</span>
+                              <span class="muted">{{ item.oldMmr ?? '未填' }}</span>
+                              <span class="delta-arrow">→</span>
+                              <span>{{ item.newMmr }}</span>
+                            </template>
+                            <template v-else>
+                              <span class="muted">{{ signed(item.oldAdjustment ?? 0) }}</span>
+                              <span class="delta-arrow">→</span>
+                              <span :class="deltaClass(item.newAdjustment ?? 0)">
+                                {{ signed(item.newAdjustment ?? 0) }}
+                              </span>
+                            </template>
                           </td>
                           <td class="num mono">
                             <span class="muted">{{ item.oldEffective }}</span>

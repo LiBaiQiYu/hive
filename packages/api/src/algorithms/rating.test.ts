@@ -6,6 +6,7 @@ import {
   computeEffective,
   computeRating,
   estimateMmr,
+  rankTierFromMmr,
   uncertainty,
   type RatingInput,
 } from './rating';
@@ -99,6 +100,29 @@ describe('computeRating · 实力分', () => {
 
   it('算法版本已升到 v3', () => {
     expect(ALGO_VERSION).toBe('warroom-v3');
+  });
+});
+
+describe('管理员设定天梯分', () => {
+  it('按目标天梯分重算后，评分正好是 MMR ÷ 10', () => {
+    // 原本手填 20000 分的人被改成真实的 3000 分
+    const fixed = computeRating({ ...base, rankTier: rankTierFromMmr(3000), declaredMmr: 3000 });
+    expect(fixed.system).toBe(300);
+    expect(fixed.estimatedMmr).toBe(3000);
+    expect(fixed.components[0]?.basis).toBe('SELF_MMR');
+  });
+
+  it('段位跟着天梯分一起重算，不会留下旧勋章', () => {
+    expect(rankTierFromMmr(3000)).toBe(45); // 统帅 5 星
+    expect(rankTierFromMmr(9000)).toBe(80); // 冠绝
+    expect(rankTierFromMmr(0)).toBe(11); // 先锋 1 星
+  });
+
+  it('清零人工修正后，最终分等于系统分', () => {
+    const system = computeRating({ ...base, declaredMmr: 3000 }).system;
+    expect(computeEffective(system, 0)).toBe(system);
+    // 对照：不清零就会偏出去
+    expect(computeEffective(system, 150)).toBe(450);
   });
 });
 

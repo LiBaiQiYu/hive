@@ -81,6 +81,7 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 | **`wrangler dev` 只把 `secrets.required` 里声明过的键从 `.dev.vars` 注入 Worker**，没声明的键被安静丢掉（启动日志的 bindings 列表里也看不到）。`STRATZ_API_TOKEN` 曾因此从来没在本地加载过 → 本地所有段位同步都退回 OpenDota，看起来像"本地 STRATZ 绑定拿不到东西" | 用 secrets 之前先看一眼启动日志：绑定的键与 `.dev.vars` 里的键对不上，就是这里。`STRATZ_API_TOKEN` 现已加进 `secrets.required`（三个 env 都加）。**排查同类问题：`env.X` 明明配了却是空，先数一数启动日志里的 list** |
 | 头像/昵称只在"绑定那一刻"写一次（claim 用快照 / Steam 绑定用 Web API），之后没有任何地方刷新 → 绑定时上游抽风、或当时还没配 `STEAM_WEB_API_KEY`，这个账号就**永远**没头像 | `PLAYER_SYNC` 现在会把快照里的昵称/头像写回 `game_accounts`（`COALESCE`，只填空）；每日维护的补同步条件里也加了 `avatar_url IS NULL`，最多一天自愈 |
 | 前端还在 `pnpm dev` 时执行 `pnpm build`：Vite 会先清空 `dist` 再写入，wrangler 的 assets 清单会失效，**之后所有页面（含 `/` 和静态资源）都返回 `{"code":"NOT_FOUND","message":"接口不存在"}` 的 JSON 404**，而 `/api/*` 一切正常 —— 看着像"路由挂了"，其实是资源层没重新扫描 | 在 `dist` 里增删一个文件（如 `New-Item apps/web/dist/.reload-probe` 再删掉）触发重扫，几秒后恢复；或者直接重启 `pnpm dev`。**发布前重建前端是正常的，但别在 dev 还在跑的时候以为页面坏了就改代码** |
+| 只更新 `player_ratings` 的 `effective_rating` 会撞表上的 `CHECK (effective_rating = max(0, min(1000, system_rating + admin_adjustment)))`：改天梯分时系统分也会变，而 `system_rating` 还是旧值 | 任何改评分的语句都要**把 `system_rating` 与 `admin_adjustment` 一起写**（管理员设定天梯分就是这么做的）。另外 `rating_adjustments` 上有 `CHECK (old_adjustment <> new_adjustment)`，`0 → 0` 会被拒——没有真的改修正时别插这一行 |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -89,6 +90,7 @@ pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/
 - **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
 - **MMR 与段位的优先级**：`rank_source='SELF_REPORTED'` 时才用 MMR；`OPENDOTA`/`ADMIN_SET` 时以勋章为准（同步时会清掉 MMR）。
+- **管理员改分只改输入，不改结果**：`PUT /api/admin/ratings/players/:id/declared-mmr` 接收**目标天梯分**，写入 `declared_mmr` + `rank_tier`（`rankTierFromMmr`），评分按 MMR ÷ 10 自动重算；同时清零 `admin_adjustment`，让最终分正好等于目标值。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
 - 所有 `db.batch()` 是事务：分组落库、封盘、评分修正都靠它，别拆成多次单条写入。
