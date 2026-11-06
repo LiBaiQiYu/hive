@@ -8,6 +8,7 @@ import {
   MMR_TO_RATING_DIVISOR,
   adjustmentLimit,
   computeEffective,
+  estimateMmr,
   rankTierFromMmr,
 } from '../algorithms/rating';
 import { recomputeUserRating } from '../services/rating';
@@ -92,22 +93,23 @@ adminRatingRoutes.get('/players/:id/history', async (c) => {
     }>();
 
   /**
-   * 设定天梯分也改评分，但它是"改输入值"而不是调修正，
-   * rating_adjustments 的 CHECK（新旧修正必须不同）容不下它，所以单独取审计日志。
+   * 设定天梯分 / 设定段位也改评分，但它们是"改输入值"而不是调修正，
+   * rating_adjustments 的 CHECK（新旧修正必须不同）容不下它们，所以单独取审计日志。
    * 两条来源在这里合并成一条时间线，页面只需要认 kind。
    */
   const mmrChanges = await c.env.DB.prepare(
-    `SELECT a.id, a.before_json AS beforeJson, a.after_json AS afterJson,
+    `SELECT a.id, a.action, a.before_json AS beforeJson, a.after_json AS afterJson,
             a.reason, a.created_at AS createdAt, u.display_name AS operatorName
        FROM audit_logs a
        LEFT JOIN users u ON u.id = a.actor_id
-      WHERE a.action = 'rating.set-mmr' AND a.entity_id = ?
+      WHERE a.action IN ('rating.set-mmr', 'rating.set-rank') AND a.entity_id = ?
       ORDER BY a.created_at DESC
       LIMIT 50`,
   )
     .bind(userId)
     .all<{
       id: string;
+      action: string;
       beforeJson: string | null;
       afterJson: string | null;
       reason: string | null;
@@ -118,7 +120,11 @@ adminRatingRoutes.get('/players/:id/history', async (c) => {
   const read = (raw: string | null) => {
     if (!raw) return null;
     try {
-      return JSON.parse(raw) as { mmr?: number | null; effective?: number };
+      return JSON.parse(raw) as {
+        mmr?: number | null;
+        rankTier?: number | null;
+        effective?: number;
+      };
     } catch {
       return null;
     }
@@ -131,12 +137,14 @@ adminRatingRoutes.get('/players/:id/history', async (c) => {
       const after = read(row.afterJson);
       return {
         id: row.id,
-        kind: 'MMR' as const,
+        kind: row.action === 'rating.set-rank' ? ('RANK' as const) : ('MMR' as const),
         createdAt: row.createdAt,
         operatorName: row.operatorName,
         reason: row.reason ?? '',
         oldMmr: before?.mmr ?? null,
         newMmr: after?.mmr ?? null,
+        oldRankTier: before?.rankTier ?? null,
+        newRankTier: after?.rankTier ?? null,
         oldEffective: before?.effective ?? 0,
         newEffective: after?.effective ?? 0,
       };
@@ -285,31 +293,56 @@ adminRatingRoutes.put('/players/:id/rating-adjustment', async (c) => {
 /**
  * PUT /api/admin/players/:id/declared-mmr
  *
- * 管理员直接设定玩家的**目标天梯分**，评分由系统按 MMR ÷ 10 重算。
+ * 管理员直接设定玩家的**目标天梯分**，或者**段位 + 星级**，两种输入二选一，
+ * 评分都由系统按同一口径重算：
+ *   · 天梯分模式：实力分 = MMR ÷ 10，段位按 rankTierFromMmr 反推
+ *   · 段位模式：按勋章区间估算 MMR 再 ÷ 10（冠绝固定 5420），declared_mmr 清空
  *
  * 为什么要这条路径：手填的天梯分是不可信的输入，有人填 20000 分就能把 WARROOM
  * 顶到 1000。旧的「修正值」接口要求管理员自己算差值（1000 → 300 就是 -700），
  * 既反直觉，也常常超过修正上限。这里改成纠正**输入本身**：
- *   · 写入 declared_mmr 与对应段位，来源记为 SELF_REPORTED（数据仍是自报性质）
- *   · 清零既有的人工修正，让最终分正好等于 round(MMR / 10)
- *   · 覆写前的天梯分、旧修正与旧分数都进历史与审计
+ *   · 清零既有的人工修正，让最终分正好等于系统算出来的值
+ *   · 覆写前的天梯分、段位、旧修正与旧分数都进历史与审计
+ *
+ * 两种模式的来源标记不同，这不是笔误：
+ *   · 天梯分模式 → SELF_REPORTED：纠正的是玩家自己填的数字，玩家仍可再改
+ *   · 段位模式   → ADMIN_SET：段位是管理员的判断，玩家不能一键覆盖
  *
  * 同步来源（STRATZ / OPENDOTA）的段位不在这里改：下次同步会把它覆盖回去。
  */
-const setMmrSchema = z.object({
-  mmr: z.number().int().min(0).max(MAX_MMR),
+const setRatingSchema = z.object({
+  mmr: z.number().int().min(0).max(MAX_MMR).optional(),
+  rankTier: z.number().int().min(11).max(80).optional(),
   reason: z.string().trim().min(4).max(200),
 });
+
+/** 审计文案用的段位名，与 apps/web/src/lib/rank.ts 的 MEDAL_NAMES 保持一致 */
+const MEDAL_NAMES = ['先锋', '卫士', '中军', '统帅', '传奇', '万古流芳', '超凡入圣', '冠绝'];
+
+function rankText(rankTier: number | null): string {
+  if (!rankTier || rankTier < 10) return '未填';
+  const medal = Math.floor(rankTier / 10);
+  const star = rankTier % 10;
+  const name = MEDAL_NAMES[medal - 1] ?? '未知';
+  return medal === 8 || star === 0 ? name : `${name} ${star} 星`;
+}
 
 adminRatingRoutes.put('/players/:id/declared-mmr', async (c) => {
   const adminId = requireAdmin(c);
   const env = c.env;
   const userId = c.req.param('id');
 
-  const parsed = setMmrSchema.safeParse(await c.req.json().catch(() => null));
+  const parsed = setRatingSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
   }
+
+  const hasMmr = parsed.data.mmr !== undefined;
+  const hasRank = parsed.data.rankTier !== undefined;
+  if (hasMmr === hasRank) {
+    throw new ApiError('VALIDATION_FAILED', '天梯分与段位只能填一种');
+  }
+  const rankMode = hasRank;
 
   const stats = await env.DB.prepare(
     `SELECT rank_tier AS rankTier, declared_mmr AS declaredMmr, rank_source AS rankSource
@@ -322,12 +355,37 @@ adminRatingRoutes.put('/players/:id/declared-mmr', async (c) => {
   if (stats.rankSource === 'STRATZ' || stats.rankSource === 'OPENDOTA') {
     throw new ApiError(
       'CONFLICT',
-      '该玩家的段位来自第三方同步，改天梯分会在下次同步时被覆盖。请先让玩家解除绑定，或改用评分修正',
+      '该玩家的段位来自第三方同步，改了会在下次同步时被覆盖。请先让玩家解除绑定，或改用评分修正',
     );
   }
 
-  const mmr = parsed.data.mmr;
-  if (stats.declaredMmr === mmr && stats.rankSource === 'SELF_REPORTED') {
+  /* ① 先把两种输入归一成"最终要落库的段位 + 天梯分" */
+  let mmr: number | null = null;
+  let rankTier: number;
+  if (rankMode) {
+    rankTier = parsed.data.rankTier as number;
+    const medal = Math.floor(rankTier / 10);
+    const star = rankTier % 10;
+    if (medal === 8 ? star !== 0 : star < 1 || star > 5) {
+      throw new ApiError(
+        'VALIDATION_FAILED',
+        medal === 8 ? '冠绝没有星级，请只选择「冠绝」' : '星级需 1-5',
+      );
+    }
+    // 段位模式不写 declared_mmr：写了它就会盖掉段位（estimateMmr 里 MMR 优先）
+    // 注意入参顺序是 (rankTier, declaredMmr)——这里要的是"按段位估算出来的分"
+    mmr = estimateMmr(rankTier, null);
+  } else {
+    mmr = parsed.data.mmr as number;
+    rankTier = rankTierFromMmr(mmr);
+  }
+
+  /* ② 没变化就别写库（审计里塞一条 0 变化的记录只会污染历史） */
+  if (rankMode) {
+    const unchanged =
+      stats.rankTier === rankTier && stats.declaredMmr === null && stats.rankSource === 'ADMIN_SET';
+    if (unchanged) throw new ApiError('CONFLICT', '段位没有变化');
+  } else if (stats.declaredMmr === mmr && stats.rankSource === 'SELF_REPORTED') {
     throw new ApiError('CONFLICT', '天梯分没有变化');
   }
 
@@ -339,22 +397,30 @@ adminRatingRoutes.put('/players/:id/declared-mmr', async (c) => {
     .bind(userId)
     .first<{ system: number; adjustment: number; effective: number }>();
 
-  const rankTier = rankTierFromMmr(mmr);
-  // 评分是 MMR 的纯函数，这里直接算出结果，好让三处写入进同一个 batch（原子）
-  const system = Math.min(1000, Math.max(0, Math.round(mmr / MMR_TO_RATING_DIVISOR)));
+  // 评分是（MMR | 段位）的纯函数，这里直接算出结果，好让三处写入进同一个 batch（原子）
+  const system = Math.min(1000, Math.max(0, Math.round((mmr ?? 0) / MMR_TO_RATING_DIVISOR)));
   const effective = computeEffective(system, 0);
   const oldAdjustment = current?.adjustment ?? 0;
   const oldEffective = current?.effective ?? system;
   const now = Date.now();
-  const reason = `设定天梯分 ${stats.declaredMmr ?? '未填'} → ${mmr}：${parsed.data.reason}`;
+  const reason = rankMode
+    ? `设定段位 ${rankText(stats.rankTier)} → ${rankText(rankTier)}：${parsed.data.reason}`
+    : `设定天梯分 ${stats.declaredMmr ?? '未填'} → ${mmr}：${parsed.data.reason}`;
 
   const statements = [
-    env.DB.prepare(
-      `UPDATE player_stats
-          SET declared_mmr = ?, rank_tier = ?, rank_source = 'SELF_REPORTED',
-              rank_checked_at = NULL, updated_at = ?
-        WHERE user_id = ?`,
-    ).bind(mmr, rankTier, now, userId),
+    rankMode
+      ? env.DB.prepare(
+          `UPDATE player_stats
+              SET declared_mmr = NULL, rank_tier = ?, rank_source = 'ADMIN_SET',
+                  rank_checked_at = NULL, updated_at = ?
+            WHERE user_id = ?`,
+        ).bind(rankTier, now, userId)
+      : env.DB.prepare(
+          `UPDATE player_stats
+              SET declared_mmr = ?, rank_tier = ?, rank_source = 'SELF_REPORTED',
+                  rank_checked_at = NULL, updated_at = ?
+            WHERE user_id = ?`,
+        ).bind(mmr, rankTier, now, userId),
     // 清零既有修正：管理员要给的是"最终就是这个分"，残留的 ±N 会让结果对不上。
     // system_rating 必须一起写：表上有 CHECK(effective = clamp(system + adjustment))，
     // 只改 effective 会撞约束。
@@ -393,10 +459,11 @@ adminRatingRoutes.put('/players/:id/declared-mmr', async (c) => {
     env.DB.prepare(
       `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id,
          before_json, after_json, reason, request_id, created_at)
-       VALUES (?, ?, 'ADMIN', 'rating.set-mmr', 'user', ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 'ADMIN', ?, 'user', ?, ?, ?, ?, ?, ?)`,
     ).bind(
       newId(now),
       adminId,
+      rankMode ? 'rating.set-rank' : 'rating.set-mmr',
       userId,
       JSON.stringify({
         mmr: stats.declaredMmr,
@@ -413,12 +480,14 @@ adminRatingRoutes.put('/players/:id/declared-mmr', async (c) => {
 
   await env.DB.batch(statements);
 
-  // 补算置信度 / 出勤 / breakdown：这三项不是 MMR 的函数，得走统一入口
+  // 补算置信度 / 出勤 / breakdown：这三项不是（MMR | 段位）的函数，得走统一入口
   const next = await recomputeUserRating(env, userId);
   await reorderOpenEventWaitlists(env);
 
   return c.json({
     data: {
+      mode: rankMode ? 'RANK' : 'MMR',
+      /** 段位模式下为 null：这类玩家只有勋章，没有具体天梯分 */
       mmr,
       rankTier,
       system: next.system,

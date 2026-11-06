@@ -126,6 +126,25 @@ describe('管理员设定天梯分', () => {
   });
 });
 
+describe('管理员设定段位（只选勋章 + 星级）', () => {
+  it('没有天梯分时按勋章区间估算，评分 = 估算 MMR ÷ 10', () => {
+    // 统帅 5 星：2310 + 4 × 154 = 2926 → WARROOM 293
+    expect(estimateMmr(45, null)).toBe(2926);
+    const rating = computeRating({ ...base, rankTier: 45, declaredMmr: null });
+    expect(rating.system).toBe(293);
+    expect(rating.components[0]?.basis).toBe('MEDAL');
+  });
+
+  it('冠绝取 5420 基线，不带星级', () => {
+    expect(estimateMmr(80, null)).toBe(5420);
+    expect(computeRating({ ...base, rankTier: 80, declaredMmr: null }).system).toBe(542);
+  });
+
+  it('残留的天梯分会盖掉段位——段位模式必须把 declared_mmr 清空', () => {
+    expect(estimateMmr(45, 9000)).toBe(9000);
+  });
+});
+
 describe('computeRating · 出勤独立', () => {
   it('全勤 / 缺席不改变实力分，只改变 attendanceBp', () => {
     const full = computeRating({ ...veteran, communityPlayed: 10, communityRegistered: 10 });

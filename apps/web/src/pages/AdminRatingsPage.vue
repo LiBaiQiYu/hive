@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { NButton, NInput, NInputNumber, useMessage } from 'naive-ui';
+import { NButton, NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
 import { ApiError, api } from '../lib/api';
+import { MEDAL_NAMES, estimateMmrFromRank, rankLabel as rankText, rankTierFromParts } from '../lib/rank';
 
 interface RatingRow {
   id: string;
@@ -24,8 +25,8 @@ interface RatingRow {
 
 interface HistoryRow {
   id: string;
-  /** ADJUSTMENT = 改修正值；MMR = 管理员设定天梯分（来自审计日志） */
-  kind: 'ADJUSTMENT' | 'MMR';
+  /** ADJUSTMENT = 改修正值；MMR = 设定天梯分；RANK = 设定段位（后两者来自审计日志） */
+  kind: 'ADJUSTMENT' | 'MMR' | 'RANK';
   createdAt: number;
   operatorName: string | null;
   reason: string;
@@ -35,6 +36,8 @@ interface HistoryRow {
   newAdjustment?: number | null;
   oldMmr?: number | null;
   newMmr?: number | null;
+  oldRankTier?: number | null;
+  newRankTier?: number | null;
 }
 
 const players = ref<RatingRow[]>([]);
@@ -45,8 +48,15 @@ const error = ref('');
 const message = ref('');
 
 const editing = ref<string | null>(null);
-/** 管理员直接填目标天梯分，评分由 MMR ÷ 10 算出来，不再要求自己算差值 */
+/**
+ * 管理员有两种写法，二选一：
+ *   MMR  —— 直接填目标天梯分（更精确，评分 = MMR ÷ 10）
+ *   RANK —— 选勋章 + 星级（更直观，跟玩家自己在「我的主页」里手填段位是同一套口径）
+ */
+type EditMode = 'MMR' | 'RANK';
+const mode = ref<EditMode>('MMR');
 const form = ref<{ mmr: number | null; reason: string }>({ mmr: null, reason: '' });
+const rankForm = ref<{ medal: number; star: number }>({ medal: 4, star: 1 });
 
 const history = ref<HistoryRow[]>([]);
 const historyFor = ref<string | null>(null);
@@ -86,6 +96,11 @@ function openEdit(player: RatingRow) {
   historyFor.value = null;
   editing.value = player.id;
   form.value = { mmr: player.declaredMmr ?? null, reason: '' };
+  const medal = player.rankTier ? Math.floor(player.rankTier / 10) : 4;
+  const star = player.rankTier ? player.rankTier % 10 : 1;
+  rankForm.value = { medal: medal >= 1 && medal <= 8 ? medal : 4, star: star || 1 };
+  // 打开时就落在"这个人现在有的那种数据"上：有分数先给分数，只有勋章就给段位
+  mode.value = player.declaredMmr !== null || player.rankTier === null ? 'MMR' : 'RANK';
   error.value = '';
   message.value = '';
 }
@@ -108,24 +123,36 @@ const rankSourceLabel: Record<string, string> = {
 };
 
 async function save(player: RatingRow) {
-  const mmr = form.value.mmr;
-  if (mmr === null || !Number.isFinite(mmr)) {
-    error.value = '请填写目标天梯分';
-    return;
-  }
   if (form.value.reason.trim().length < 4) {
     error.value = '设定原因至少 4 个字';
     return;
   }
+
+  const rankMode = mode.value === 'RANK';
+  const mmr = form.value.mmr;
+  if (!rankMode && (mmr === null || !Number.isFinite(mmr))) {
+    error.value = '请填写目标天梯分，或改成选段位';
+    return;
+  }
+
   saving.value = player.id;
   error.value = '';
   try {
-    const result = await api<{ effective: number; mmr: number }>(
-      `/admin/ratings/players/${player.id}/declared-mmr`,
-      { method: 'PUT', body: { mmr: Math.round(mmr), reason: form.value.reason } },
-    );
-    message.value = `${player.displayName} 的天梯分已设为 ${result.mmr}，WARROOM ${result.effective}`;
-    toast.success(`已更新 ${player.displayName}：${result.mmr} 分 → ${result.effective} WARROOM`);
+    const body = rankMode
+      ? { rankTier: pickedRankTier.value, reason: form.value.reason }
+      : { mmr: Math.round(mmr as number), reason: form.value.reason };
+    const result = await api<{
+      mode: 'MMR' | 'RANK';
+      mmr: number | null;
+      rankTier: number;
+      effective: number;
+    }>(`/admin/ratings/players/${player.id}/declared-mmr`, { method: 'PUT', body });
+
+    message.value =
+      result.mode === 'RANK'
+        ? `${player.displayName} 的段位已设为 ${rankLabel(result.rankTier)}，WARROOM ${result.effective}`
+        : `${player.displayName} 的天梯分已设为 ${result.mmr}，WARROOM ${result.effective}`;
+    toast.success(message.value);
     editing.value = null;
     await refresh(true);
     if (historyFor.value === player.id) await loadHistory(player.id);
@@ -191,16 +218,16 @@ const attendanceOf = (player: RatingRow) => {
   return typeof bp === 'number' ? `${Math.round(bp / 100)}%` : '—';
 };
 
-const MEDALS = ['先锋', '卫士', '中军', '统帅', '传奇', '万古流芳', '超凡入圣', '冠绝'];
+const rankLabel = (rankTier: number | null) => rankText(rankTier) || '未填';
 
-/** rank_tier = 勋章 × 10 + 星级；冠绝（80）没有星 */
-function rankLabel(rankTier: number | null): string {
-  if (!rankTier) return '未填';
-  const medal = Math.floor(rankTier / 10);
-  const star = rankTier % 10;
-  const name = MEDALS[medal - 1] ?? '未知';
-  return medal === 8 ? name : `${name} ${star} 星`;
-}
+const medalOptions = MEDAL_NAMES.map((name, index) => ({ label: name, value: index + 1 }));
+const starOptions = [1, 2, 3, 4, 5].map((s) => ({ label: `${s} 星`, value: s }));
+
+/** 冠绝固定 80；其余按勋章 × 10 + 星级 */
+const pickedRankTier = computed(() => rankTierFromParts(rankForm.value.medal, rankForm.value.star));
+
+/** 这个段位折算成多少天梯分（后端用同一张表重算，这里只是让管理员先看见结果） */
+const pickedMmr = computed(() => estimateMmrFromRank(pickedRankTier.value));
 
 /** 与后端 computeRating 同一口径：WARROOM = clamp(round(MMR / 10), 0, 1000) */
 function ratingFromMmr(mmr: number | null): number {
@@ -208,10 +235,10 @@ function ratingFromMmr(mmr: number | null): number {
   return Math.min(1000, Math.max(0, Math.round(mmr / 10)));
 }
 
-/** 设定天梯分后的最终评分：人工修正在这次操作里会被清零，所以就是 MMR ÷ 10 */
-function previewEffective(): number {
-  return ratingFromMmr(form.value.mmr);
-}
+/** 保存后的最终评分：人工修正在这次操作里会被清零，所以就是系统分 */
+const previewEffective = computed(() =>
+  mode.value === 'RANK' ? ratingFromMmr(pickedMmr.value) : ratingFromMmr(form.value.mmr),
+);
 
 function deltaClass(n: number | null): string {
   if (n === null || n === 0) return '';
@@ -229,14 +256,14 @@ function deltaClass(n: number | null): string {
           评分管理
           <HelpTip
             wide
-            title="重算、修正与天梯分"
+            title="重算、修正与评分输入"
             :steps="[
               '① 重算只更新实力分（MMR ÷ 10）和出勤率，不动你设置的修正',
               '② 候补顺序：出勤率 → 实力分 → 报名时间；实力分本身不含出勤',
-              '③ 「设定天梯分」= 直接改输入值，评分按 MMR ÷ 10 自动重算',
+              '③ 「设定评分输入」二选一：填天梯分（评分 = 分数 ÷ 10），或选段位 + 星级（按勋章区间估算）',
               '④ 设定必须填原因，记录不可删除',
             ]"
-            note="有人手填 20000 分把 WARROOM 顶到 1000 时，用「设定天梯分」改成真实分数即可，不用自己算差值。同步来源（STRATZ / OpenDota）的段位不能在这里改，需要玩家先解除绑定。"
+            note="有人手填 20000 分把 WARROOM 顶到 1000 时，用「按天梯分」改成真实分数即可，不用自己算差值；只知道段位就切「按段位 + 星级」，系统按勋章区间折算，和玩家自己手填段位同一套口径。同步来源（STRATZ / OpenDota）的段位不能在这里改，需要玩家先解除绑定。"
           />
         </h1>
       </div>
@@ -353,7 +380,15 @@ function deltaClass(n: number | null): string {
                 </td>
                 <td class="num muted">{{ rankLabel(player.rankTier) }}</td>
                 <td class="num mono" :class="{ muted: player.declaredMmr === null }">
-                  {{ player.declaredMmr === null ? '未填' : player.declaredMmr.toLocaleString('en-US') }}
+                  <template v-if="player.declaredMmr !== null">
+                    {{ player.declaredMmr.toLocaleString('en-US') }}
+                  </template>
+                  <template v-else-if="estimateMmrFromRank(player.rankTier) !== null">
+                    <span title="按段位估算：这类玩家只有勋章，没有具体天梯分">
+                      ≈{{ (estimateMmrFromRank(player.rankTier) ?? 0).toLocaleString('en-US') }}
+                    </span>
+                  </template>
+                  <template v-else>未填</template>
                 </td>
                 <td class="num mono">{{ player.system ?? '—' }}</td>
                 <td class="num mono" :class="deltaClass(player.adjustment)">
@@ -441,15 +476,30 @@ function deltaClass(n: number | null): string {
                 <td colspan="9">
                   <form class="adjust-panel" @submit.prevent="save(player)" @keydown.esc="cancelEdit">
                     <div class="adjust-head">
-                      <span class="adjust-title">设定「{{ player.displayName }}」的天梯分</span>
+                      <span class="adjust-title">设定「{{ player.displayName }}」的评分输入</span>
                       <span class="adjust-hint">
                         当前 <span class="mono">{{ player.declaredMmr ?? '未填' }}</span> · 段位
                         <span class="mono">{{ rankLabel(player.rankTier) }}</span> · 来源
                         <span class="mono">{{ rankSourceLabel[player.rankSource ?? ''] ?? '—' }}</span>
                       </span>
                     </div>
+
+                    <div class="adjust-modes">
+                      <NRadioGroup v-model:value="mode" size="small">
+                        <NRadioButton value="MMR">按天梯分</NRadioButton>
+                        <NRadioButton value="RANK">按段位 + 星级</NRadioButton>
+                      </NRadioGroup>
+                      <span class="adjust-mode-hint">
+                        {{
+                          mode === 'MMR'
+                            ? '知道具体分数就用这个：评分 = 天梯分 ÷ 10，段位由分数反推'
+                            : '只记得勋章就用这个：评分按勋章区间估算，和玩家自己手填段位同一套口径'
+                        }}
+                      </span>
+                    </div>
+
                     <div class="adjust-body">
-                      <label class="adjust-field">
+                      <label v-if="mode === 'MMR'" class="adjust-field">
                         <span class="field-label">目标天梯分</span>
                         <NInputNumber
                           v-model:value="form.mmr"
@@ -463,6 +513,32 @@ function deltaClass(n: number | null): string {
                           style="width: 132px"
                         />
                       </label>
+                      <template v-else>
+                        <label class="adjust-field">
+                          <span class="field-label">勋章</span>
+                          <NSelect
+                            v-model:value="rankForm.medal"
+                            :options="medalOptions"
+                            :disabled="syncedSource(player)"
+                            style="width: 132px"
+                          />
+                        </label>
+                        <label class="adjust-field">
+                          <span class="field-label">星级</span>
+                          <NSelect
+                            v-if="rankForm.medal !== 8"
+                            v-model:value="rankForm.star"
+                            :options="starOptions"
+                            :disabled="syncedSource(player)"
+                            style="width: 96px"
+                          />
+                          <span v-else class="adjust-star-none mono">冠绝无星级</span>
+                        </label>
+                        <div class="adjust-field">
+                          <span class="field-label">折算天梯分</span>
+                          <span class="mono adjust-derived">≈ {{ pickedMmr ?? '—' }}</span>
+                        </div>
+                      </template>
                       <label class="adjust-field adjust-field-grow">
                         <span class="field-label">
                           原因（必填）
@@ -493,7 +569,7 @@ function deltaClass(n: number | null): string {
                             stroke-linejoin="round"
                           />
                         </svg>
-                        <span class="mono adjust-preview-new">{{ previewEffective() }}</span>
+                        <span class="mono adjust-preview-new">{{ previewEffective }}</span>
                       </div>
                       <div class="adjust-actions">
                         <NButton
@@ -510,7 +586,12 @@ function deltaClass(n: number | null): string {
 
                     <p v-if="syncedSource(player)" class="adjust-note">
                       该玩家的段位来自{{ rankSourceLabel[player.rankSource ?? ''] ?? '第三方同步' }}，
-                      改天梯分会在下次同步时被覆盖。请先让玩家解除绑定，或改用评分修正。
+                      改了会在下次同步时被覆盖。请先让玩家解除绑定，或改用评分修正。
+                    </p>
+                    <p v-else-if="mode === 'RANK'" class="adjust-note">
+                      段位模式不写具体天梯分：{{ rankLabel(pickedRankTier) }} ≈
+                      {{ pickedMmr }} 分，评分按勋章区间算出 {{ previewEffective }}。保存后这个段位记在
+                      管理员名下，玩家自己改不动，要调整得再来找你。
                     </p>
                     <p v-else-if="(player.adjustment ?? 0) !== 0" class="adjust-note">
                       该玩家当前有 {{ signed(player.adjustment) }} 的人工修正，保存后会清零，
@@ -555,6 +636,12 @@ function deltaClass(n: number | null): string {
                               <span class="muted">{{ item.oldMmr ?? '未填' }}</span>
                               <span class="delta-arrow">→</span>
                               <span>{{ item.newMmr }}</span>
+                            </template>
+                            <template v-else-if="item.kind === 'RANK'">
+                              <span class="muted">段位</span>
+                              <span class="muted">{{ rankLabel(item.oldRankTier ?? null) }}</span>
+                              <span class="delta-arrow">→</span>
+                              <span>{{ rankLabel(item.newRankTier ?? null) }}</span>
                             </template>
                             <template v-else>
                               <span class="muted">{{ signed(item.oldAdjustment ?? 0) }}</span>

@@ -629,6 +629,38 @@
   letter-spacing: 0.04em;
 }
 
+/* 输入方式切换：天梯分 / 段位 + 星级（二选一，同一份表单） */
+.adjust-modes {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+
+.adjust-mode-hint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* 冠绝没有星级：占位保持与下拉同高，否则整行会矮一截 */
+.adjust-star-none {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 段位折算出来的天梯分：算出来的数，不是输入 */
+.adjust-derived {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  color: var(--gold-2);
+  font-size: 14px;
+}
+
 .adjust-hint {
   color: var(--muted);
   font-size: 12px;

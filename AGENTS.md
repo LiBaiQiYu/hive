@@ -17,7 +17,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         密码找回（注册邮箱发信 → Worker 回信带一次性链接；另有管理员重置与脚本兜底）
         赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
-        评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员修正 + 历史
+        评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员设定（天梯分或段位 + 星级）+ 修正 + 历史
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
         战绩页（我的对局 + 全员胜场；胜负来自管理员赛后选的胜负方，不含 KDA）
         后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）
@@ -89,6 +89,8 @@ pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/
 | 线上发了重置申请却没收到回信 | 先看控制台：`reset@cwa1e.top` 是不是建成了 Custom address、动作是不是 **Send to Worker**、Worker 是否已部署过（带 `email()` handler 才会出现在下拉里）。再想想发件方式——**转发来的邮件或某些客户端 SPF/DKIM 不齐，`dmarc` 不是 pass**，按设计只回"没有生成重置链接"、不发链接 |
 | 老账号"没有邮箱"（`@hive.local` / `@hive.test` 这类占位地址）→ 邮件找回必然收不到 | 让本人在「账号设置 → 个人资料」把邮箱改成真地址：`PATCH /api/me` 的 `email` 必须同时带 `currentPassword`（错密码 401、被占用 409），并写审计 `user.email`。生产上 `byc1030` 已改为 `625071316@qq.com`；其余占位地址用 `SELECT username, email FROM users WHERE email LIKE '%@hive.%'` 找出来逐个通知本人 |
 | 登录接口 200，但页面显示仍未登录；tail 里 `/api/me` 500 且错误是 `D1_ERROR: no such column: xxx` | 生产有**未应用的迁移**，而 `pnpm run deploy` 发出去的是**整个工作区**——别的 agent 刚写的、引用新列的代码也会被一起发到线上。症状与「登录没反应」一模一样。**部署前先 `npx wrangler d1 migrations list hive --remote -c packages/database/wrangler.d1.jsonc`，有 pending 就先 `pnpm db:migrate:remote`**（破坏性迁移前先 `pnpm db:backup`） |
+| 「当前密码」框被浏览器密码管理器自动填满（`autocomplete="current-password"` 就是叫它填），于是改密码/改找回邮箱这两道"证明是你本人"的检查退化成"证明浏览器记得你的密码"——任何人走到没锁屏的电脑前点一下就过 | 当前密码一律用 `apps/web/src/components/CurrentPasswordInput.vue`：初始 `readonly`（自动填充会跳过 readonly 字段），点进来或 Tab 到才解锁；`autocomplete="off"` + `data-lpignore` / `data-1p-ignore` / `data-bwignore`。别再手写 `NInput type="password"` 当当前密码框 |
+| `estimateMmr(rankTier, declaredMmr)` 的入参顺序容易写反（两个都是 `number \| null`，TS 不报错） | 段位模式和分数字段写反时，评分计划里会出现"段位 45 → 系统分 5"这种数：本地实测过一次，落库后被 `recomputeUserRating` 纠正回 293，但审计/历史里留下了错的中间值。**改这条路径后一定本地跑一遍两种模式**，看 `mmr` / `system` 是否符合预期 |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -97,7 +99,13 @@ pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/
 - **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
 - **MMR 与段位的优先级**：`rank_source='SELF_REPORTED'` 时才用 MMR；`OPENDOTA`/`ADMIN_SET` 时以勋章为准（同步时会清掉 MMR）。
-- **管理员改分只改输入，不改结果**：`PUT /api/admin/ratings/players/:id/declared-mmr` 接收**目标天梯分**，写入 `declared_mmr` + `rank_tier`（`rankTierFromMmr`），评分按 MMR ÷ 10 自动重算；同时清零 `admin_adjustment`，让最终分正好等于目标值。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
+- **管理员改分只改输入，不改结果**：`PUT /api/admin/ratings/players/:id/declared-mmr` 有两种互斥输入——
+  **目标天梯分**（写 `declared_mmr` + `rank_tier`，来源 `SELF_REPORTED`，评分 = MMR ÷ 10）或
+  **段位 + 星级**（只写 `rank_tier`，来源 `ADMIN_SET`，评分按勋章区间估算 MMR 再 ÷ 10）。
+  两种都会清零 `admin_adjustment`，让最终分正好等于系统算出来的值。
+  段位模式**必须把 `declared_mmr` 置 NULL**：`estimateMmr(rankTier, declaredMmr)` 里 MMR 优先，
+  留着旧分数就等于没改段位。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。
+  旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
 - **密码找回走"收信 → 回信"**：免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到 `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，用 `message.reply()` 回一封带一次性令牌的链接。令牌只存 `sha256`、30 分钟、一次性，重置成功作废该账号全部会话。**控制台还要把 `reset@cwa1e.top` 建为 Custom address 并指到 Worker**，代码替代不了这一步。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
