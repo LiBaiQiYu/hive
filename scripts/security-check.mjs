@@ -183,6 +183,20 @@ const tester = await login(newUser, newPass)
   const alive = await call('GET', '/api/me', { cookie })
   check('输入', "SQL 注入语句不生效（表还在）", sqli.status === 200 && alive.status === 200)
 
+  // 密码重置令牌：随机 43 位 base64url，随便猜一个不该能改密、也不该 500
+  const fakeToken = 'A'.repeat(43)
+  const fakeGet = await call('GET', `/api/auth/reset-password/${fakeToken}`)
+  check(
+    '密码找回',
+    '伪造令牌查询返回 valid:false',
+    fakeGet.status === 200 && fakeGet.json?.data?.valid === false,
+    `HTTP ${fakeGet.status}`,
+  )
+  const fakePost = await call('POST', '/api/auth/reset-password', {
+    body: { token: fakeToken, newPassword: 'Another-Pass-1' },
+  })
+  check('密码找回', '伪造令牌不能改密', fakePost.status === 401, `HTTP ${fakePost.status}`)
+
   const xss = '<img src=x onerror=alert(1)>'
   const wrote = await call('PATCH', '/api/me', { cookie, body: { bio: xss } })
   const back = await call('GET', '/api/me', { cookie })

@@ -128,6 +128,29 @@ export const sessions = sqliteTable(
   ],
 );
 
+/**
+ * 密码重置令牌：邮件自助找回用。
+ * 只存 sha256(token) 的 base64url，明文只出现在回信里；一次性、30 分钟过期。
+ */
+export const passwordResets = sqliteTable(
+  'password_resets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+    createdAt: integer('created_at').notNull().default(TS_NOW),
+  },
+  (t) => [
+    uniqueIndex('ux_password_resets_token').on(t.tokenHash),
+    index('idx_password_resets_user').on(t.userId, t.createdAt),
+    index('idx_password_resets_expiry').on(t.expiresAt),
+  ],
+);
+
 export const gameAccounts = sqliteTable(
   'game_accounts',
   {
@@ -171,3 +194,4 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type GameAccount = typeof gameAccounts.$inferSelect;
+export type PasswordReset = typeof passwordResets.$inferSelect;

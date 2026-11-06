@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { drizzle } from 'drizzle-orm/d1';
+import { z } from 'zod';
 import { playerRatings, users } from '@hive/db';
 import { ApiError, newId, loginSchema, registerSchema, changePasswordSchema, SESSION_COOKIE } from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { cookieSecure, intVar } from '../env';
 import { requireUser } from '../guard';
 import { hashPassword, verifyPassword } from '../password';
+import { findValidReset } from '../services/password-reset';
 import { createSession, hashIp, hashToken, readSession, revokeSession } from '../session';
 
 export const authRoutes = new Hono<AppEnv>();
@@ -268,6 +270,89 @@ authRoutes.post('/password', async (c) => {
           now,
           userId,
         ),
+  ]);
+
+  return c.json({ data: { ok: true }, meta: { requestId: c.get('requestId') } });
+});
+
+/* --------------------------------------------------------------------------
+ * GET /api/auth/reset-password/:token —— 链接是否还能用
+ * 页面一进来先问一次：失效就直接显示"重新申请"，不要等用户输完密码才发现。
+ * ------------------------------------------------------------------------ */
+authRoutes.get('/reset-password/:token', async (c) => {
+  const row = await findValidReset(c.env, c.req.param('token'));
+  if (!row) return c.json({ data: { valid: false } });
+
+  const user = await c.env.DB.prepare(
+    `SELECT username, display_name AS displayName FROM users WHERE id = ?`,
+  )
+    .bind(row.userId)
+    .first<{ username: string; displayName: string }>();
+
+  // 令牌持有者本来就能改这个账号的密码，露出发给谁反而是必要的确认
+  return c.json({
+    data: {
+      valid: true,
+      expiresAt: row.expiresAt,
+      username: user?.username ?? null,
+      displayName: user?.displayName ?? null,
+    },
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * POST /api/auth/reset-password —— 用邮件里的令牌设置新密码
+ * 一次性：成功后令牌作废，并把该账号所有会话踢下线（密码换了，旧会话不该继续有效）。
+ * ------------------------------------------------------------------------ */
+const resetPasswordSchema = z.object({
+  token: z.string().min(16).max(128),
+  newPassword: z.string().min(10, '密码至少 10 位').max(72, '密码最多 72 位'),
+});
+
+authRoutes.post('/reset-password', async (c) => {
+  const env = c.env;
+
+  const parsed = resetPasswordSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+
+  const row = await findValidReset(env, parsed.data.token);
+  if (!row) throw new ApiError('UNAUTHENTICATED', '链接已失效，请重新发信申请');
+
+  const target = await env.DB.prepare(
+    `SELECT id, status FROM users WHERE id = ?`,
+  )
+    .bind(row.userId)
+    .first<{ id: string; status: string }>();
+  if (!target || target.status !== 'ACTIVE') {
+    throw new ApiError('UNAUTHENTICATED', '账号不可用，请联系管理员');
+  }
+
+  const passwordHash = await hashPassword(parsed.data.newPassword, env.PASSWORD_PEPPER, iterations(env));
+  const now = Date.now();
+
+  // 改密码、踢会话、作废令牌必须原子：任何一步漏掉都留下"密码换了但旧会话还活着"的缝
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = ?
+        WHERE id = ?`,
+    ).bind(passwordHash, now, row.userId),
+    env.DB.prepare(
+      `UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`,
+    ).bind(now, row.userId),
+    env.DB.prepare(`UPDATE password_resets SET used_at = ? WHERE id = ?`).bind(now, row.id),
+    env.DB.prepare(
+      `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id,
+         after_json, request_id, created_at)
+       VALUES (?, NULL, 'SYSTEM', 'user.password-reset-email', 'user', ?, ?, ?, ?)`,
+    ).bind(
+      newId(now),
+      row.userId,
+      JSON.stringify({ via: 'EMAIL_REPLY' }),
+      c.get('requestId') ?? null,
+      now,
+    ),
   ]);
 
   return c.json({ data: { ok: true }, meta: { requestId: c.get('requestId') } });

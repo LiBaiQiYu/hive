@@ -25,6 +25,7 @@ import LeaderboardPage from './pages/LeaderboardPage.vue';
 import RecordsPage from './pages/RecordsPage.vue';
 import MatchPage from './pages/MatchPage.vue';
 import PlayerPage from './pages/PlayerPage.vue';
+import ResetPasswordPage from './pages/ResetPasswordPage.vue';
 
 // 后台是少数人用的重页面（日期选择器等组件很占体积），按需加载
 const AdminPage = () => import('./pages/AdminPage.vue');
@@ -48,6 +49,7 @@ const router = createRouter({
     { path: '/players/:id', name: 'player', component: PlayerPage },
     { path: '/matches/:id', name: 'match', component: MatchPage },
     { path: '/login', name: 'login', component: LoginPage },
+    { path: '/reset-password', name: 'reset-password', component: ResetPasswordPage },
     { path: '/admin', name: 'admin', component: AdminPage, meta: { admin: true } },
     { path: '/admin/events/:id', name: 'admin-event', component: AdminEventPage, meta: { admin: true } },
     { path: '/admin/invites', name: 'admin-invites', component: AdminInvitesPage, meta: { admin: true } },

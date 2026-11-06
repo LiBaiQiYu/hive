@@ -1,4 +1,5 @@
 import app from './app';
+import { handleInboundEmail } from './email';
 import { runScheduled } from './jobs/scheduler';
 import type { Env } from './env';
 
@@ -10,5 +11,12 @@ export default {
    */
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runScheduled(controller.cron, env));
+  },
+  /**
+   * 收信入口：Email Routing 把 reset@ 域名的邮件交给它，回信里带一次性重置链接。
+   * 需要在控制台建一条 "Custom address → Send to Worker" 的路由（见 docs/DEVELOPMENT.md §8）。
+   */
+  async email(message: ForwardableEmailMessage, env: Env): Promise<void> {
+    await handleInboundEmail(message, env);
   },
 } satisfies ExportedHandler<Env>;

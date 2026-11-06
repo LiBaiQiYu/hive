@@ -109,11 +109,44 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 | 部署报 Queues 相关错误 | 免费版不支持 Queues。`wrangler.jsonc` 中的 `queues` 段必须保持注释状态 |
 | Cron 部署失败 | 免费版限制单个 Worker 最多 3 个 Cron。新增定时任务必须并入已有的 `scheduled` 分发，不能加第 4 条表达式 |
 | 同步任务一直不动 | 检查 `* * * * *` 的 drain Cron 是否在跑，以及 `sync_jobs.available_at` 是否被退避推到了未来 |
-| 玩家忘记密码 | 见下方 §8。系统不发邮件（免费版也没有发信能力），走管理员重置 + 临时口令转交 |
+| 玩家忘记密码 | 见下方 §8。免费版不能主动发信，邮件找回走「收到信再 reply」；另有管理员重置与脚本两条兜底 |
 
 ## 8. 账号恢复（忘记密码）
 
-密码是 PBKDF2 + pepper 的不可逆哈希，**没有"找回"**，只有"重置"。分两种情况：
+密码是 PBKDF2 + pepper 的不可逆哈希，**没有"找回"**，只有"重置"。三条路径，从最省事到最兜底：
+
+### 8.0 邮件自助（玩家自己搞定）
+
+Workers 免费版不能向任意邮箱发信，但 **Email Routing 收信免费且不限量**，所以流程反过来：
+
+```
+玩家用注册邮箱 → 发一封空邮件到 reset@cwa1e.top
+        ↓ Email Routing 交给 Worker 的 email()
+Worker 校验：发件地址 == users.email、DMARC 通过、1 小时内未超 3 次
+        ↓ message.reply()
+玩家收到回信 → 点链接 → /reset-password?token=… → 设置新密码
+```
+
+控制台要做的两件事（代码替代不了）：
+
+1. **Email → Email Routing**：为 `cwa1e.top` 启用（会自动加 MX 记录）；
+2. **Custom address**：`reset@cwa1e.top` → 动作选 **Send to Worker** → 选 `hive`。
+   Worker 必须先部署一次（带 `email()` handler）才能在这里被选到。
+
+安全约束（实现见 `packages/api/src/email.ts` 与 `services/password-reset.ts`）：
+
+- 只认 `Authentication-Results` 里 `mx.cloudflare.net; … dmarc=pass`，否则任何人都能伪造 From 头重置别人密码；
+- 令牌 32 字节随机、库里只存 `sha256`，30 分钟过期、一次性，重新申请会作废旧令牌；
+- 同一账号每小时最多 3 次；失败原因不区分，回信统一说"没有生成链接"；
+- 重置成功会作废该账号全部会话，并写审计 `user.password-reset-email`。
+
+本地开发测不了收信（Email Routing 只在线上生效）。想验证接口，可以直接插一条令牌：
+
+```bash
+# token 用 node 生成：randomBytes(32).toString('base64url')，hash = sha256(token) 的 base64url
+npx wrangler d1 execute hive --local --persist-to packages/database/.wrangler/state \
+  -c packages/database/wrangler.d1.jsonc --command "INSERT INTO password_resets ..."
+```
 
 ### 8.1 还有管理员能登录
 

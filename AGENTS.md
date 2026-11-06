@@ -14,6 +14,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
 
 ```
 已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + STRATZ，无 token 时退回 OpenDota）
+        密码找回（注册邮箱发信 → Worker 回信带一次性链接；另有管理员重置与脚本兜底）
         赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
         评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员修正 + 历史
@@ -54,7 +55,7 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
-pnpm sec:check      # 安全攻击用例 70 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm sec:check      # 安全攻击用例 72 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
 ```
 
 交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`，改过鉴权/接口再补一条 `pnpm sec:check`。
@@ -82,6 +83,8 @@ pnpm sec:check      # 安全攻击用例 70 项（含授权矩阵/注入/越权/
 | 头像/昵称只在"绑定那一刻"写一次（claim 用快照 / Steam 绑定用 Web API），之后没有任何地方刷新 → 绑定时上游抽风、或当时还没配 `STEAM_WEB_API_KEY`，这个账号就**永远**没头像 | `PLAYER_SYNC` 现在会把快照里的昵称/头像写回 `game_accounts`（`COALESCE`，只填空）；每日维护的补同步条件里也加了 `avatar_url IS NULL`，最多一天自愈 |
 | 前端还在 `pnpm dev` 时执行 `pnpm build`：Vite 会先清空 `dist` 再写入，wrangler 的 assets 清单会失效，**之后所有页面（含 `/` 和静态资源）都返回 `{"code":"NOT_FOUND","message":"接口不存在"}` 的 JSON 404**，而 `/api/*` 一切正常 —— 看着像"路由挂了"，其实是资源层没重新扫描 | 在 `dist` 里增删一个文件（如 `New-Item apps/web/dist/.reload-probe` 再删掉）触发重扫，几秒后恢复；或者直接重启 `pnpm dev`。**发布前重建前端是正常的，但别在 dev 还在跑的时候以为页面坏了就改代码** |
 | 只更新 `player_ratings` 的 `effective_rating` 会撞表上的 `CHECK (effective_rating = max(0, min(1000, system_rating + admin_adjustment)))`：改天梯分时系统分也会变，而 `system_rating` 还是旧值 | 任何改评分的语句都要**把 `system_rating` 与 `admin_adjustment` 一起写**（管理员设定天梯分就是这么做的）。另外 `rating_adjustments` 上有 `CHECK (old_adjustment <> new_adjustment)`，`0 → 0` 会被拒——没有真的改修正时别插这一行 |
+| 本地发信到 `reset@cwa1e.top` 收不到任何回信 | Email Routing 只在线上的边缘生效，`pnpm dev` 没有收信入口。本地要验接口就手动往 `password_resets` 插一条令牌（见 `docs/DEVELOPMENT.md` §8.0），别在本地反复发信 |
+| 线上发了重置申请却没收到回信 | 先看控制台：`reset@cwa1e.top` 是不是建成了 Custom address、动作是不是 **Send to Worker**、Worker 是否已部署过（带 `email()` handler 才会出现在下拉里）。再想想发件方式——**转发来的邮件或某些客户端 SPF/DKIM 不齐，`dmarc` 不是 pass**，按设计只回"没有生成重置链接"、不发链接 |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -91,6 +94,7 @@ pnpm sec:check      # 安全攻击用例 70 项（含授权矩阵/注入/越权/
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
 - **MMR 与段位的优先级**：`rank_source='SELF_REPORTED'` 时才用 MMR；`OPENDOTA`/`ADMIN_SET` 时以勋章为准（同步时会清掉 MMR）。
 - **管理员改分只改输入，不改结果**：`PUT /api/admin/ratings/players/:id/declared-mmr` 接收**目标天梯分**，写入 `declared_mmr` + `rank_tier`（`rankTierFromMmr`），评分按 MMR ÷ 10 自动重算；同时清零 `admin_adjustment`，让最终分正好等于目标值。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
+- **密码找回走"收信 → 回信"**：免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到 `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，用 `message.reply()` 回一封带一次性令牌的链接。令牌只存 `sha256`、30 分钟、一次性，重置成功作废该账号全部会话。**控制台还要把 `reset@cwa1e.top` 建为 Custom address 并指到 Worker**，代码替代不了这一步。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
 - 所有 `db.batch()` 是事务：分组落库、封盘、评分修正都靠它，别拆成多次单条写入。
@@ -112,8 +116,10 @@ pnpm sec:check      # 安全攻击用例 70 项（含授权矩阵/注入/越权/
 
 ## 下一步优先级
 
-1. 控制台侧（代码里做不了，**只剩这一件硬性项**）：给 `POST /api/auth/login` 加一条按 IP 的速率限制规则。
-   `workers_dev` 已关、自定义域名已就位，那两件不用再管。
+1. 控制台侧（代码里做不了）：
+   - 给 `POST /api/auth/login` 加一条按 IP 的速率限制规则；
+   - **Email → Email Routing** 里把 `reset@cwa1e.top` 建成 Custom address，动作选 **Send to Worker** → `hive`。
+     这一步没做，邮件自助找回就不生效（管理员重置仍然可用）。
 2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」，再决定要不要给 `_headers` 补 HSTS
    （现在刻意没写，本地 http 会被钉死）。
 3. Cloudflare 会自动往 HTML 注入 Web Analytics 的 `beacon.min.js`，被我们的 `script-src 'self'` 挡掉。

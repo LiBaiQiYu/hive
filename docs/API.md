@@ -37,6 +37,8 @@
 | POST | `/api/auth/logout` | 撤销当前会话 |
 | GET | `/api/auth/session` | 当前会话 + 用户 + 评分摘要 |
 | POST | `/api/auth/password` | `{currentPassword, newPassword}`；新密码 ≥10 位、不得与旧密码相同；成功后**撤销其他所有会话**，当前设备保持登录 |
+| GET | `/api/auth/reset-password/:token` | 校验邮件里的令牌：`{valid, expiresAt, username, displayName}`；无效或过期返回 `{valid:false}` |
+| POST | `/api/auth/reset-password` | `{token, newPassword}`；令牌一次性（30 分钟），成功后作废令牌并撤销该账号**全部**会话，写审计 `user.password-reset-email` |
 | GET | `/api/auth/steam/start` | 302 跳转 Steam；写 `hive_steam_state` Cookie。`openid.realm` / `return_to` 的 origin 取 `APP_ORIGIN`（见下方回调说明） |
 | GET | `/api/auth/steam/callback` | Steam 回调，服务端反向校验后绑定，302 回 `/me?steam=linked`；失败一律 302 回 `/me?steam=error&reason=…` |
 | DELETE | `/api/auth/steam/unlink` | 解绑（存在进行中赛事报名时返回 `CONFLICT`）；段位来源退回 `SELF_REPORTED` |
