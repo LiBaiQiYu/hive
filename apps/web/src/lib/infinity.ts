@@ -24,9 +24,13 @@ export interface InfinityOptions {
   tiltY: number;
 }
 
-/** 指针推到边缘时的最大偏航 / 俯仰（弧度）。0.95 ≈ 54°，0.62 ≈ 36° */
-const MAX_YAW = 0.95;
-const MAX_PITCH = 0.62;
+/**
+ * 内视角与卡片保持一致：卡片自己的 CSS 倾斜是 rotateX(±11°) rotateY(±13°)，
+ * 这里取同样的幅度，内部光廊就是**同一个视角下的三维空间**，不多不少。
+ * （早先放大到 54°/36° 是为了让遮挡显眼，代价是和卡片的转动对不上，已收回来。）
+ */
+const MAX_YAW = (13 * Math.PI) / 180;
+const MAX_PITCH = (11 * Math.PI) / 180;
 
 /** 层数上限：亮度衰减到看不见就提前收工 */
 const MAX_LAYERS = 40;
@@ -102,8 +106,11 @@ export function renderInfinityFrame(
   const radiusPx = Math.min(hw, hh) * 0.12;
   const section = crossSection(hw, hh, radiusPx);
 
-  const yaw = tiltX * MAX_YAW;
-  const pitch = -tiltY * MAX_PITCH;
+  // 注意符号：本文件的 +Z 是"往画面里"，CSS 的 +Z 是"朝观看者"，
+  // 同一个旋转矩阵在两套坐标里视觉效果正好镜像。要跟着卡片转，
+  // 偏航取反、俯仰取正才是同一个方向（反了会像"卡片右转、内景左转"）。
+  const yaw = -tiltX * MAX_YAW;
+  const pitch = tiltY * MAX_PITCH;
   const cosY = Math.cos(yaw);
   const sinY = Math.sin(yaw);
   const cosP = Math.cos(pitch);
