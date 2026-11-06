@@ -12,6 +12,7 @@
 import { computed, ref, watch } from 'vue';
 import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../HelpTip.vue';
+import CurrentPasswordInput from '../CurrentPasswordInput.vue';
 import { ApiError, api } from '../../lib/api';
 import { loadMe, session } from '../../lib/session';
 
@@ -41,9 +42,13 @@ const emailChanged = computed(
 );
 
 async function saveProfile() {
-  profileSaving.value = true;
   profileError.value = '';
   profileSaved.value = false;
+  if (emailChanged.value && !emailPassword.value) {
+    profileError.value = '改邮箱需要输入当前密码';
+    return;
+  }
+  profileSaving.value = true;
   try {
     const body: Record<string, unknown> = {
       displayName: profile.value.displayName,
@@ -135,14 +140,7 @@ async function saveProfile() {
 
       <label v-if="emailChanged" class="field" style="margin: 0">
         <span class="field-label">当前密码（改邮箱需要）</span>
-        <NInput
-          v-model:value="emailPassword"
-          type="password"
-          show-password-on="click"
-          placeholder="输入当前的登录密码"
-          :input-props="{ autocomplete: 'current-password' }"
-          size="medium"
-        />
+        <CurrentPasswordInput v-model="emailPassword" placeholder="输入当前的登录密码" />
       </label>
     </div>
 
