@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { NButton, NPopconfirm, useMessage } from 'naive-ui';
+import { NButton, NModal, NPopconfirm, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
 import VerificationFilter from '../components/VerificationFilter.vue';
 import VerificationTag from '../components/VerificationTag.vue';
@@ -93,6 +93,47 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
     busy.value = false;
   }
 }
+
+/* ------------------------------------------------------------ 重置密码 */
+interface ResetInfo {
+  displayName: string;
+  username: string;
+  password: string;
+  sessionsRevoked: number;
+}
+
+const resetting = ref<string | null>(null);
+const resetInfo = ref<ResetInfo | null>(null);
+
+/**
+ * 社区没有邮件服务（免费版也发不了信），所以"忘记密码"由管理员生成一次性临时口令，
+ * 当面或在群里转交。响应里只出现这一次，页面关掉就再也拿不到。
+ */
+async function resetPassword(user: MemberRow) {
+  resetting.value = user.id;
+  try {
+    const data = await api<ResetInfo & { id: string }>(`/admin/users/${user.id}/reset-password`, {
+      method: 'POST',
+      body: {},
+    });
+    resetInfo.value = data;
+  } catch (err) {
+    toast.error(err instanceof ApiError ? err.message : '重置失败');
+  } finally {
+    resetting.value = null;
+  }
+}
+
+async function copyPassword() {
+  const value = resetInfo.value?.password;
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success('临时密码已复制');
+  } catch {
+    toast.error('浏览器不允许自动复制，请手动选中');
+  }
+}
 </script>
 
 <template>
@@ -173,22 +214,75 @@ async function setRole(user: MemberRow, role: 'PLAYER' | 'ADMIN') {
               </td>
               <td style="text-align: right">
                 <span v-if="user.id === meId" class="muted" style="font-size: 12px">—</span>
-                <template v-else-if="user.role === 'ADMIN'">
-                  <NPopconfirm @positive-click="setRole(user, 'PLAYER')">
+                <div v-else class="member-actions">
+                  <template v-if="user.role === 'ADMIN'">
+                    <NPopconfirm @positive-click="setRole(user, 'PLAYER')">
+                      <template #trigger>
+                        <NButton size="small" :disabled="busy">取消管理员</NButton>
+                      </template>
+                      取消后该成员将无法进入后台，确定吗？
+                    </NPopconfirm>
+                  </template>
+                  <NButton
+                    v-else
+                    size="small"
+                    type="primary"
+                    :disabled="busy"
+                    @click="setRole(user, 'ADMIN')"
+                  >
+                    设为管理员
+                  </NButton>
+
+                  <NPopconfirm @positive-click="resetPassword(user)">
                     <template #trigger>
-                      <NButton size="small" :disabled="busy">取消管理员</NButton>
+                      <NButton
+                        size="small"
+                        :disabled="busy"
+                        :loading="resetting === user.id"
+                      >
+                        重置密码
+                      </NButton>
                     </template>
-                    取消后该成员将无法进入后台，确定吗？
+                    会立即让该玩家的所有设备下线，并生成一个新的临时密码（只显示一次）。确定吗？
                   </NPopconfirm>
-                </template>
-                <NButton v-else size="small" type="primary" :disabled="busy" @click="setRole(user, 'ADMIN')">
-                  设为管理员
-                </NButton>
+                </div>
               </td>
             </tr>
         </tbody>
       </table>
       </div>
     </div>
+
+    <!-- 临时密码只在这里出现一次；关掉窗口就再也拿不到 -->
+    <NModal
+      :show="resetInfo !== null"
+      preset="card"
+      :bordered="false"
+      style="width: 460px; max-width: calc(100vw - 32px)"
+      @update:show="(value: boolean) => { if (!value) resetInfo = null }"
+    >
+      <template #header>临时密码</template>
+
+      <template v-if="resetInfo">
+        <p class="muted" style="margin: 0 0 12px; font-size: 13px">
+          已为 <b>{{ resetInfo.displayName }}</b>
+          <span class="mono">@{{ resetInfo.username }}</span> 生成临时密码：
+        </p>
+        <div class="reset-password-box mono">{{ resetInfo.password }}</div>
+        <p class="muted" style="margin: 12px 0 0; font-size: 12px; line-height: 1.7">
+          只显示这一次，关闭后无法再次查看。请通过私聊转交本人，并提醒登录后到「账号设置」修改密码。
+          <template v-if="resetInfo.sessionsRevoked > 0">
+            已同时让 {{ resetInfo.sessionsRevoked }} 个登录会话下线。
+          </template>
+        </p>
+      </template>
+
+      <template #footer>
+        <div style="display: flex; gap: 8px; justify-content: flex-end">
+          <NButton @click="copyPassword">复制</NButton>
+          <NButton type="primary" @click="resetInfo = null">已转交</NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>

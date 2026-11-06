@@ -84,6 +84,31 @@ export async function hashPassword(
   ].join('$');
 }
 
+/* -------------------------------------------------------------------------- */
+/**
+ * 管理员重置密码时用的临时口令。
+ *
+ * 字母表去掉了 0/O、1/l/I 这类抄错就登不上的字符——它通常要靠人用 QQ 念给玩家，
+ * 12 位（密码策略下限是 10）足够，也不需要用户自己猜。
+ *
+ * 用拒绝采样而不是直接取模：256 不是字母表长度的整数倍，取模会让前几个字符略多出现。
+ */
+const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const TEMP_LENGTH = 12;
+const TEMP_LIMIT = 256 - (256 % TEMP_ALPHABET.length);
+
+export function generateTempPassword(length = TEMP_LENGTH): string {
+  const out: string[] = [];
+  while (out.length < length) {
+    for (const byte of crypto.getRandomValues(new Uint8Array(length))) {
+      if (byte >= TEMP_LIMIT) continue;
+      out.push(TEMP_ALPHABET[byte % TEMP_ALPHABET.length] as string);
+      if (out.length >= length) break;
+    }
+  }
+  return out.join('');
+}
+
 export interface VerifyResult {
   ok: boolean;
   /** 迭代次数或 pepper 版本落后于当前配置时，登录成功后应静默重算 */

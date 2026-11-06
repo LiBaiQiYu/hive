@@ -109,3 +109,35 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 | 部署报 Queues 相关错误 | 免费版不支持 Queues。`wrangler.jsonc` 中的 `queues` 段必须保持注释状态 |
 | Cron 部署失败 | 免费版限制单个 Worker 最多 3 个 Cron。新增定时任务必须并入已有的 `scheduled` 分发，不能加第 4 条表达式 |
 | 同步任务一直不动 | 检查 `* * * * *` 的 drain Cron 是否在跑，以及 `sync_jobs.available_at` 是否被退避推到了未来 |
+| 玩家忘记密码 | 见下方 §8。系统不发邮件（免费版也没有发信能力），走管理员重置 + 临时口令转交 |
+
+## 8. 账号恢复（忘记密码）
+
+密码是 PBKDF2 + pepper 的不可逆哈希，**没有"找回"**，只有"重置"。分两种情况：
+
+### 8.1 还有管理员能登录
+
+后台 → 成员管理 → 目标玩家行末的「重置密码」：
+
+- 服务端生成 12 位一次性临时口令（去掉 `0/O/1/l/I` 等易混字符，满足 10 位下限）；
+- 同时清空失败次数与锁定时间、**作废该玩家全部会话**（旧设备立即下线）；
+- 临时口令只出现在那一次响应里，页面关掉就再也看不到，也不会写进审计日志；
+- 审计只记录 `user.password-reset`（操作人 + 作废的会话数）。
+
+把临时口令私聊转交本人，让其登录后到「账号设置」立即改掉。管理员不能重置**自己**的密码——自己的走「账号设置」，避免把自己锁在外面。
+
+### 8.2 唯一的管理员被锁在外面
+
+这条路径不经过界面，直接改库：
+
+```bash
+# 1) 生成 SQL（默认从 packages/api/.dev.vars 读 pepper；线上库要用线上那份）
+node scripts/reset-password.mjs <username> [--password <新密码>]
+
+# 2) 确认目标环境再执行（脚本只写 SQL，不自动跑）
+pnpm dlx wrangler d1 execute hive --local  --persist-to packages/database/.wrangler/state \
+  -c packages/database/wrangler.d1.jsonc --file reset-password.sql
+pnpm dlx wrangler d1 execute hive --remote -c packages/database/wrangler.d1.jsonc --file reset-password.sql
+```
+
+脚本生成的哈希格式与 `packages/api/src/password.ts` 完全一致（`pbkdf2_sha256$p1$…`），执行后即可用新口令登录。**pepper 用错不会报错**，只会让所有账号统统登录失败——线上那一步务必确认 pepper 来源。

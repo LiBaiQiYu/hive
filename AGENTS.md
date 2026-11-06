@@ -20,7 +20,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
         战绩页（我的对局 + 全员胜场；胜负来自管理员赛后选的胜负方，不含 KDA）
         后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）
-              成员管理（授予/撤销管理员，禁止改自己、禁止降级最后一名管理员）
+              成员管理（授予/撤销管理员、重置密码，禁止改自己、禁止降级最后一名管理员）
               队列健康（`/admin/jobs`，DEAD 可重试）、审计日志（`/admin/audit`，只读可筛）
               概览仪表盘（成员/赛事/本月报名/待发布/任务积压）
 前端    Vue 3 + vue-router + **Naive UI**（按钮/下拉/日期/输入/确认框/Toast），深/浅色双主题，玩家卡片（3D 倾斜）
@@ -54,7 +54,7 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
-pnpm sec:check      # 安全攻击用例 61 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm sec:check      # 安全攻击用例 70 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
 ```
 
 交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`，改过鉴权/接口再补一条 `pnpm sec:check`。

@@ -160,6 +160,7 @@ const tester = await login(newUser, newPass)
     ['POST', '/api/admin/invite-codes', { label: 'x' }],
     ['POST', '/api/admin/jobs/00000000-0000-0000-0000-000000000000/retry'],
     ['PATCH', '/api/admin/users/00000000-0000-0000-0000-000000000000/role', { role: 'ADMIN' }],
+    ['POST', '/api/admin/users/00000000-0000-0000-0000-000000000000/reset-password', {}],
     ['PUT', '/api/admin/ratings/players/00000000-0000-0000-0000-000000000000/rating-adjustment', { adjustment: 100, reason: 'x' }],
     ['PUT', '/api/admin/ratings/players/00000000-0000-0000-0000-000000000000/declared-mmr', { mmr: 3000, reason: 'x' }],
   ]

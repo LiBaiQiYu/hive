@@ -9,7 +9,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
+import { intVar } from '../env';
 import { requireAdmin } from '../guard';
+import { generateTempPassword, hashPassword } from '../password';
 
 export const adminUserRoutes = new Hono<AppEnv>();
 
@@ -93,5 +95,84 @@ adminUserRoutes.patch('/:id/role', async (c) => {
   return c.json({
     data: { id: target.id, username: target.username, displayName: target.displayName, role: nextRole },
     meta: { requestId: c.get('requestId') },
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/**
+ * POST /api/admin/users/:id/reset-password
+ *
+ * 社区的"忘记密码"通道：没有邮件服务（免费版也发不了信），所以由管理员
+ * 生成一次性临时口令、当面或在群里转交给本人，本人登录后到「账号设置」改掉。
+ *
+ * 三条约束：
+ *   · 不能重置自己（自己的密码走「账号设置」，避免管理员把自己锁在外面）
+ *   · 临时口令只出现在这一次响应里，**不写审计日志**（日志只记会话作废与操作人）
+ *   · 顺带清空失败次数与锁定时间，否则刚重置完仍会被锁 15 分钟
+ */
+adminUserRoutes.post('/:id/reset-password', async (c) => {
+  const actorId = requireAdmin(c);
+  const env = c.env;
+  const userId = c.req.param('id');
+
+  if (userId === actorId) {
+    throw new ApiError('CONFLICT', '不能重置自己的密码，请用「账号设置」修改');
+  }
+
+  const target = await env.DB.prepare(
+    `SELECT id, username, display_name AS displayName, status FROM users WHERE id = ?`,
+  )
+    .bind(userId)
+    .first<{ id: string; username: string; displayName: string; status: string }>();
+  if (!target) throw new ApiError('NOT_FOUND', '用户不存在');
+  if (target.status !== 'ACTIVE') throw new ApiError('CONFLICT', '该账号已停用');
+
+  const password = generateTempPassword();
+  const passwordHash = await hashPassword(
+    password,
+    env.PASSWORD_PEPPER,
+    intVar(env.PASSWORD_PBKDF2_ITERATIONS, 50000),
+  );
+
+  const active = await env.DB.prepare(
+    `SELECT count(*) AS count FROM sessions WHERE user_id = ? AND revoked_at IS NULL`,
+  )
+    .bind(userId)
+    .first<{ count: number }>();
+
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users
+          SET password_hash = ?, failed_login_count = 0, locked_until = NULL, updated_at = ?
+        WHERE id = ?`,
+    ).bind(passwordHash, now, userId),
+    // 旧会话必须一起作废，否则拿到临时口令也踢不掉已经在别处登录的设备
+    env.DB.prepare(
+      `UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`,
+    ).bind(now, userId),
+    env.DB.prepare(
+      `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id,
+         after_json, request_id, created_at)
+       VALUES (?, ?, 'ADMIN', 'user.password-reset', 'user', ?, ?, ?, ?)`,
+    ).bind(
+      newId(now),
+      actorId,
+      target.id,
+      JSON.stringify({ sessionsRevoked: active?.count ?? 0 }),
+      c.get('requestId') ?? null,
+      now,
+    ),
+  ]);
+
+  return c.json({
+    data: {
+      id: target.id,
+      username: target.username,
+      displayName: target.displayName,
+      // 只在这里出现一次；管理员转交后就让本人改掉
+      password,
+      sessionsRevoked: active?.count ?? 0,
+    },
   });
 });

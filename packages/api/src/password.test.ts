@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { newId } from '@hive/shared';
-import { hashPassword, verifyPassword } from './password';
+import { generateTempPassword, hashPassword, verifyPassword } from './password';
 
 const PEPPER = 'test-pepper';
 // 测试里用低迭代，避免 CI 变慢；生产值由 env 决定
@@ -43,6 +43,34 @@ describe('password', () => {
   it('拒绝格式错误的哈希串', async () => {
     expect((await verifyPassword('not-a-hash', 'x', PEPPER, ITER)).ok).toBe(false);
     expect((await verifyPassword('pbkdf2_sha256$p1$abc$AA$BB', 'x', PEPPER, ITER)).ok).toBe(false);
+  });
+});
+
+describe('generateTempPassword', () => {
+  it('长度默认 12，满足密码策略下限 10', () => {
+    const pwd = generateTempPassword();
+    expect(pwd).toHaveLength(12);
+    expect(pwd.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it('只用不含易混字符的字母表', () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(generateTempPassword()).toMatch(/^[abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789]+$/);
+    }
+  });
+
+  it('每次生成都不同', () => {
+    const set = new Set(Array.from({ length: 200 }, () => generateTempPassword()));
+    expect(set.size).toBe(200);
+  });
+
+  it('可以直接当作新密码验证通过', async () => {
+    const pwd = generateTempPassword();
+    const stored = await hashPassword(pwd, PEPPER, ITER);
+    await expect(verifyPassword(stored, pwd, PEPPER, ITER)).resolves.toEqual({
+      ok: true,
+      needsRehash: false,
+    });
   });
 });
 

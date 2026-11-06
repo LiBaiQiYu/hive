@@ -819,3 +819,28 @@
     flex: 1;
   }
 }
+
+/* -------------------------------------------------------- 成员管理操作列 */
+
+/* 角色按钮与「重置密码」并排，窄屏允许换行，别撑破表格 */
+.member-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 临时密码：放大 + 字距拉开，方便口头转述时逐位核对 */
+.reset-password-box {
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--gold-2);
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  text-align: center;
+  user-select: all;
+  word-break: break-all;
+}

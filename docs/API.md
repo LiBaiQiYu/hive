@@ -186,6 +186,7 @@
 | GET | `/api/admin/events/:id/registrations` | 含评分、位置分布统计、候补队列 |
 | POST | `/api/admin/events/:id/registrations/:rid/promote` | 候补转正：置 `CONFIRMED` 并清空 `waitlist_position`，同一 batch 内把剩余候补重排为 1..n；正选已满、非候补、赛事已发布时返回 `CONFLICT` |
 | PATCH | `/api/admin/users/:id/role` | `{role: "PLAYER" \| "ADMIN"}`；不能改自己的角色，也不能把最后一名管理员降级（`CONFLICT`），写审计 `user.role` |
+| POST | `/api/admin/users/:id/reset-password` | 生成一次性临时密码（12 位、去掉易混字符），同时清空失败次数与锁定、**作废该用户全部会话**；响应里只出现一次，不写进审计（审计只记 `user.password-reset` 与会话数）。不能重置自己（`CONFLICT`），停用账号返回 `CONFLICT` |
 
 状态流转是白名单表，非法流转返回 `CONFLICT`，且每次流转写 `audit_logs`（`event.transition`，前后状态）。
 转到 `COMPLETED` 时会自动重算该赛事所有报名者与上场者的评分（"报名且赛事已结束"才计入出勤）。
