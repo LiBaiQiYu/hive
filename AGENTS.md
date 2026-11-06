@@ -37,6 +37,8 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         `components/RankIcon.vue` 负责渲染；段位文字用 `rankLabel()`（冠绝与 0 星都不拼星级）。
         玩家卡左上角是 Steam/STRATZ 的公开头像（40px 圆、`referrerpolicy=no-referrer`、`@error` 自隐藏），
         没有头像时整块不渲染、布局回到原名+ID 的样子。
+        卡片材质 8 种，其中「无限镜」（`lib/infinity.ts`）是**创始人专属**：光廊按几何收敛 + 深度加权视差，
+        指针一动整条廊道的透视跟着转（canvas 逐帧重绘，见 docs/UI.md §10）。
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
         steam_id64 76561198659699463 / dota 699433735）。`STEAM_WEB_API_KEY` 生产与本地都已配置
         （本地在 `packages/api/.dev.vars`，改完**必须重启** `pnpm dev` 才注入），绑定时会带昵称头像，
@@ -55,7 +57,7 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
-pnpm sec:check      # 安全攻击用例 72 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
 ```
 
 交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`，改过鉴权/接口再补一条 `pnpm sec:check`。

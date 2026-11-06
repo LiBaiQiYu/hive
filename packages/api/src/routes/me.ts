@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ApiError, cardSkinSchema, newId, toCardSkin, updateProfileSchema } from '@hive/shared';
+import { ApiError, cardSkinSchema, isFounderOnlyMaterial, newId, toCardSkin, updateProfileSchema } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { intVar } from '../env';
 import { requireUser } from '../guard';
@@ -32,7 +32,8 @@ meRoutes.get('/', async (c) => {
     `SELECT id, username, email, display_name AS displayName, role, status,
             qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt,
             card_material AS cardMaterial, card_frame AS cardFrame,
-            card_frame_color AS frameColor, card_frame_effect AS frameEffect
+            card_frame_color AS frameColor, card_frame_effect AS frameEffect,
+            is_founder AS isFounder
        FROM users WHERE id = ?`,
   )
     .bind(userId)
@@ -41,6 +42,7 @@ meRoutes.get('/', async (c) => {
       cardFrame: string;
       frameColor: string;
       frameEffect: string;
+      isFounder: number;
       [key: string]: unknown;
     }>();
 
@@ -116,11 +118,12 @@ meRoutes.get('/', async (c) => {
     }>();
 
   if (!user) throw new ApiError('NOT_FOUND', '账号不存在');
-  const { cardMaterial, cardFrame, frameColor, frameEffect, ...profile } = user;
+  const { cardMaterial, cardFrame, frameColor, frameEffect, isFounder, ...profile } = user;
 
   return c.json({
     data: {
-      user: profile,
+      // founder 是布尔语义：库里是 0/1，别让前端去猜
+      user: { ...profile, founder: isFounder === 1 },
       cardSkin: toCardSkin({
         material: cardMaterial,
         frame: cardFrame,
@@ -414,6 +417,18 @@ meRoutes.put('/card-skin', async (c) => {
   }
 
   const { material, frame, frameColor, frameEffect } = parsed.data;
+
+  // 创始人专属材质：前端会藏掉入口，但藏按钮不是权限——请求可以手搓。
+  // 判定放在这里而不是 schema 里，是因为它依赖"谁在提交"，不是字段本身合法与否。
+  if (isFounderOnlyMaterial(material)) {
+    const me = await c.env.DB.prepare(`SELECT is_founder AS isFounder FROM users WHERE id = ?`)
+      .bind(userId)
+      .first<{ isFounder: number }>();
+    if (me?.isFounder !== 1) {
+      throw new ApiError('FORBIDDEN', '「无限镜」是创始人专属材质');
+    }
+  }
+
   await c.env.DB.prepare(
     `UPDATE users SET card_material = ?, card_frame = ?,
                       card_frame_color = ?, card_frame_effect = ?, updated_at = ?

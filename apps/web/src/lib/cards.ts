@@ -14,7 +14,8 @@ export type CardMaterial =
   | 'sparkle'
   | 'holo'
   | 'gold'
-  | 'psi';
+  | 'psi'
+  | 'infinity';
 export type CardFrame =
   | 'none'
   | 'hairline'
@@ -56,6 +57,11 @@ export const CARD_MATERIAL_OPTIONS: CardOption<CardMaterial>[] = [
   { value: 'holo', label: '全息', hint: '镭射菱格：青绿到紫的虹彩箔' },
   { value: 'gold', label: '金色', hint: '流动金箔：起伏的熔金色带' },
   { value: 'psi', label: '灵能', hint: '破碎色散：碎晶 + 棱镜光刃，倾斜时整片分光位移' },
+  {
+    value: 'infinity',
+    label: '无限镜',
+    hint: '无限镜面板：两面镜之间的光廊，指针移动时整条光廊的透视跟着位移（创始人专属）',
+  },
 ];
 
 export const CARD_FRAME_OPTIONS: CardOption<CardFrame>[] = [
@@ -99,6 +105,19 @@ const FRAMES = CARD_FRAME_OPTIONS.map((option) => option.value);
 const FRAME_COLORS = CARD_FRAME_COLOR_OPTIONS.map((option) => option.value);
 const FRAME_EFFECTS = CARD_FRAME_EFFECT_OPTIONS.map((option) => option.value);
 
+/** 创始人专属材质：与 @hive/shared 的 FOUNDER_ONLY_MATERIALS 保持一致 */
+const FOUNDER_ONLY: CardMaterial[] = ['infinity'];
+
+/**
+ * 当前身份能选的材质。
+ * 只做"藏入口"，真正的权限在 PUT /api/me/card-skin（手搓请求会被 403）。
+ */
+export function materialOptionsFor(founder: boolean): CardOption<CardMaterial>[] {
+  return founder
+    ? CARD_MATERIAL_OPTIONS
+    : CARD_MATERIAL_OPTIONS.filter((option) => !FOUNDER_ONLY.includes(option.value));
+}
+
 /** 只有发丝线和双线有额外的颜色 / 光效选项 */
 export function isFrameStyleFrame(frame: CardFrame): frame is 'hairline' | 'double' {
   return frame === 'hairline' || frame === 'double';
@@ -116,11 +135,12 @@ export function normalizeCardSkin(input?: Partial<CardSkin> | null): CardSkin {
   };
 }
 
-/** 「随便换一个」：材质 + 边框 + 配色 + 光效一起换 */
-export function randomCardSkin(): CardSkin {
+/** 「随便换一个」：材质 + 边框 + 配色 + 光效一起换；材质只在 founder 可选的范围内抽 */
+export function randomCardSkin(founder = false): CardSkin {
   const pick = <T extends string>(list: T[]): T => list[Math.floor(Math.random() * list.length)] as T;
+  const materials = founder ? MATERIALS : MATERIALS.filter((value) => !FOUNDER_ONLY.includes(value));
   return {
-    material: pick(MATERIALS),
+    material: pick(materials),
     frame: pick(FRAMES),
     frameColor: pick(FRAME_COLORS),
     frameEffect: pick(FRAME_EFFECTS),

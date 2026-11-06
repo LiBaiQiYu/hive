@@ -192,6 +192,7 @@ const previewPlayer = computed<PlayerCardData>(() => {
           :model-value="cardSkin"
           :saving="cardSkinSaving"
           :status="cardSkinStatus"
+          :founder="session.me?.user.founder === true"
           @update:model-value="onCardSkinChange"
         />
       </section>

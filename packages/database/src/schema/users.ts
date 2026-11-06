@@ -73,7 +73,7 @@ export const users = sqliteTable(
      * 不一致时 packages/api 的 card-skin 测试会直接失败。
      */
     cardMaterial: text('card_material', {
-      enum: ['basic', 'pixel', 'acrylic', 'sparkle', 'holo', 'gold', 'psi'],
+      enum: ['basic', 'pixel', 'acrylic', 'sparkle', 'holo', 'gold', 'psi', 'infinity'],
     })
       .notNull()
       .default('basic'),
@@ -94,6 +94,12 @@ export const users = sqliteTable(
     })
       .notNull()
       .default('steady'),
+    /**
+     * 创始人标记（0014 追加，物理位置在末尾）。
+     * 只用来解锁创始人专属的东西（目前是「无限镜」卡片材质），与 role 正交：
+     * role=ADMIN 是可以授予/撤销的角色，创始人是一次性身份。
+     */
+    isFounder: integer('is_founder').notNull().default(0),
   },
   (t) => [
     uniqueIndex('ux_users_username').on(t.username),

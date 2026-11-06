@@ -171,6 +171,24 @@ const tester = await login(newUser, newPass)
   }
 }
 
+/* ---------------------- 3b. 创始人专属卡片材质 ---------------------- */
+{
+  // 前端对非创始人藏掉了「无限镜」，但藏按钮不是权限：手搓这个请求必须被挡。
+  const skin = (material) => ({
+    material,
+    frame: 'hairline',
+    frameColor: 'auto',
+    frameEffect: 'steady',
+  })
+  const forbidden = await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin('infinity') })
+  check('授权', '非创始人保存「无限镜」被 403', forbidden.status === 403, `玩家 ${forbidden.status}`)
+
+  const normal = await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin('psi') })
+  check('授权', '普通材质照常可保存（对照组）', normal.status === 200, `玩家 ${normal.status}`)
+  // 复原，别给测试账号留状态
+  await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin('basic') })
+}
+
 /* ------------------------- 4. 输入 / 注入 / 越权 ------------------------ */
 {
   const me = (r) => r.json?.data?.user

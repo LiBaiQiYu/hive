@@ -5,6 +5,7 @@ import CardLineFX from './CardLineFX.vue';
 import HolographicSticker from './HolographicSticker.vue';
 import RankIcon from './RankIcon.vue';
 import { normalizeCardSkin, type CardSkin } from '../lib/cards';
+import { renderInfinityFrame } from '../lib/infinity';
 import { renderMetalFrame } from '../lib/metal';
 import { renderPixelFrame } from '../lib/pixel';
 import { renderPsiFrame } from '../lib/psi';
@@ -149,7 +150,7 @@ const surfaceCanvas = ref<HTMLCanvasElement | null>(null);
 let surfaceRaf = 0;
 let surfaceObserver: ResizeObserver | null = null;
 
-/** 按当前倾角重绘一帧卡面：金色走金属光照，像素走像素网格 */
+/** 按当前倾角重绘一帧卡面：金色走金属光照，像素走像素网格，无限镜走光廊透视 */
 function paintSurface() {
   const canvas = surfaceCanvas.value;
   if (!canvas) return;
@@ -160,6 +161,7 @@ function paintSurface() {
   if (skin.value.material === 'gold') renderMetalFrame(canvas, w, h, opts);
   else if (skin.value.material === 'pixel') renderPixelFrame(canvas, w, h, opts);
   else if (skin.value.material === 'psi') renderPsiFrame(canvas, w, h, opts);
+  else if (skin.value.material === 'infinity') renderInfinityFrame(canvas, w, h, opts);
 }
 
 function scheduleSurface() {
@@ -221,10 +223,13 @@ onBeforeUnmount(() => {
            .pcard-inner 是 preserve-3d，overflow:hidden 在 3D 上下文里不生效，
            直接放这里的话，倾斜时贴图/光斑会溢出卡片轮廓（踩过）。 -->
       <div class="pcard-deco" aria-hidden="true">
-        <!-- 金色/像素：canvas 程序化渲染（金属光照 / 像素网格），随倾斜重绘 -->
+        <!-- 金色/像素/灵能/无限镜：canvas 程序化渲染，随倾斜重绘（无限镜的透视位移也在这里） -->
         <canvas
           v-if="
-            skin.material === 'gold' || skin.material === 'pixel' || skin.material === 'psi'
+            skin.material === 'gold' ||
+            skin.material === 'pixel' ||
+            skin.material === 'psi' ||
+            skin.material === 'infinity'
           "
           ref="surfaceCanvas"
           class="pcard-surface"

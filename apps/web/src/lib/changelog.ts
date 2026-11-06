@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,14 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.3.0',
+    date: '2026-11-06',
+    items: [
+      '新增「无限镜」卡片材质，光廊随指针移动产生透视位移',
+      '无限镜为创始人专属材质，其余账号不可选用',
+    ],
+  },
   {
     version: '1.2.0',
     date: '2026-11-02',

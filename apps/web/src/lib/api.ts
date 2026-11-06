@@ -132,6 +132,8 @@ export interface Me {
     bio?: string | null;
     qqNumber?: string | null;
     role: 'PLAYER' | 'ADMIN';
+    /** 创始人：解锁创始人专属卡片材质（目前只有「无限镜」） */
+    founder?: boolean;
     /** 注册时间（秒级时间戳），账号设置页用来展示"注册于" */
     createdAt?: number;
   };

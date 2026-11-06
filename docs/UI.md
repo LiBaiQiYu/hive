@@ -311,12 +311,14 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
 
 玩家卡不是固定皮肤：每个账号在「我的 → 卡片外观」里自选材质 + 边框，报名名单里所有人看到的就是他自己选的那套。
 两个基础维度是**正交**的，一共 7 × 8 = 56 种组合；发丝线 / 双线另外各带 8 种颜色 × 3 种光效。
+「无限镜」是**创始人专属**的第 8 种材质：只对 `users.is_founder = 1` 的账号出现在选择器里，
+且 `PUT /api/me/card-skin` 会对着一个人再校验一次（手搓请求 403）——前端藏入口不是权限。
 
 > 名字下面那行 `DOTA2 109902856 ↗` 是玩家的数字 ID（绑定 Steam 或声明数字 ID 才有），点开直链 STRATZ 公开资料（新窗口，且**不**触发卡片的跳转——赛事页整卡是链接，这个锚点用 `@click.stop` 拦住了冒泡）。它的用途是**让别人核对**段位与战绩，不是装饰；对方没开「公开比赛数据」时第三方也查不到，徽章会停在「自报」。
 
 | 维度 | 取值 | 负责什么 |
 | --- | --- | --- |
-| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 | 底色、纹理、**整套字色**（正文 / 次要 / 强调 / 语义色）；`gold` / `pixel` / `psi` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts`），随倾斜重绘 |
+| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 / `infinity` 无限镜（创始人专属） | 底色、纹理、**整套字色**（正文 / 次要 / 强调 / 语义色）；`gold` / `pixel` / `psi` / `infinity` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts` / `infinity.ts`），随倾斜重绘 |
 | `frame` 边框 | `hairline` 发丝线 / `none` 无边 / `double` 双线 / `corners` 四角 / `bevel` 浮雕 / `frost` 霜线 / `spark` 电光 / `arc` 雷纹 | `none` / `bevel` 是静态 CSS；`corners`/`frost`/`spark` 走 **GPU 合成**（`components/CardFrameFX.vue` + `styles-frame-fx.css`，只动 transform / opacity）；`arc` 仍是逐帧动画 WebP（480×398，`apps/web/scripts/make_border_anims.py` 生成） |
 | `frameColor` 颜色 | `auto` 跟随材质 / `gold` 鎏金 / `ice` 霜蓝 / `cyan` 电青 / `violet` 灵紫 / `rose` 霓虹 / `emerald` 翡翠 / `rainbow` 流动彩色 | **只对发丝线 / 双线生效**；`auto` 吃材质自己的 `--skin-border`，其他值覆盖描边与光晕，`rainbow` 是旋转的 conic-gradient |
 | `frameEffect` 光效 | `steady` 常亮 / `breathe` 呼吸 / `blink` 闪烁 | 只对发丝线 / 双线生效；只动整层 `opacity`。`rainbow` 自带色相旋转，光效叠加在它上面 |
@@ -334,8 +336,11 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
    - 全息是五层结构（`HolographicSticker`）：深色金属底板 / 虹彩薄膜 / 微晶切面 / 金属外框 / 透明树脂。切面与高光带按 `--px` / `--py` 以不同幅度位移。
    - 金色的"反光"是两道错速滑动的镜面亮带（亮带紧跟一条暗带）+ 跟着指针的聚光 + 底边压暗，配上错位的金箔副本才有折射感。
    - 注意：`.pcard-depth` 带 `transform`，自成层叠上下文，**不要在它的伪元素上用 `mix-blend-mode`**（只会和透明底混合，等于白写）；`will-change` 也只在 `.is-active` 时挂，避免名单页十几张卡常驻合成层。
+   - **无限镜（`lib/infinity.ts`）**是唯一把"透视位移"画进 canvas 的材质：环按几何级数缩小（`0.885^n`，反射在深度上等距，投影到平面就是几何收敛），每环的视差按深度加权（`pow(深度, 1.5)`）——近环跟指针走得远、远环几乎不动，再叠加消失点整体位移，所以指针一动是"转过去看"而不是整张图平移。地板是把廊道沿地平线（`HORIZON = 0.78`）**镜像**一份压暗叠上去；文字压暗的先手顺序是「先压暗、后镜像」（反过来会把下半截糊掉）。近环光晕用两道描边（宽淡 + 窄亮）而不是 `shadowBlur`——每帧上百个 `shadowBlur` 会明显掉帧。
 6. **边框动效分三套**：`corners` / `frost` / `spark` 是 `components/CardFrameFX.vue` 的 CSS 图层，动画只用 transform / opacity（合成器逐帧插值，不重绘），配色读材质的 `--skin-*`；四角是四个镜像的角标（两条臂 + 沿臂巡游的光点 + 依次点亮的角光 + 角尖星点）。`hairline` / `double` 只要颜色 / 光效不是 `auto` + `steady`，就挂 `components/CardLineFX.vue`（发丝线 1px、双线 2px+1px 描边；流动彩色走 1px 遮罩环里的旋转 conic-gradient，呼吸 / 闪烁只动整层 opacity），同时把 `--skin-border-width` 归零、原生边框透明，避免出现两条描边。只有 `arc` 还是 `apps/web/scripts/make_border_anims.py` 生成的逐帧 WebP。`prefers-reduced-motion` 下三套都退回静态描边 / 静态角标，不播动画。
    - 只有 `hairline` / `double` 会在边框分组下面出现「颜色与光效」入口；点开是 `NModal` 弹窗，选色不离开弹窗，左侧卡片实时预览，`MePage` 的 350ms 防抖负责自动保存。
-7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
+7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006/0014）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
    `packages/api/src/card-skin.test.ts` 会比对迁移 SQL 与 shared 清单，漏改一侧直接红。
+   **0014 起要保住用户已选的皮肤**：删列前先把四列备份到临时表、重建后按 `id` 回填（0008 当年是删了直接加，等于把所有人的皮肤重置成默认值）。创始人专属材质还要在 `@hive/shared` 的 `FOUNDER_ONLY_MATERIALS` 里登记，`PUT /api/me/card-skin` 才对非创始人 403。
 8. **存储**：`users.card_material / card_frame / card_frame_color / card_frame_effect`，四个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame, frameColor, frameEffect }`，整份提交，不写审计、不重算评分、不冻快照。老客户端只传前两个字段时，服务端按 `auto` + `steady` 补齐。
+   `users.is_founder`（迁移 0014）只用来解锁创始人专属材质，`/api/me` 的 `user.founder` 是它的布尔投影；换人直接改这一列，不进管理后台。

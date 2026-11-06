@@ -169,7 +169,19 @@ export const CARD_MATERIALS = [
   'holo',
   'gold',
   'psi',
+  /** 无限镜：两面镜之间的光廊，随指针产生透视位移。**仅创始人可选** */
+  'infinity',
 ] as const;
+
+/**
+ * 创始人专属材质。清单放在 shared 而不是前端：
+ * 服务端要用同一份清单拒绝非创始人的提交，两边各写一份迟早漂移。
+ */
+export const FOUNDER_ONLY_MATERIALS = ['infinity'] as const;
+
+export function isFounderOnlyMaterial(material: string): boolean {
+  return (FOUNDER_ONLY_MATERIALS as readonly string[]).includes(material);
+}
 /** 边框：描边样式 */
 export const CARD_FRAMES = [
   'none',

@@ -10,6 +10,7 @@ import {
   CARD_MATERIAL_OPTIONS,
   DEFAULT_CARD_SKIN,
   isFrameStyleFrame,
+  materialOptionsFor,
   optionLabel,
   randomCardSkin,
   type CardFrameColor,
@@ -26,9 +27,14 @@ const props = defineProps<{
   modelValue: CardSkin;
   saving?: boolean;
   status?: string;
+  /** 创始人专属材质（无限镜）只对他显示；服务端另有 403 兜底 */
+  founder?: boolean;
 }>();
 
 const emit = defineEmits<{ 'update:modelValue': [value: CardSkin] }>();
+
+/** 当前身份能看到的材质清单（非创始人看不到无限镜） */
+const materialOptions = computed(() => materialOptionsFor(props.founder === true));
 
 /**
  * 本地草稿：props 要等父组件重渲染才更新，连着点两个维度时
@@ -112,7 +118,7 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
         </div>
         <div class="skin-swatches">
           <button
-            v-for="option in CARD_MATERIAL_OPTIONS"
+            v-for="option in materialOptions"
             :key="option.value"
             type="button"
             class="skin-swatch"
@@ -123,7 +129,10 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
             @click="pick('material', option.value)"
           >
             <span class="skin-chip" :data-material="option.value" aria-hidden="true" />
-            <span class="skin-swatch-label">{{ option.label }}</span>
+            <span class="skin-swatch-label">
+              {{ option.label }}
+              <span v-if="option.value === 'infinity'" class="skin-swatch-owner">创始人</span>
+            </span>
           </button>
         </div>
       </div>
@@ -178,7 +187,9 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
       </div>
 
       <div class="skin-actions">
-        <NButton :disabled="saving" @click="commit(randomCardSkin())">随便换一个</NButton>
+        <NButton :disabled="saving" @click="commit(randomCardSkin(props.founder === true))">
+          随便换一个
+        </NButton>
         <NButton quaternary :disabled="saving" @click="commit({ ...DEFAULT_CARD_SKIN })">
           恢复默认
         </NButton>
