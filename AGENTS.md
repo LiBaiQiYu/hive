@@ -37,8 +37,9 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         `components/RankIcon.vue` 负责渲染；段位文字用 `rankLabel()`（冠绝与 0 星都不拼星级）。
         玩家卡左上角是 Steam/STRATZ 的公开头像（40px 圆、`referrerpolicy=no-referrer`、`@error` 自隐藏），
         没有头像时整块不渲染、布局回到原名+ID 的样子。
-        卡片材质 8 种，其中「无限镜」（`lib/infinity.ts`）是**创始人专属**：光廊按几何收敛 + 深度加权视差，
-        指针一动整条廊道的透视跟着转（canvas 逐帧重绘，见 docs/UI.md §10）。
+        卡片材质 8 种，其中「无限镜」（`lib/infinity.ts`）是**创始人专属**：真三维光廊
+        （层间铺内壁、近层挡远层），相机角度严格跟卡片的 CSS 倾斜一致（±13°/±11°），
+        越深越暗越模糊（canvas 逐帧重绘 + 三段离屏模糊）。细节见 docs/UI.md §10。
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
         steam_id64 76561198659699463 / dota 699433735）。`STEAM_WEB_API_KEY` 生产与本地都已配置
         （本地在 `packages/api/.dev.vars`，改完**必须重启** `pnpm dev` 才注入），绑定时会带昵称头像，
