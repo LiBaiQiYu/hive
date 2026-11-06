@@ -41,6 +41,22 @@ const DEPTH_STEP = 0.18;
 /** 圆角矩形截面每个角取几个采样点（含端点） */
 const CORNER_STEPS = 3;
 
+const offscreenCache = new Map<string, { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D }>();
+
+function offscreenFor(w: number, h: number) {
+  const key = `${w}x${h}`;
+  const cached = offscreenCache.get(key);
+  if (cached) return cached;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  const entry = { canvas, ctx };
+  offscreenCache.set(key, entry);
+  return entry;
+}
+
 interface Point2 {
   x: number;
   y: number;
@@ -168,8 +184,8 @@ export function renderInfinityFrame(
   if (deepestGlow) {
     const glowR = Math.max(4, Math.min(w, h) * 0.16);
     const glow = ctx.createRadialGradient(deepestGlow.x, deepestGlow.y, 0, deepestGlow.x, deepestGlow.y, glowR);
-    glow.addColorStop(0, 'rgba(238, 251, 255, 0.55)');
-    glow.addColorStop(0.35, 'rgba(160, 225, 255, 0.18)');
+    glow.addColorStop(0, 'rgba(238, 251, 255, 0.42)');
+    glow.addColorStop(0.35, 'rgba(160, 225, 255, 0.14)');
     glow.addColorStop(1, 'rgba(80, 160, 255, 0)');
     ctx.fillStyle = glow;
     ctx.fillRect(deepestGlow.x - glowR, deepestGlow.y - glowR, glowR * 2, glowR * 2);
@@ -180,76 +196,118 @@ export function renderInfinityFrame(
     ctx.fillRect(deepestGlow.x - slitW / 2, deepestGlow.y - slitH / 2, slitW, slitH);
   }
 
-  /* -------------------------------------------------- 内侧壁 + 灯环：由远及近 */
+  /* ------------------------------------- 内侧壁 + 灯环：由远及近，并按深度模糊 */
   // 画法：从最里面一层往外画，越近的越后画 —— 近层自然盖住远层，
   // 于是斜着看只剩最前面几层（真实的遮挡关系，不是靠透明度装的）。
-  for (let layer = layers - 1; layer >= 1; layer -= 1) {
-    const far = projected[layer];
-    const near = projected[layer - 1];
-    if (!far || !near) continue;
+  //
+  // 每一段画到离屏画布上，再带着 blur 合成回主画布：深处的层因此同时
+  // 变暗**和**变糊。真实无限镜里每一次反射都会丢光、也会因为镜面不完美
+  // 和衍射而变糊；只压亮度的话，远层仍然是锐利的线稿，不像光的残影。
+  const off = offscreenFor(w, h);
 
-    const brightness = Math.pow(REFLECTANCE, layer);
-    const nearBrightness = Math.pow(REFLECTANCE, layer - 1);
+  const paintSegments = (target: CanvasRenderingContext2D, from: number, to: number): void => {
+    for (let layer = to; layer >= from; layer -= 1) {
+      if (layer < 1) continue;
+      const far = projected[layer];
+      const near = projected[layer - 1];
+      if (!far || !near) continue;
 
-    // 侧壁：连接第 layer-1 层与第 layer 层的对应采样点
-    for (let j = 0; j < section.length; j += 1) {
-      const a = near[j];
-      const b = near[(j + 1) % section.length];
-      const c = far[(j + 1) % section.length];
-      const d = far[j];
-      if (!a || !b || !c || !d) continue;
+      const brightness = Math.pow(REFLECTANCE, layer);
+      const nearBrightness = Math.pow(REFLECTANCE, layer - 1);
 
-      // 用截面上这一小段的"高度"做明暗：上壁接光多、下壁最暗；
-      // 再乘上"远端更暗"——同一段侧壁从近端到远端必须变暗，否则整条廊道像纸片
-      const midY = (section[j]!.y + section[(j + 1) % section.length]!.y) / 2;
-      const facing = 0.45 + 0.55 * (1 - (midY + hh) / (2 * hh));
-      const shade = Math.min(1, nearBrightness * facing * (0.55 + 0.45 * brightness));
+      // 侧壁：连接第 layer-1 层与第 layer 层的对应采样点
+      for (let j = 0; j < section.length; j += 1) {
+        const a = near[j];
+        const b = near[(j + 1) % section.length];
+        const c = far[(j + 1) % section.length];
+        const d = far[j];
+        if (!a || !b || !c || !d) continue;
 
-      const r = Math.round(3 + 12 * shade);
-      const g = Math.round(8 + 30 * shade);
-      const bl = Math.round(18 + 54 * shade);
+        // 用截面上这一小段的"高度"做明暗：上壁接光多、下壁最暗；
+        // 再乘上"远端更暗"——同一段侧壁从近端到远端必须变暗，否则整条廊道像纸片
+        const midY = (section[j]!.y + section[(j + 1) % section.length]!.y) / 2;
+        const facing = 0.45 + 0.55 * (1 - (midY + hh) / (2 * hh));
+        const shade = Math.min(1, nearBrightness * facing * (0.5 + 0.5 * brightness));
 
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.lineTo(c.x, c.y);
-      ctx.lineTo(d.x, d.y);
-      ctx.closePath();
-      ctx.fillStyle = `rgb(${r}, ${g}, ${bl})`;
-      ctx.fill();
-    }
+        const r = Math.round(3 + 12 * shade);
+        const g = Math.round(8 + 30 * shade);
+        const bl = Math.round(18 + 54 * shade);
 
-    // 灯环（这一层的 LED）：近层亮、远层暗，宽度也跟着透视缩
-    const ring = near;
-    const width = Math.max(0.5, 2.4 * Math.pow(nearBrightness, 0.6));
-    const alpha = Math.min(1, 0.96 * Math.pow(nearBrightness, 0.6));
+        target.beginPath();
+        target.moveTo(a.x, a.y);
+        target.lineTo(b.x, b.y);
+        target.lineTo(c.x, c.y);
+        target.lineTo(d.x, d.y);
+        target.closePath();
+        target.fillStyle = `rgb(${r}, ${g}, ${bl})`;
+        target.fill();
+      }
 
-    ctx.beginPath();
-    let started = false;
-    for (const p of ring) {
-      if (!p) continue;
-      if (!started) {
-        ctx.moveTo(p.x, p.y);
-        started = true;
-      } else {
-        ctx.lineTo(p.x, p.y);
+      // 灯环（这一层的 LED）：近层亮、远层暗，宽度也跟着透视缩。
+      // 衰减指数比 1 陡（0.85）：要的是"越深越暗"能一眼看出来，不是物理精度。
+      const ring = near;
+      const width = Math.max(0.5, 2.4 * Math.pow(nearBrightness, 0.7));
+      const alpha = Math.min(1, 0.96 * Math.pow(nearBrightness, 1.05));
+
+      target.beginPath();
+      let started = false;
+      for (const p of ring) {
+        if (!p) continue;
+        if (!started) {
+          target.moveTo(p.x, p.y);
+          started = true;
+        } else {
+          target.lineTo(p.x, p.y);
+        }
+      }
+      if (started) {
+        target.closePath();
+        target.lineJoin = 'round';
+        // 宽而淡的光晕 + 窄而亮的芯线，代替 shadowBlur（后者每帧上百次会掉帧）
+        target.lineWidth = width * 5;
+        target.strokeStyle = `rgba(120, 210, 255, ${alpha * 0.2})`;
+        target.stroke();
+        target.lineWidth = width;
+        target.strokeStyle = `rgba(232, 250, 255, ${alpha})`;
+        target.stroke();
+        // 最里面一道白芯：LED 在照片里几乎过曝，只有一条细白线，缺了它整串灯是灰的
+        target.lineWidth = Math.max(0.4, width * 0.42);
+        target.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, alpha * 1.05)})`;
+        target.stroke();
       }
     }
-    if (started) {
-      ctx.closePath();
-      ctx.lineJoin = 'round';
-      // 宽而淡的光晕 + 窄而亮的芯线，代替 shadowBlur（后者每帧上百次会掉帧）
-      ctx.lineWidth = width * 5;
-      ctx.strokeStyle = `rgba(120, 210, 255, ${alpha * 0.2})`;
-      ctx.stroke();
-      ctx.lineWidth = width;
-      ctx.strokeStyle = `rgba(232, 250, 255, ${alpha})`;
-      ctx.stroke();
-      // 最里面一道白芯：LED 在照片里几乎过曝，只有一条细白线，缺了它整串灯是灰的
-      ctx.lineWidth = Math.max(0.4, width * 0.42);
-      ctx.strokeStyle = `rgba(255, 255, 255, ${Math.min(1, alpha * 1.05)})`;
-      ctx.stroke();
+  };
+
+  if (off) {
+    const lastLayer = layers - 1;
+    // 深度分三段：越深越模糊，但不能每层单独过滤镜（几百个图元会卡死）。
+    // 每段先画到离屏画布、再整体 blur 一次合成回来 —— 一共 3 次滤镜，
+    // 视觉上就是"近处锐利、远处化开"。
+    const bounds = [
+      { from: Math.round(lastLayer * 0.62), to: lastLayer, blur: 4, alpha: 0.78 },
+      { from: Math.round(lastLayer * 0.34), to: Math.round(lastLayer * 0.62) - 1, blur: 1.8, alpha: 0.92 },
+      { from: 1, to: Math.round(lastLayer * 0.34) - 1, blur: 0, alpha: 1 },
+    ];
+
+    for (const band of bounds) {
+      if (band.to < band.from) continue;
+
+      off.ctx.clearRect(0, 0, w, h);
+      paintSegments(off.ctx, band.from, band.to);
+
+      ctx.save();
+      // 模糊量跟画布尺寸走：小卡片上 2.6px 会糊成一团，大画布上又不够
+      const blurPx = band.blur * Math.max(0.55, Math.min(w, h) / 240);
+      if (blurPx > 0.05) ctx.filter = `blur(${blurPx.toFixed(2)}px)`;
+      // 深处一段额外压一点整体不透明度：模糊会把几十圈光晕堆成一团白，
+      // 不压的话卡片中央过曝，"天梯 MMR" 这种小字就糊在光里了
+      ctx.globalAlpha = band.alpha;
+      ctx.drawImage(off.canvas, 0, 0);
+      ctx.restore();
     }
+  } else {
+    // 没有离屏画布（极端环境）就退化成不模糊
+    paintSegments(ctx, 1, layers - 1);
   }
 
   /* ------------------------------------------------------------ 玻璃质感 */
