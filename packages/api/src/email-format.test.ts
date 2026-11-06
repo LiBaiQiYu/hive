@@ -26,6 +26,14 @@ describe('dmarcPassed', () => {
     expect(dmarcPassed(ok)).toBe(true);
   });
 
+  it('真实头带附加信息时也算通过（dmarc=pass 后面跟原因）', () => {
+    const ok = headers({
+      'authentication-results':
+        'mx.cloudflare.net; spf=pass smtp.mailfrom=qq.com; dkim=pass header.d=qq.com; dmarc=pass (p=reject) header.from=qq.com',
+    });
+    expect(dmarcPassed(ok)).toBe(true);
+  });
+
   it('没有 Cloudflare 的结论头就不算通过（防伪造 From）', () => {
     expect(dmarcPassed(headers({}))).toBe(false);
     expect(dmarcPassed(headers({ 'authentication-results': 'mx.example.com; dmarc=pass' }))).toBe(
@@ -54,6 +62,28 @@ describe('buildMimeMessage', () => {
 
     const body = raw.split('\r\n\r\n')[1] ?? '';
     expect(Buffer.from(body.replace(/\r\n/g, ''), 'base64').toString('utf8')).toBe(text);
+  });
+
+  it('始终带 Message-ID（Cloudflare 的 reply() 缺了它直接抛错）', () => {
+    const raw = buildMimeMessage({
+      from: 'reset@hive.test',
+      to: 'player@example.com',
+      subject: 'x',
+      text: 'y',
+    });
+    expect(raw).toMatch(/^Message-ID: <[0-9a-f-]{36}@hive\.test>$/m);
+  });
+
+  it('原邮件有 Message-ID 时补 In-Reply-To / References，把回信串成一条会话', () => {
+    const raw = buildMimeMessage({
+      from: 'reset@hive.test',
+      to: 'player@example.com',
+      subject: 'x',
+      text: 'y',
+      inReplyTo: '<original@qq.com>',
+    });
+    expect(raw).toContain('In-Reply-To: <original@qq.com>');
+    expect(raw).toContain('References: <original@qq.com>');
   });
 
   it('行宽不超过 76 字符（邮局对长行敏感）', () => {

@@ -39,6 +39,10 @@ export async function handleInboundEmail(message: ForwardableEmailMessage, env: 
     const autoSubmitted = message.headers.get('auto-submitted');
     if (autoSubmitted && autoSubmitted.trim().toLowerCase() !== 'no') return;
 
+    // 回信要挂到原邮件线程上：Message-ID 既用于 In-Reply-To，Cloudflare 的
+    // reply() 也要求回信本身带 Message-ID（缺了会抛 no message-id set）
+    const incomingMessageId = message.headers.get('message-id');
+
     const user = await env.DB.prepare(
       `SELECT id, display_name AS displayName, status FROM users WHERE email = ?`,
     )
@@ -59,17 +63,38 @@ export async function handleInboundEmail(message: ForwardableEmailMessage, env: 
           ttlMinutes: RESET_TTL_MINUTES,
         });
         await message.reply(
-          new EmailMessage(to, from, buildMimeMessage({ from: to, to: from, ...mail })),
+          new EmailMessage(
+            to,
+            from,
+            buildMimeMessage({ from: to, to: from, inReplyTo: incomingMessageId, ...mail }),
+          ),
         );
         return;
       }
     }
 
+    // 没发链接时把判定依据打出来：线上排查"为什么没收到链接"只看这一行就够
+    console.log(
+      `[hive] 未生成重置链接 ${JSON.stringify({
+        from,
+        found: Boolean(user),
+        status: user?.status ?? null,
+        dmarc: dmarcPassed(message.headers),
+        originConfigured: origin.length > 0,
+        authResults: (message.headers.get('authentication-results') ?? '').slice(0, 200),
+      })}`,
+    );
+
     const notice = buildNoticeMail();
     await message.reply(
-      new EmailMessage(to, from, buildMimeMessage({ from: to, to: from, ...notice })),
+      new EmailMessage(
+        to,
+        from,
+        buildMimeMessage({ from: to, to: from, inReplyTo: incomingMessageId, ...notice }),
+      ),
     );
   } catch (err) {
-    console.error('[hive] 处理收信失败', err);
+    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error('[hive] 处理收信失败', detail);
   }
 }

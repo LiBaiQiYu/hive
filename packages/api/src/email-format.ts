@@ -20,14 +20,17 @@ export function parseAddress(raw: string | null | undefined): string | null {
 /**
  * Cloudflare 在投递给 Worker 之前会补一条 `Authentication-Results`，
  * 记录 SPF/DKIM/DMARC 结论。发件人自己也能塞同名头，所以只认
- * `mx.cloudflare.net` 那条里的 dmarc=pass。
+ * 含 `mx.cloudflare.net` 的那条里的 dmarc=pass。
+ *
+ * 真实头往往带附加信息（`dmarc=pass (p=reject) header.from=qq.com`），
+ * 不能拿整段做等值比较——按 ; 切开后前缀匹配。
  */
 export function dmarcPassed(headers: Headers): boolean {
   const raw = headers.get('authentication-results');
   if (!raw) return false;
   const lower = raw.toLowerCase();
   if (!lower.includes('mx.cloudflare.net')) return false;
-  return lower.split(';').some((token) => token.trim() === 'dmarc=pass');
+  return lower.split(';').some((token) => /^\s*dmarc=pass\b/.test(token));
 }
 
 function toBase64(text: string): string {
@@ -43,24 +46,39 @@ function wrap(value: string, width = 76): string {
   return chunks.join('\r\n');
 }
 
-/** 拼一封纯文本 MIME：主题用 RFC 2047 编码，正文 base64，避免中文被邮局截断 */
+/**
+ * 拼一封纯文本 MIME：主题用 RFC 2047 编码，正文 base64，避免中文被邮局截断。
+ *
+ * 必须带 `Message-ID`：Cloudflare 的 `message.reply()` 会把回信挂到原邮件的
+ * 线程上，缺这个头会直接抛 `no message-id set`（踩过）。
+ * 原邮件有 Message-ID 时再补 In-Reply-To / References，让客户端能把两封并成一条会话。
+ */
 export function buildMimeMessage(input: {
   from: string;
   to: string;
   subject: string;
   text: string;
+  inReplyTo?: string | null;
+  messageId?: string;
 }): string {
-  return [
+  const domain = input.from.split('@')[1] ?? 'localhost';
+  const messageId = input.messageId ?? `<${crypto.randomUUID()}@${domain}>`;
+  const headers = [
     `From: HIVE <${input.from}>`,
     `To: ${input.to}`,
     `Subject: =?UTF-8?B?${toBase64(input.subject)}?=`,
     `Date: ${new Date().toUTCString()}`,
+    `Message-ID: ${messageId}`,
+  ];
+  if (input.inReplyTo) {
+    headers.push(`In-Reply-To: ${input.inReplyTo}`, `References: ${input.inReplyTo}`);
+  }
+  headers.push(
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: base64',
-    '',
-    wrap(toBase64(input.text)),
-  ].join('\r\n');
+  );
+  return [...headers, '', wrap(toBase64(input.text))].join('\r\n');
 }
 
 /** 没有生成链接时的统一回信：不确认邮箱是否存在 */

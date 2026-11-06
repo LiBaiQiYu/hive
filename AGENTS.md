@@ -85,7 +85,8 @@ pnpm sec:check      # 安全攻击用例 72 项（含授权矩阵/注入/越权/
 | 只更新 `player_ratings` 的 `effective_rating` 会撞表上的 `CHECK (effective_rating = max(0, min(1000, system_rating + admin_adjustment)))`：改天梯分时系统分也会变，而 `system_rating` 还是旧值 | 任何改评分的语句都要**把 `system_rating` 与 `admin_adjustment` 一起写**（管理员设定天梯分就是这么做的）。另外 `rating_adjustments` 上有 `CHECK (old_adjustment <> new_adjustment)`，`0 → 0` 会被拒——没有真的改修正时别插这一行 |
 | 本地发信到 `reset@cwa1e.top` 收不到任何回信 | Email Routing 只在线上的边缘生效，`pnpm dev` 没有收信入口。本地要验接口就手动往 `password_resets` 插一条令牌（见 `docs/DEVELOPMENT.md` §8.0），别在本地反复发信 |
 | 线上发了重置申请却没收到回信 | 先看控制台：`reset@cwa1e.top` 是不是建成了 Custom address、动作是不是 **Send to Worker**、Worker 是否已部署过（带 `email()` handler 才会出现在下拉里）。再想想发件方式——**转发来的邮件或某些客户端 SPF/DKIM 不齐，`dmarc` 不是 pass**，按设计只回"没有生成重置链接"、不发链接 |
-| 老账号"没有邮箱"（`@hive.local` / `@hive.test` 这类占位地址）→ 邮件找回必然收不到 | 让本人在「账号设置 → 个人资料」把邮箱改成真地址：`PATCH /api/me` 的 `email` 必须同时带 `currentPassword`（错密码 401、被占用 409），并写审计 `user.email`。生产上 `byc1030` 当前就是 `byc1030@hive.local`，**要先改一次** |
+| 老账号"没有邮箱"（`@hive.local` / `@hive.test` 这类占位地址）→ 邮件找回必然收不到 | 让本人在「账号设置 → 个人资料」把邮箱改成真地址：`PATCH /api/me` 的 `email` 必须同时带 `currentPassword`（错密码 401、被占用 409），并写审计 `user.email`。生产上 `byc1030` 已改为 `625071316@qq.com`；其余占位地址用 `SELECT username, email FROM users WHERE email LIKE '%@hive.%'` 找出来逐个通知本人 |
+| 登录接口 200，但页面显示仍未登录；tail 里 `/api/me` 500 且错误是 `D1_ERROR: no such column: xxx` | 生产有**未应用的迁移**，而 `pnpm run deploy` 发出去的是**整个工作区**——别的 agent 刚写的、引用新列的代码也会被一起发到线上。症状与「登录没反应」一模一样。**部署前先 `npx wrangler d1 migrations list hive --remote -c packages/database/wrangler.d1.jsonc`，有 pending 就先 `pnpm db:migrate:remote`**（破坏性迁移前先 `pnpm db:backup`） |
 
 ## 关键设计决策（改了会连累别处）
 

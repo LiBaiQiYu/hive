@@ -70,7 +70,17 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 2. `pnpm db:generate` 产出新迁移；
 3. **手工补** Drizzle 表达不了的约束（`CHECK`、部分索引的 `WHERE`、跨表不变量）；
 4. `pnpm db:check` 必须双绿；
-5. `pnpm db:migrate:local` → 手工回归 → `staging` → 备份 → `production`。
+5. `pnpm db:migrate:local` → 手工回归 → `staging` → 备份 → `production`；
+6. **部署前确认生产没有 pending 迁移**：
+
+   ```bash
+   npx wrangler d1 migrations list hive --remote -c packages/database/wrangler.d1.jsonc
+   ```
+
+   这条不是形式主义：`pnpm run deploy` 发出去的是**整个工作区**，别人刚写、还没上库的代码
+   会跟着一起上线。漏了迁移的表现是——登录接口 200，但页面始终显示未登录，
+   Worker 日志里 `/api/me` 500 `D1_ERROR: no such column: xxx`。
+   **有 pending 就先 `pnpm db:backup` + `pnpm db:migrate:remote`，再 deploy。**
 
 铁律：`packages/database/migrations/*.sql` 一旦提交就是只读的。要改就新增一个迁移文件。
 
