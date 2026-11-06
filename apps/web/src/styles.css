@@ -609,6 +609,14 @@ a {
   line-height: 1.7;
 }
 
+/* 登录页的补充说明（忘记密码怎么处理）：比正文小一号，不要抢按钮的注意力 */
+.login-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
 .input {
   width: 100%;
   padding: 10px 12px;

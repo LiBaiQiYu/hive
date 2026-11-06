@@ -345,6 +345,11 @@ async function submitRegister() {
         <NButton type="primary" attr-type="submit" :disabled="submitting" :loading="submitting" block>
           {{ submitting ? '登录中…' : '登录' }}
         </NButton>
+        <!-- 没有邮件通道，密码只能由管理员重置；入口不藏着，但也不假装能自助找回 -->
+        <p class="login-hint">
+          忘记密码？本社区不通过邮箱找回——请联系管理员在「成员管理」里重置，
+          拿到临时密码后到「账号设置」自行修改。
+        </p>
       </form>
 
       <form v-else @submit.prevent="submitRegister">
