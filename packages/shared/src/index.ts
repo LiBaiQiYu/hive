@@ -123,6 +123,35 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
+/**
+ * 编辑资料（PATCH /api/me）。
+ *
+ * email 单独拿出来说：它决定"密码找回收信到哪"，所以改邮箱要同时提供当前密码——
+ * 只凭一个已登录的会话就能改收件地址，等于把别人的账号接管链路配好了。
+ * currentPassword 是否必填由路由按"邮箱有没有变"决定，schema 里只做形状校验。
+ */
+export const updateProfileSchema = z.object({
+  displayName: z.string().trim().min(1, '请填写显示名').max(32, '显示名最多 32 个字').optional(),
+  bio: z.string().trim().max(280, '简介最多 280 字').nullable().optional(),
+  qqNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{5,12}$/, 'QQ 号应为 5-12 位数字')
+    .nullable()
+    .optional(),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, '请填写邮箱')
+    .email('邮箱格式不正确，例如 name@qq.com')
+    .max(254, '邮箱过长')
+    .optional(),
+  currentPassword: z.string().max(72).optional(),
+});
+
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
 /* ==========================================================================
  * 玩家卡片外观（纯展示偏好，不参与评分 / 分队 / 快照）
  *

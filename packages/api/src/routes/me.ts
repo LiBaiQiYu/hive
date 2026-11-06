@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { ApiError, cardSkinSchema, newId, toCardSkin } from '@hive/shared';
+import { ApiError, cardSkinSchema, newId, toCardSkin, updateProfileSchema } from '@hive/shared';
 import type { AppEnv } from '../env';
+import { intVar } from '../env';
 import { requireUser } from '../guard';
+import { verifyPassword } from '../password';
 import { explainRejection, normalizePositions } from '../services/positions';
 import { fetchRankSnapshot } from '../services/rank-provider';
 import { recomputeUserRating } from '../services/rating';
@@ -27,7 +29,7 @@ meRoutes.get('/', async (c) => {
   const env = c.env;
 
   const user = await env.DB.prepare(
-    `SELECT id, username, display_name AS displayName, role, status,
+    `SELECT id, username, email, display_name AS displayName, role, status,
             qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt,
             card_material AS cardMaterial, card_frame AS cardFrame,
             card_frame_color AS frameColor, card_frame_effect AS frameEffect
@@ -288,32 +290,25 @@ meRoutes.put('/positions', async (c) => {
 /* --------------------------------------------------------------------------
  * PATCH /api/me —— 编辑资料
  *
- * 只允许改"自己说了算"的字段：显示名、简介、QQ。
+ * 只允许改"自己说了算"的字段：显示名、简介、QQ、邮箱。
  * 用户名是登录凭据、role 是权限、评分与段位归系统/管理员，这几样一律不接受客户端写入。
+ *
+ * 邮箱例外地要求当前密码：它决定密码找回收信到哪，一个已登录的会话就能改地址，
+ * 等于把接管账号的链路提前配好了。
  * ------------------------------------------------------------------------ */
-const patchSchema = z.object({
-  displayName: z.string().trim().min(1).max(32).optional(),
-  bio: z.string().trim().max(280).nullable().optional(),
-  qqNumber: z
-    .string()
-    .trim()
-    .regex(/^\d{5,12}$/, 'QQ 号应为 5-12 位数字')
-    .nullable()
-    .optional(),
-});
-
 meRoutes.patch('/', async (c) => {
   const userId = requireUser(c);
   const env = c.env;
 
-  const parsed = patchSchema.safeParse(await c.req.json().catch(() => null));
+  const parsed = updateProfileSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
   }
 
   const assignments: string[] = [];
   const values: unknown[] = [];
-  const { displayName, bio, qqNumber } = parsed.data;
+  const { displayName, bio, qqNumber, email, currentPassword } = parsed.data;
+  const now = Date.now();
 
   if (displayName !== undefined) {
     assignments.push('display_name = ?');
@@ -328,11 +323,41 @@ meRoutes.patch('/', async (c) => {
     values.push(qqNumber === null || qqNumber === '' ? null : qqNumber);
   }
 
+  // 邮箱：变了才校验密码与唯一性，并且留审计（收件地址变更属于敏感操作）
+  let emailChanged = false;
+  if (email !== undefined) {
+    const current = await env.DB.prepare(`SELECT email, password_hash AS passwordHash FROM users WHERE id = ?`)
+      .bind(userId)
+      .first<{ email: string; passwordHash: string }>();
+    if (!current) throw new ApiError('UNAUTHENTICATED', '会话已失效');
+
+    if (email !== current.email) {
+      if (!currentPassword) {
+        throw new ApiError('VALIDATION_FAILED', '修改邮箱需要输入当前密码');
+      }
+      const verified = await verifyPassword(
+        current.passwordHash,
+        currentPassword,
+        env.PASSWORD_PEPPER,
+        intVar(env.PASSWORD_PBKDF2_ITERATIONS, 50000),
+      );
+      if (!verified.ok) throw new ApiError('UNAUTHENTICATED', '当前密码不正确');
+
+      const taken = await env.DB.prepare(`SELECT id FROM users WHERE email = ? AND id <> ?`)
+        .bind(email, userId)
+        .first<{ id: string }>();
+      if (taken) throw new ApiError('CONFLICT', '这个邮箱已被其他账号使用');
+
+      assignments.push('email = ?');
+      values.push(email);
+      emailChanged = true;
+    }
+  }
+
   if (assignments.length === 0) {
     throw new ApiError('VALIDATION_FAILED', '没有需要更新的字段');
   }
 
-  const now = Date.now();
   assignments.push('updated_at = ?');
   values.push(now, userId);
 
@@ -342,12 +367,29 @@ meRoutes.patch('/', async (c) => {
       .run();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('UNIQUE')) throw new ApiError('CONFLICT', '这个 QQ 号已经被其他成员使用');
+    if (message.includes('UNIQUE')) throw new ApiError('CONFLICT', '这个 QQ 号或邮箱已经被其他成员使用');
     throw err;
   }
 
+  if (emailChanged) {
+    await env.DB.prepare(
+      `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id,
+         after_json, request_id, created_at)
+       VALUES (?, ?, 'PLAYER', 'user.email', 'user', ?, ?, ?, ?)`,
+    )
+      .bind(
+        newId(now),
+        userId,
+        userId,
+        JSON.stringify({ email }),
+        c.get('requestId') ?? null,
+        now,
+      )
+      .run();
+  }
+
   const user = await env.DB.prepare(
-    `SELECT id, username, display_name AS displayName, role, status,
+    `SELECT id, username, email, display_name AS displayName, role, status,
             qq_number AS qqNumber, avatar_url AS avatarUrl, bio
        FROM users WHERE id = ?`,
   )

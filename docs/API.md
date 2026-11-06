@@ -52,7 +52,7 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`gameAccount.avatarUrl` 是 Steam/STRATZ 抓来的公开头像（没抓到为 `null`，玩家卡据此决定是否渲染头像）。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
-| PATCH | `/api/me` | `{displayName?, bio?, qqNumber?}` |
+| PATCH | `/api/me` | `{displayName?, bio?, qqNumber?, email?, currentPassword?}`。改 `email` 时**必须**同时提供 `currentPassword`（密码错 → 401，邮箱被占用 → 409），并写审计 `user.email`——邮箱决定密码找回的信寄到哪 |
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
 | GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
 | GET | `/api/players` | 玩家列表，`?query=&position=&sort=rating|name&page=` |

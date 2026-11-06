@@ -5,8 +5,11 @@
  * 从「我的」拆出来的理由：显示名 / QQ / 简介是半年动一次的东西，
  * 和评分、卡面那种"改了立刻看到效果"的日常操作不该挤在同一页。
  * 显示名和简介会出现在玩家卡上，所以保存后要 loadMe 让全站拿到新值。
+ *
+ * 邮箱也在这一页，但它是例外：改邮箱要额外输当前密码，因为它决定
+ * "密码找回收信到哪"——只凭一个已登录的会话就能改收件地址是不安全的。
  */
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../HelpTip.vue';
 import { ApiError, api } from '../../lib/api';
@@ -14,7 +17,8 @@ import { loadMe, session } from '../../lib/session';
 
 const message = useMessage();
 
-const profile = ref({ displayName: '', bio: '', qqNumber: '' });
+const profile = ref({ displayName: '', bio: '', qqNumber: '', email: '' });
+const emailPassword = ref('');
 const profileSaving = ref(false);
 const profileError = ref('');
 const profileSaved = ref(false);
@@ -25,25 +29,35 @@ function fillProfile() {
     displayName: user?.displayName ?? '',
     bio: user?.bio ?? '',
     qqNumber: user?.qqNumber ?? '',
+    email: user?.email ?? '',
   };
 }
 
 watch(() => session.me?.user, fillProfile, { deep: true, immediate: true });
+
+/** 邮箱改了才需要当前密码；没改就不去打扰用户 */
+const emailChanged = computed(
+  () => profile.value.email.trim().toLowerCase() !== (session.me?.user.email ?? '').trim().toLowerCase(),
+);
 
 async function saveProfile() {
   profileSaving.value = true;
   profileError.value = '';
   profileSaved.value = false;
   try {
-    await api('/me', {
-      method: 'PATCH',
-      body: {
-        displayName: profile.value.displayName,
-        bio: profile.value.bio || null,
-        qqNumber: profile.value.qqNumber || null,
-      },
-    });
+    const body: Record<string, unknown> = {
+      displayName: profile.value.displayName,
+      bio: profile.value.bio || null,
+      qqNumber: profile.value.qqNumber || null,
+    };
+    if (emailChanged.value) {
+      body.email = profile.value.email.trim();
+      body.currentPassword = emailPassword.value;
+    }
+
+    await api('/me', { method: 'PATCH', body });
     await loadMe();
+    emailPassword.value = '';
     profileSaved.value = true;
     message.success('资料已保存');
   } catch (err) {
@@ -62,8 +76,8 @@ async function saveProfile() {
         title="哪些能改？"
         :steps="[
           '① 显示名、QQ、简介随时可以改',
-          '② 用户名不可修改——它是登录凭据',
-          '③ 评分与段位由系统和管理员维护，不接受自行填写',
+          '② 邮箱改过一次要输当前密码——它决定密码找回的信寄到哪',
+          '③ 用户名不可修改，它是登录凭据',
         ]"
       />
     </h2>
@@ -90,6 +104,43 @@ async function saveProfile() {
           v-model:value="profile.qqNumber"
           :maxlength="12"
           placeholder="例如 123456789"
+          size="medium"
+        />
+      </label>
+    </div>
+
+    <div
+      class="grid"
+      style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 14px"
+    >
+      <label class="field" style="margin: 0">
+        <span class="field-label">
+          邮箱
+          <HelpTip
+            title="邮箱用来做什么？"
+            :steps="[
+              '① 忘记密码时，用这个邮箱发一封信到 reset@ 就能收到重置链接',
+              '② 改成你常用的邮箱（QQ 邮箱、163 都行），收不到信就重置不了',
+              '③ 改邮箱需要输入当前密码',
+            ]"
+          />
+        </span>
+        <NInput
+          v-model:value="profile.email"
+          placeholder="例如 123456789@qq.com"
+          :input-props="{ autocomplete: 'email', spellcheck: 'false' }"
+          size="medium"
+        />
+      </label>
+
+      <label v-if="emailChanged" class="field" style="margin: 0">
+        <span class="field-label">当前密码（改邮箱需要）</span>
+        <NInput
+          v-model:value="emailPassword"
+          type="password"
+          show-password-on="click"
+          placeholder="输入当前的登录密码"
+          :input-props="{ autocomplete: 'current-password' }"
           size="medium"
         />
       </label>

@@ -9,7 +9,7 @@
  * 文案与前端 LoginPage 的 RULES 逐字一致——改一边就得改另一边。
  */
 import { describe, expect, it } from 'vitest';
-import { registerSchema } from '@hive/shared';
+import { registerSchema, updateProfileSchema } from '@hive/shared';
 
 const BASE = {
   username: 'byc1030',
@@ -83,5 +83,36 @@ describe('注册校验', () => {
     expect(firstMessage('email', { email: 'not-an-email' })).toBe(
       '邮箱格式不正确，例如 name@example.com',
     );
+  });
+});
+
+describe('updateProfileSchema（编辑资料）', () => {
+  it('邮箱统一小写并去掉首尾空格', () => {
+    const parsed = updateProfileSchema.safeParse({ email: '  Foo.Bar@QQ.COM  ' });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.data.email).toBe('foo.bar@qq.com');
+  });
+
+  it('格式不对时给示例，不是"输入不合法"', () => {
+    const parsed = updateProfileSchema.safeParse({ email: 'not-an-email' });
+    expect(parsed.success).toBe(false);
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.message).toContain('邮箱格式不正确');
+    }
+  });
+
+  it('currentPassword 只做形状校验，必不必填由路由按"邮箱有没有变"决定', () => {
+    expect(updateProfileSchema.safeParse({ displayName: '新名字' }).success).toBe(true);
+    expect(updateProfileSchema.safeParse({ email: 'a@b.cn' }).success).toBe(true);
+    expect(updateProfileSchema.safeParse({ email: 'a@b.cn', currentPassword: '' }).success).toBe(
+      true,
+    );
+  });
+
+  it('QQ 号仍按 5-12 位数字校验', () => {
+    const bad = updateProfileSchema.safeParse({ qqNumber: 'abc' });
+    expect(bad.success).toBe(false);
+    const ok = updateProfileSchema.safeParse({ qqNumber: '123456789' });
+    expect(ok.success).toBe(true);
   });
 });

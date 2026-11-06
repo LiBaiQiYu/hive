@@ -127,6 +127,8 @@ export interface Me {
     id: string;
     username: string;
     displayName: string;
+    /** 密码找回的收件地址；只有本人可见 */
+    email?: string;
     bio?: string | null;
     qqNumber?: string | null;
     role: 'PLAYER' | 'ADMIN';

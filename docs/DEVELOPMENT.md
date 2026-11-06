@@ -120,12 +120,17 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 Workers 免费版不能向任意邮箱发信，但 **Email Routing 收信免费且不限量**，所以流程反过来：
 
 ```
-玩家用注册邮箱 → 发一封空邮件到 reset@cwa1e.top
+玩家用注册邮箱发一封空邮件到 reset@cwa1e.top
         ↓ Email Routing 交给 Worker 的 email()
 Worker 校验：发件地址 == users.email、DMARC 通过、1 小时内未超 3 次
         ↓ message.reply()
 玩家收到回信 → 点链接 → /reset-password?token=… → 设置新密码
 ```
+
+> **前提：`users.email` 必须是真人能收到的地址。** 老账号里存在 `@hive.local`、
+> `@hive.test` 这类占位邮箱（本地测试库尤其多），这些账号收不到重置信。
+> 让本人在「账号设置 → 个人资料」把邮箱改成常用地址即可（改邮箱需输入当前密码，
+> 见 `PATCH /api/me`）；管理员自己的账号如果也是占位地址，同样要先改一次。
 
 控制台要做的两件事（代码替代不了）：
 
