@@ -1,6 +1,13 @@
 /** Worker 绑定的类型契约。与 packages/api/wrangler.jsonc 的 vars/secrets 一一对应。 */
+import type { EmailMessage } from 'cloudflare:email';
+
 export interface Env {
   DB: D1Database;
+  /**
+   * Cloudflare Email Sending 绑定（`wrangler.jsonc` 的 `send_email`）。
+   * 免费版只能发给"已验证目的地地址"，所以绑定是收窄的；本地 `pnpm dev` 没有它。
+   */
+  EMAIL?: { send(message: EmailMessage): Promise<void> };
   APP_ENV: string;
   APP_ORIGIN: string;
   PASSWORD_PEPPER: string;

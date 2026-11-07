@@ -170,9 +170,11 @@ export const teamMembers = sqliteTable(
     matchId: text('match_id')
       .notNull()
       .references(() => matches.id, { onDelete: 'cascade' }),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'restrict' }),
+    userId: text('user_id').references(() => users.id, { onDelete: 'restrict' }),
+    /** 临时参赛（没报名、没有账号）时的显示名；与 user_id 二选一 */
+    guestName: text('guest_name'),
+    /** 临时参赛者自报的天梯分；用于算快照评分，可空 */
+    guestMmr: integer('guest_mmr'),
     teamSide: text('team_side', { enum: ['RADIANT', 'DIRE'] }).notNull(),
     assignedPosition: integer('assigned_position').notNull(),
     /** 该玩家与所分配位置的契合度 0..100，编辑器用于提示"位置冲突" */
@@ -181,6 +183,7 @@ export const teamMembers = sqliteTable(
     adminAdjustmentSnapshot: integer('admin_adjustment_snapshot').notNull(),
     effectiveRatingSnapshot: integer('effective_rating_snapshot').notNull(),
     isSubstitute: integer('is_substitute', { mode: 'boolean' }).notNull().default(false),
+    isGuest: integer('is_guest', { mode: 'boolean' }).notNull().default(false),
     createdAt: integer('created_at').notNull().default(TS_NOW),
   },
   (t) => [
@@ -195,6 +198,39 @@ export const teamMembers = sqliteTable(
       .where(sql`${t.isSubstitute} = 0`),
     index('idx_team_members_match').on(t.matchId),
     index('idx_team_members_user').on(t.userId, t.matchId),
+  ],
+);
+
+/** 换人流水：正选没来 / 管理员主动换人时记一笔，阵容本身只保留最终结果 */
+export const matchSubstitutions = sqliteTable(
+  'match_substitutions',
+  {
+    id: text('id').primaryKey(),
+    matchId: text('match_id')
+      .notNull()
+      .references(() => matches.id, { onDelete: 'cascade' }),
+    teamId: text('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    outMemberId: text('out_member_id').notNull(),
+    outUserId: text('out_user_id').references(() => users.id, { onDelete: 'set null' }),
+    outName: text('out_name').notNull(),
+    inMemberId: text('in_member_id').notNull(),
+    inUserId: text('in_user_id').references(() => users.id, { onDelete: 'set null' }),
+    inName: text('in_name').notNull(),
+    inIsGuest: integer('in_is_guest', { mode: 'boolean' }).notNull().default(false),
+    teamSide: text('team_side', { enum: ['RADIANT', 'DIRE'] }).notNull(),
+    assignedPosition: integer('assigned_position').notNull(),
+    reason: text('reason', { enum: ['ABSENT', 'MANUAL'] }).notNull().default('ABSENT'),
+    note: text('note'),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer('created_at').notNull().default(TS_NOW),
+  },
+  (t) => [
+    index('idx_match_substitutions_match').on(t.matchId),
+    index('idx_match_substitutions_out_user').on(t.outUserId),
   ],
 );
 

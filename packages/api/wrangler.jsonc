@@ -60,6 +60,13 @@
     }
   ],
 
+  // --- 发信：Cloudflare Email Sending ---
+  // 免费版只能发给"已验证目的地地址"，所以绑定收窄到管理员邮箱：
+  // 越界地址会抛 E_RECIPIENT_NOT_ALLOWED（套餐边界，不是 bug）。
+  // 想发给全体玩家 = 升级 Workers Paid，或把每个收件箱逐个加进 Destination addresses。
+  // 域名 cwa1e.top 已开通（DKIM: cf2024-1._domainkey.cwa1e.top）。
+  "send_email": [{ "name": "EMAIL", "destination_address": "625071316@qq.com" }],
+
   // --- 异步任务：免费版没有 Queues，用 D1 表 sync_jobs 充当 outbox ---
   // 升级到 Workers 付费版后，把下面这段解除注释，并在 packages/api/src/jobs/ 中
   // 把 drainJobs() 换成 queue.send()：消息契约不变，业务代码无需改动。

@@ -7,6 +7,7 @@ import { countRegistrations, loadEvent, toEventView } from './events';
 import { planFinalize, type FinalizePolicy } from '../services/roster';
 import { recomputeEventRatings } from '../services/rating';
 import { benchToWaitlist } from '../services/finalize';
+import { notifyEventStartingSoon } from '../services/notify';
 import { sortWaitlist, type WaitlistPriorityRow } from '../services/waitlist';
 import {
   assertPromotable,
@@ -504,4 +505,50 @@ adminEventRoutes.post('/:id/registrations/:rid/promote', async (c) => {
     },
     meta: { requestId: c.get('requestId') },
   });
+});
+
+/* --------------------------------------------------------------------------
+ * 赛前提醒（邮件）
+ *
+ * 免费版只能发到"已验证目的地地址"，所以默认 TEST 模式只发管理员自己一封，
+ * 用来验证通道；`mode: 'ALL'` 才遍历确认名单（越界地址会逐条记为失败）。
+ * ------------------------------------------------------------------------ */
+const notifyStartingSoonSchema = z.object({
+  mode: z.enum(['TEST', 'ALL']).default('TEST'),
+});
+
+adminEventRoutes.post('/:id/notify-starting-soon', async (c) => {
+  const env = c.env;
+  const adminId = requireAdmin(c);
+  const event = await loadEvent(env, c.req.param('id'));
+
+  const parsed = notifyStartingSoonSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+  if (!event.starts_at) {
+    throw new ApiError('VALIDATION_FAILED', '这场赛事还没定开赛时间，发不了开赛提醒');
+  }
+
+  const admin = await env.DB.prepare(
+    `SELECT email, display_name AS displayName FROM users WHERE id = ?`,
+  )
+    .bind(adminId)
+    .first<{ email: string; displayName: string }>();
+
+  const counts = await countRegistrations(env, event.id);
+  const origin = (env.APP_ORIGIN ?? '').replace(/\/+$/, '');
+
+  const result = await notifyEventStartingSoon(env, {
+    eventId: event.id,
+    eventTitle: event.title,
+    startsAt: event.starts_at,
+    confirmed: counts.confirmed,
+    eventUrl: `${origin}/events/${event.id}`,
+    mode: parsed.data.mode,
+    extraRecipients: admin ? [{ email: admin.email, displayName: admin.displayName }] : [],
+    actorId: adminId,
+  });
+
+  return c.json({ data: result, meta: { requestId: c.get('requestId') } });
 });

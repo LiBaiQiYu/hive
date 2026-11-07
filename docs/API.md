@@ -127,8 +127,10 @@
 | PATCH | `/api/admin/matches/:id/lineup` | `{version, moves: [{teamMemberId, toSide, toPosition}]}`；整份提交、`version` 不符返回 `CONFLICT`；只允许 `DRAFT`；服务端重算契合度与两队总分并 `version+1` |
 | POST | `/api/admin/matches/:id/regenerate` | `{seed}`，仅 `DRAFT`；`version` 不变，`generation_seed` 更新 |
 | POST | `/api/admin/matches/:id/publish` | 校验 10 人 / 位次唯一 / 两侧各 5 人 → 冻结快照 → `PUBLISHED` |
+| GET | `/api/admin/matches/:id/substitutes` | 换人候选：本赛事已报名、还没进这场阵容的玩家（按出勤率 → 评分 → 报名时间排序，`busyInMatchNo` 标记已在其它场次）；同时返回本场换人流水 `history` |
+| POST | `/api/admin/matches/:id/substitutions` | `{outMemberId, inUserId?, guest?: {name, mmr?}, reason?, note?}`；`inUserId` 与 `guest` 二选一。允许 `DRAFT` / `PUBLISHED` / `IN_PROGRESS`。换下原队员、按同一位置插入替补（临时参赛者 `user_id` 为空、只存名字），重算队伍总分/分差、`version+1`、写 `match_substitutions` 与审计 `match.substitute` |
 | POST | `/api/admin/matches/:id/void` | 流局，`VOID` |
-| GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度 |
+| GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度；临时参赛者 `userId` 为 `null`、`isGuest=1` |
 
 `PATCH lineup` 的响应必须带实时汇总，前端不用自己算：
 
@@ -197,6 +199,7 @@
 | POST | `/api/admin/events/:id/registrations/:rid/promote` | 候补转正：置 `CONFIRMED` 并清空 `waitlist_position`，同一 batch 内把剩余候补重排为 1..n；正选已满、非候补、赛事已发布时返回 `CONFLICT` |
 | PATCH | `/api/admin/users/:id/role` | `{role: "PLAYER" \| "ADMIN"}`；不能改自己的角色，也不能把最后一名管理员降级（`CONFLICT`），写审计 `user.role` |
 | POST | `/api/admin/users/:id/reset-password` | 生成一次性临时密码（12 位、去掉易混字符），同时清空失败次数与锁定、**作废该用户全部会话**；响应里只出现一次，不写进审计（审计只记 `user.password-reset` 与会话数）。不能重置自己（`CONFLICT`），停用账号返回 `CONFLICT` |
+| POST | `/api/admin/events/:id/notify-starting-soon` | `{mode: "TEST" \| "ALL"}`（默认 `TEST`）：发「赛前提醒」邮件。`TEST` 只发管理员自己一封（验通道），`ALL` 遍历确认名单里**可收信**的地址。返回 `{total, withEmail, sent, failed, error?}`；`error` 是 Cloudflare 原始错误码 + 一句中文处置建议。写审计 `event.notify`（`kind: "STARTING_SOON"`）。赛事没有 `startsAt` 时 `VALIDATION_FAILED` |
 
 状态流转是白名单表，非法流转返回 `CONFLICT`，且每次流转写 `audit_logs`（`event.transition`，前后状态）。
 转到 `COMPLETED` 时会自动重算该赛事所有报名者与上场者的评分（"报名且赛事已结束"才计入出勤）。

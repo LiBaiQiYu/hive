@@ -21,6 +21,10 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
         战绩页（我的对局 + 全员胜场；胜负来自管理员赛后选的胜负方，不含 KDA）
         后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）
+              **阵容换人（替补 / 临时参赛）**：每个位置一个「换人」，可从本赛事没上场的报名者里挑，
+              也可以让没报名的人临时参赛（只填名字，可选天梯分）；发布后仍可操作，写 `match_substitutions`
+              流水与 `match.substitute` 审计。临时参赛者 `team_members.user_id` 为 NULL、只有 `guest_name/guest_mmr`，
+              不进排行榜/战绩（没有账号）
               成员管理（授予/撤销管理员、重置密码，禁止改自己、禁止降级最后一名管理员）
               队列健康（`/admin/jobs`，DEAD 可重试）、审计日志（`/admin/audit`，只读可筛）
               概览仪表盘（成员/赛事/本月报名/待发布/任务积压）
@@ -95,6 +99,7 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | `estimateMmr(rankTier, declaredMmr)` 的入参顺序容易写反（两个都是 `number \| null`，TS 不报错） | 段位模式和分数字段写反时，评分计划里会出现"段位 45 → 系统分 5"这种数：本地实测过一次，落库后被 `recomputeUserRating` 纠正回 293，但审计/历史里留下了错的中间值。**改这条路径后一定本地跑一遍两种模式**，看 `mmr` / `system` 是否符合预期 |
 | 写"系统任务"时给 `matches.created_by` 传 `null` → `D1_ERROR: NOT NULL constraint failed: matches.created_by`（Cron 自动分队踩过） | `matches.created_by` / `events.created_by` 都是 `NOT NULL` 外键。系统任务没有"人"可填，就把 `actor.id` 填成赛事创建者（`events.created_by`），`actor.role` 仍记 `SYSTEM`——审计里照样看得出是自动跑的 |
 | 部署完立刻抓首页核对新代码，结果 bundle 里什么都找不到（以为没生效） | 刚发版的那几秒，边缘还在返回旧的 `index.html`（`Cache-Control: max-age=0, must-revalidate` 不等于立即刷新）。看 `curl -D -` 的 `ETag` 变没变，等 10~30 秒再取一次；确认时按 HTML 里当前的 `<script src>` 名重新下载，别用发版前记下的 chunk 名 |
+| 发信接口返回 200 但 `sent: 0`，`error` 是 `E_RECIPIENT_NOT_ALLOWED: destination address is not a verified address` | 不是代码问题：免费版只放行**已验证目的地地址**。`wrangler email routing addresses create <email>` 先把确认信发出去，本人在收件箱点掉链接（`wrangler email routing addresses list` 里 `verified` 从 `pending` 变 `verified`），再调一次接口就发出去了。`send_email` 绑定已收窄成管理员那一个地址，别"顺手"放宽（放宽＝要 Workers Paid） |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -121,6 +126,10 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 - **密码找回走"收信 → 回信"**：免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到 `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，用 `message.reply()` 回一封带一次性令牌的链接。令牌只存 `sha256`、30 分钟、一次性，重置成功作废该账号全部会话。**控制台还要把 `reset@cwa1e.top` 建为 Custom address 并指到 Worker**，代码替代不了这一步。
 - **`email_confirmed_at` 只是提示状态**：不参与鉴权，也不代表地址真的可达（我们没有发确认信的能力）。它只决定顶部提醒条是否出现（`components/EmailReminder.vue`），换邮箱会清空要求重新确认。别拿它当"已验证邮箱"用。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
+- **换人只补阵容、不改历史**：`match_substitutions` 记流水（换下谁、换上谁、哪个位置、操作人），
+  阵容最终以 `team_members` 为准。临时参赛者 `user_id IS NULL`、只有 `guest_name/guest_mmr`，
+  所有按 user 聚合的统计（排行榜、战绩、评分重算）天然跳过他们；替补用当时评分做快照，换完重算队伍总分与分差，
+  但不回溯改报名快照。已 `PUBLISHED` 的比赛允许换人（比赛开始前才有人说来不了），`COMPLETED` / `VOID` 不允许。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
 - 所有 `db.batch()` 是事务：分组落库、封盘、评分修正都靠它，别拆成多次单条写入。
 

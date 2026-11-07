@@ -868,6 +868,18 @@ a {
   font-size: 13px;
 }
 
+.slot-guest-tag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 162, 39, 0.45);
+  color: var(--gold-2);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .vs {
   align-self: center;
   font-family: var(--display);

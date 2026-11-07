@@ -14,6 +14,7 @@ import { NButton, NInput, NPopconfirm, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
 import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import { ApiError, api, formatDate } from '../lib/api';
+import { formatDuration } from '../lib/duration';
 import { session } from '../lib/session';
 
 interface PlayerProfile {
@@ -134,13 +135,6 @@ const backLink = computed(() =>
     ? { to: '/me', label: '返回我的主页' }
     : { to: '/leaderboard', label: '返回排行榜' },
 );
-
-function duration(seconds: number | null): string {
-  if (!seconds) return '—';
-  const minutes = Math.floor(seconds / 60);
-  const rest = seconds % 60;
-  return `${minutes}:${String(rest).padStart(2, '0')}`;
-}
 
 /* ---------------------------------------------------------------- 点赞点踩 */
 const reactionBusy = ref(false);
@@ -378,7 +372,7 @@ watch(playerId, async () => {
                     {{ match.won ? '胜' : '负' }}
                   </span>
                 </td>
-                <td class="num mono muted">{{ duration(match.durationSeconds) }}</td>
+                <td class="num mono muted">{{ formatDuration(match.durationSeconds) }}</td>
               </tr>
             </tbody>
           </table>

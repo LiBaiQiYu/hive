@@ -7,6 +7,7 @@ import RankMedal from '../components/RankMedal.vue';
 import VerificationFilter from '../components/VerificationFilter.vue';
 import VerificationTag from '../components/VerificationTag.vue';
 import { ApiError, api, formatDate } from '../lib/api';
+import { formatDuration } from '../lib/duration';
 import { mmrHint } from '../lib/rank';
 import {
   filterPlayers,
@@ -98,13 +99,6 @@ onMounted(async () => {
 });
 
 const pct = (bp: number | null) => (bp === null ? '—' : `${(bp / 100).toFixed(0)}%`);
-
-function duration(seconds: number | null): string {
-  if (!seconds) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 </script>
 
 <template>
@@ -201,7 +195,7 @@ function duration(seconds: number | null): string {
                       {{ item.won ? '胜' : '负' }}
                     </span>
                   </td>
-                  <td class="num mono muted">{{ duration(item.durationSeconds) }}</td>
+                  <td class="num mono muted">{{ formatDuration(item.durationSeconds) }}</td>
                 </tr>
               </tbody>
             </table>

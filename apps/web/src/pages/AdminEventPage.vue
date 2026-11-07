@@ -6,12 +6,15 @@ import {
   NDatePicker,
   NInput,
   NInputNumber,
+  NModal,
   NPopconfirm,
   NSelect,
+  NTimePicker,
   useDialog,
   useMessage,
 } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import { formatDuration } from '../lib/duration';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
 import RankMedal from '../components/RankMedal.vue';
@@ -63,8 +66,11 @@ interface MatchRow {
 
 interface LineupMember {
   id: string;
-  userId: string;
-  displayName: string;
+  /** 临时参赛者没有账号 */
+  userId: string | null;
+  displayName: string | null;
+  isGuest: number;
+  guestMmr: number | null;
   position: number;
   fitScore: number;
   effectiveRating: number;
@@ -153,6 +159,47 @@ function toggleEdit() {
   }
   openEdit();
 }
+
+/* ------------------------------------------------- 赛前提醒（邮件） --------- */
+
+const notifyBusy = ref(false);
+
+interface NotifyResponse {
+  total: number;
+  withEmail: number;
+  sent: number;
+  failed?: number;
+  error?: string;
+}
+
+/**
+ * TEST = 只发给管理员自己（验证通道用）；ALL = 全体可收信的确认玩家。
+ * 免费版只放行"已验证目的地地址"，所以 MOST 情况下只有管理员那封真的会出去。
+ */
+async function notifyStartingSoon(mode: 'TEST' | 'ALL') {
+  notifyBusy.value = true;
+  error.value = '';
+  try {
+    const result = await api<NotifyResponse>(
+      `/admin/events/${eventId}/notify-starting-soon`,
+      { method: 'POST', body: { mode } },
+    );
+    if (result.sent > 0) {
+      toast.success(`已发出 ${result.sent} 封${result.failed ? `，${result.failed} 封失败` : ''}`);
+    } else {
+      // 失败原因原样带出来：多数是目的地没验证，照提示去控制台点一下就好
+      toast.error(result.error ?? '没有发出任何邮件');
+    }
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : '发送失败';
+    toast.error(error.value);
+  } finally {
+    notifyBusy.value = false;
+  }
+}
+
+const notifyTest = () => notifyStartingSoon('TEST');
+const notifyAll = () => notifyStartingSoon('ALL');
 
 const confirmed = computed(() => regs.value.filter((r) => r.status === 'CONFIRMED'));
 const waitlist = computed(() => regs.value.filter((r) => r.status === 'WAITLIST'));
@@ -367,35 +414,56 @@ async function doGenerate() {
 const publish = (matchId: string) =>
   run(() => api(`/admin/matches/${matchId}/publish`, { method: 'POST', body: {} }), '阵容已发布');
 
-/** 每场比赛单独记一个时长效，避免给多场比赛共享一个输入框 */
+/** 每场比赛单独记一个时长效，避免给多场比赛共享一个输入框（单位：秒） */
 const durations = ref<Record<string, number | undefined>>({});
 
-const record = (matchId: string, radiantWin: boolean) =>
-  run(
+/** 时长允许范围，与后端 result 接口的 zod 校验保持一致 */
+const DURATION_MIN = 300;
+const DURATION_MAX = 14_400;
+
+/**
+ * NTimePicker 用时间戳表达"时分秒"，和日期无关。
+ * 固定一个基准日，换算时只取时/分/秒，避免跨天/时区把小时数算错。
+ */
+const DURATION_BASE = new Date(2000, 0, 1, 0, 0, 0, 0).getTime();
+
+function durationValue(matchId: string): number | null {
+  const seconds = durations.value[matchId];
+  return typeof seconds === 'number' ? DURATION_BASE + seconds * 1000 : null;
+}
+
+function setDuration(matchId: string, value: number | null): void {
+  if (value === null) {
+    delete durations.value[matchId];
+    return;
+  }
+  const picked = new Date(value);
+  durations.value[matchId] =
+    picked.getHours() * 3600 + picked.getMinutes() * 60 + picked.getSeconds();
+}
+
+const record = (matchId: string, radiantWin: boolean) => {
+  const seconds = durations.value[matchId];
+  if (typeof seconds === 'number' && (seconds < DURATION_MIN || seconds > DURATION_MAX)) {
+    error.value = '时长需在 5 分钟到 4 小时之间';
+    toast.error(error.value);
+    return;
+  }
+  return run(
     () =>
       api(`/admin/matches/${matchId}/result`, {
         method: 'POST',
-        body: {
-          radiantWin,
-          durationSeconds:
-            typeof durations.value[matchId] === 'number' ? durations.value[matchId] : undefined,
-        },
+        body: { radiantWin, durationSeconds: seconds },
       }),
     radiantWin ? '已记录：Radiant 胜' : '已记录：Dire 胜',
   );
+};
 
 const voidMatch = (matchId: string) =>
   run(
     () => api(`/admin/matches/${matchId}/void`, { method: 'POST', body: { reason: '管理员流局' } }),
     '已流局（数据保留，战绩与审计不受影响）',
   );
-
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 
 /**
  * 打开某一场的阵容抽屉。
@@ -410,6 +478,8 @@ async function openLineup(matchId: string) {
   error.value = '';
   try {
     applyLineup(await api<LineupView>(`/admin/matches/${matchId}/lineup`));
+    // 换人流水跟着阵容一起刷新，抽屉里能直接看到"谁换下了谁"
+    await loadSubstitutes();
   } catch (err) {
     openMatchId.value = null;
     error.value = err instanceof ApiError ? err.message : '加载阵容失败';
@@ -436,6 +506,7 @@ async function reloadOpenLineup() {
   }
   try {
     applyLineup(await api<LineupView>(`/admin/matches/${id}/lineup`));
+    await loadSubstitutes();
   } catch {
     closeLineup();
   }
@@ -478,6 +549,110 @@ const dragFrom = ref<{ side: string; position: number } | null>(null);
 const savingLineup = ref(false);
 
 const editable = computed(() => lineup.value?.match.status === 'DRAFT');
+
+/* ---------------------------------------------------------------- 替补 / 临时参赛 */
+interface SubBenchRow {
+  userId: string;
+  displayName: string;
+  effectiveRating: number;
+  attendanceBp: number | null;
+  busyInMatchNo: number | null;
+}
+
+interface SubHistoryRow {
+  id: string;
+  outName: string;
+  inName: string;
+  inIsGuest: number;
+  teamSide: string;
+  position: number;
+  reason: string;
+  createdAt: number;
+}
+
+const substituteOpen = ref(false);
+const substituteLoading = ref(false);
+const substituteSaving = ref(false);
+const substituteTarget = ref<{ id: string; name: string; side: string; position: number } | null>(null);
+const substituteBench = ref<SubBenchRow[]>([]);
+const substituteHistory = ref<SubHistoryRow[]>([]);
+const substituteMode = ref<'bench' | 'guest'>('bench');
+const substitutePickId = ref<string | null>(null);
+const substituteGuest = ref<{ name: string; mmr: number | null }>({ name: '', mmr: null });
+
+/** 已发布的阵容也能换人（比赛开始前才有人说来不了），只有结束/流局不行 */
+const canSubstitute = computed(() =>
+  ['DRAFT', 'PUBLISHED', 'IN_PROGRESS'].includes(lineup.value?.match.status ?? ''),
+);
+
+function openSubstitute(member: LineupMember, side: string) {
+  substituteTarget.value = {
+    id: member.id,
+    name: member.displayName ?? '未知',
+    side,
+    position: member.position,
+  };
+  substituteMode.value = 'bench';
+  substitutePickId.value = null;
+  substituteGuest.value = { name: '', mmr: null };
+  substituteOpen.value = true;
+  void loadSubstitutes();
+}
+
+async function loadSubstitutes() {
+  const matchId = lineup.value?.match.id;
+  if (!matchId) return;
+  substituteLoading.value = true;
+  try {
+    const view = await api<{ bench: SubBenchRow[]; history: SubHistoryRow[] }>(
+      `/admin/matches/${matchId}/substitutes`,
+    );
+    substituteBench.value = view.bench;
+    substituteHistory.value = view.history;
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : '加载替补名单失败';
+  } finally {
+    substituteLoading.value = false;
+  }
+}
+
+const substituteReady = computed(() => {
+  if (substituteMode.value === 'bench') return Boolean(substitutePickId.value);
+  return substituteGuest.value.name.trim().length > 0;
+});
+
+async function confirmSubstitute() {
+  const matchId = lineup.value?.match.id;
+  const target = substituteTarget.value;
+  if (!matchId || !target || !substituteReady.value) return;
+  substituteSaving.value = true;
+  try {
+    const body =
+      substituteMode.value === 'bench'
+        ? { outMemberId: target.id, inUserId: substitutePickId.value, reason: 'ABSENT' }
+        : {
+            outMemberId: target.id,
+            guest: { name: substituteGuest.value.name.trim(), mmr: substituteGuest.value.mmr },
+            reason: 'ABSENT',
+          };
+    applyLineup(await api<LineupView>(`/admin/matches/${matchId}/substitutions`, { method: 'POST', body }));
+    toast.success(
+      substituteMode.value === 'bench'
+        ? '已换上替补'
+        : `已记入临时参赛：${substituteGuest.value.name.trim()}`,
+    );
+    substituteOpen.value = false;
+    await loadSubstitutes();
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : '换人失败';
+  } finally {
+    substituteSaving.value = false;
+  }
+}
+
+const substituteTime = (value: number) =>
+  new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+
 
 /** 把队伍摊成 5 个固定槽位，空位也要画出来（否则拖过去没地方落） */
 function slotsOf(team: LineupTeam) {
@@ -669,6 +844,27 @@ const statusPill = (status: string) => {
           <NButton :disabled="busy" @click="refresh">刷新</NButton>
         </div>
 
+        <!-- 赛前提醒：免费版只能发到"已验证目的地地址"，所以默认只发管理员自己一封 -->
+        <div v-if="event.startsAt" class="toolbar" style="margin-top: 12px">
+          <span class="muted" style="font-size: 12px">开赛提醒（邮件）</span>
+          <NButton :disabled="busy || notifyBusy" :loading="notifyBusy" @click="notifyTest">
+            发一封给管理员（测试）
+          </NButton>
+          <NButton :disabled="busy || notifyBusy" @click="notifyAll">
+            发给全部确认玩家
+          </NButton>
+          <HelpTip
+            wide
+            title="邮件能不能发出去？"
+            :steps="[
+              '① 免费版只能发到 Cloudflare 里验证过的「目的地地址」',
+              '② 没验证的地址会失败，错误码 E_RECIPIENT_NOT_ALLOWED',
+              '③ 想发给全体玩家：把每个收件箱加进 Destination addresses，或升级 Workers Paid',
+            ]"
+            note="测试信只发给管理员自己；两个按钮都会写一条 event.notify 审计。"
+          />
+        </div>
+
         <!-- 编辑面板：容量与赛程只在草稿/报名中可改 -->
         <div v-if="editing" class="card" style="margin-top: 14px; padding: 14px">
           <div class="event-edit">
@@ -811,14 +1007,16 @@ const statusPill = (status: string) => {
 
               <div class="match-actions" @click.stop>
                 <template v-if="match.status === 'PUBLISHED' || match.status === 'IN_PROGRESS'">
-                  <NInputNumber
-                    v-model:value="durations[match.id]"
-                    :min="300"
-                    :max="14400"
-                    :show-button="false"
-                    placeholder="时长(秒)"
-                    style="width: 118px"
+                  <NTimePicker
+                    :value="durationValue(match.id)"
+                    format="HH:mm:ss"
+                    :actions="['clear', 'confirm']"
+                    clearable
+                    placeholder="时长"
+                    title="比赛时长（时:分:秒），5 分钟 – 4 小时"
+                    style="width: 128px"
                     size="small"
+                    @update:value="setDuration(match.id, $event)"
                   />
                   <NButton quaternary :disabled="busy" @click="record(match.id, true)">
                     Radiant 胜
@@ -919,7 +1117,10 @@ const statusPill = (status: string) => {
                     >
                       <span class="slot-pos">{{ slot.position }} 号位</span>
                       <template v-if="slot.member">
-                        <span class="slot-name">{{ slot.member.displayName }}</span>
+                        <span class="slot-name">
+                          {{ slot.member.displayName }}
+                          <span v-if="slot.member.isGuest" class="slot-guest-tag">临时</span>
+                        </span>
                         <span
                           class="slot-rating"
                           :style="slot.member.fitScore < 40 ? 'color: var(--amber)' : ''"
@@ -927,9 +1128,32 @@ const statusPill = (status: string) => {
                         >
                           {{ slot.member.fitScore }}
                         </span>
+                        <button
+                          v-if="canSubstitute"
+                          type="button"
+                          class="slot-sub-btn"
+                          title="没来？换人或让临时参赛者顶上"
+                          @click.stop="openSubstitute(slot.member, team.side)"
+                        >
+                          换人
+                        </button>
                       </template>
                       <span v-else class="muted" style="font-size: 12px">空</span>
                     </div>
+                  </div>
+                </div>
+
+                <div v-if="substituteHistory.length > 0" class="sub-history">
+                  <div class="sub-history-head">换人记录</div>
+                  <div v-for="item in substituteHistory" :key="item.id" class="sub-history-row">
+                    <span class="muted mono">{{ substituteTime(item.createdAt) }}</span>
+                    <span>{{ item.teamSide }} {{ item.position }} 号位</span>
+                    <span class="sub-out">{{ item.outName }}</span>
+                    <span class="muted">→</span>
+                    <span class="sub-in">
+                      {{ item.inName }}
+                      <span v-if="item.inIsGuest" class="slot-guest-tag">临时</span>
+                    </span>
                   </div>
                 </div>
               </template>
@@ -1046,5 +1270,100 @@ const statusPill = (status: string) => {
         </template>
       </section>
     </template>
+
+    <!-- 换人 / 临时参赛 -->
+    <NModal
+      v-model:show="substituteOpen"
+      preset="card"
+      style="width: 560px; max-width: calc(100vw - 32px)"
+      :title="`换下 ${substituteTarget?.name ?? ''}（${substituteTarget?.side ?? ''} ${substituteTarget?.position ?? ''} 号位）`"
+      :bordered="false"
+    >
+      <div v-if="substituteLoading" class="muted" style="font-size: 13px">加载替补名单…</div>
+      <template v-else>
+        <p class="muted" style="font-size: 12px; margin: 0 0 12px; line-height: 1.7">
+          正选没来就换一个：可以从本赛事还没上场的报名玩家里选，也可以让没报名的朋友临时参赛（只填名字即可）。
+        </p>
+
+        <div class="sub-tabs">
+          <button
+            type="button"
+            class="sub-tab"
+            :class="{ active: substituteMode === 'bench' }"
+            @click="substituteMode = 'bench'"
+          >
+            报名替补（{{ substituteBench.length }}）
+          </button>
+          <button
+            type="button"
+            class="sub-tab"
+            :class="{ active: substituteMode === 'guest' }"
+            @click="substituteMode = 'guest'"
+          >
+            临时参赛
+          </button>
+        </div>
+
+        <div v-if="substituteMode === 'bench'" class="sub-bench">
+          <button
+            v-for="row in substituteBench"
+            :key="row.userId"
+            type="button"
+            class="sub-bench-row"
+            :class="{ 'is-active': substitutePickId === row.userId, 'is-busy': !!row.busyInMatchNo }"
+            :disabled="!!row.busyInMatchNo"
+            @click="substitutePickId = row.userId"
+          >
+            <span class="sub-bench-name">{{ row.displayName }}</span>
+            <span class="mono">{{ row.effectiveRating }}</span>
+            <span v-if="row.busyInMatchNo" class="muted" style="font-size: 12px">
+              已在第 {{ row.busyInMatchNo }} 场
+            </span>
+          </button>
+          <p v-if="substituteBench.length === 0" class="muted" style="font-size: 12px; margin: 8px 0 0">
+            没有可用的报名替补（其他报名者都在这场里，或者这场比赛就是全部报名人数）。
+          </p>
+        </div>
+
+        <div v-else class="sub-guest">
+          <div class="field">
+            <label class="field-label">名字</label>
+            <NInput
+              v-model:value="substituteGuest.name"
+              placeholder="例如：老王"
+              maxlength="32"
+              show-count
+            />
+          </div>
+          <div class="field" style="margin-top: 12px">
+            <label class="field-label">天梯分（可选）</label>
+            <NInputNumber
+              v-model:value="substituteGuest.mmr"
+              :min="0"
+              :max="20000"
+              placeholder="填了按 MMR ÷ 10 计入实力分；不填写 500 中性值"
+              style="width: 100%"
+            />
+          </div>
+          <p class="muted" style="font-size: 12px; margin: 8px 0 0; line-height: 1.7">
+            临时参赛者没有账号，只记录在这场的阵容和换人流水里，不进排行榜。
+          </p>
+        </div>
+      </template>
+
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <NButton @click="substituteOpen = false">取消</NButton>
+          <NButton
+            type="primary"
+            :loading="substituteSaving"
+            :disabled="!substituteReady"
+            @click="confirmSubstitute"
+          >
+            确认换人
+          </NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>

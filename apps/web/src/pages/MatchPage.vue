@@ -3,13 +3,16 @@ import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { NButton, NSpin } from 'naive-ui';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import { formatDuration } from '../lib/duration';
 import { session } from '../lib/session';
 import PageBack from '../components/PageBack.vue';
 
 interface Member {
   id: string;
-  userId: string;
-  displayName: string;
+  /** 临时参赛者没有账号 */
+  userId: string | null;
+  displayName: string | null;
+  isGuest: number;
   position: number;
   fitScore: number;
   effectiveRating: number;
@@ -80,13 +83,6 @@ const won = computed(() => {
   if (!current || current.radiantWin === null) return null;
   return current.radiantWin === 1 ? 'RADIANT' : 'DIRE';
 });
-
-function duration(seconds: number | null): string {
-  if (!seconds) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
 </script>
 
 <template>
@@ -118,7 +114,7 @@ function duration(seconds: number | null): string {
               <span>分差 <span class="mono">{{ match.ratingGap ?? '—' }}</span></span>
               <span v-if="match.completedAt">结束于 {{ formatDate(match.completedAt) }}</span>
               <span v-else-if="match.scheduledAt">计划 {{ formatDate(match.scheduledAt) }}</span>
-              <span v-if="match.durationSeconds">时长 {{ duration(match.durationSeconds) }}</span>
+              <span v-if="match.durationSeconds">时长 {{ formatDuration(match.durationSeconds) }}</span>
             </div>
           </div>
           <span class="pill pill-published">{{ STATUS_LABEL[match.status] ?? match.status }}</span>
@@ -156,10 +152,15 @@ function duration(seconds: number | null): string {
               <span class="slot-pos">{{ slot.position }} 号位</span>
               <template v-if="slot.member">
                 <RouterLink
+                  v-if="slot.member.userId && !slot.member.isGuest"
                   class="slot-name slot-name-link"
                   :to="`/players/${slot.member.userId}`"
                   :title="`看看 ${slot.member.displayName} 的主页`"
                 >{{ slot.member.displayName }}</RouterLink>
+                <span v-else class="slot-name">
+                  {{ slot.member.displayName }}
+                  <span class="slot-guest-tag">临时</span>
+                </span>
                 <span
                   class="slot-rating"
                   :style="slot.member.fitScore < 40 ? 'color: var(--amber)' : ''"
