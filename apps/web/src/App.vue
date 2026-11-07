@@ -13,6 +13,7 @@ import {
 } from 'naive-ui';
 import BrandLogo from './components/BrandLogo.vue';
 import ChangelogDialog from './components/ChangelogDialog.vue';
+import EmailReminder from './components/EmailReminder.vue';
 import { APP_VERSION } from './lib/changelog';
 import { logout, session } from './lib/session';
 import { theme, toggleTheme } from './lib/theme';
@@ -225,6 +226,8 @@ async function onMenuSelect(key: string) {
               </div>
             </div>
           </header>
+
+          <EmailReminder />
 
           <main class="main">
             <!-- 路由切换做个淡入上浮：比"瞬间闪白"更像应用而不是网页 -->

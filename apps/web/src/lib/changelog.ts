@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.3.0';
+export const APP_VERSION = '1.4.0';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,16 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.4.0',
+    date: '2026-11-07',
+    items: [
+      '报名到截止时间后自动停止，并按现有人数完成分队与候补',
+      '截止时生成的阵容直接发布，报名名单中显示正选与候补',
+      '评分管理可按段位与星级设定，与天梯分二选一',
+      '新增邮箱确认提醒，未确认时页面顶部常驻提示',
+    ],
+  },
   {
     version: '1.3.0',
     date: '2026-11-06',

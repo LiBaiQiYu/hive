@@ -51,8 +51,9 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`gameAccount.avatarUrl` 是 Steam/STRATZ 抓来的公开头像（没抓到为 `null`，玩家卡据此决定是否渲染头像）。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
-| PATCH | `/api/me` | `{displayName?, bio?, qqNumber?, email?, currentPassword?}`。改 `email` 时**必须**同时提供 `currentPassword`（密码错 → 401，邮箱被占用 → 409），并写审计 `user.email`——邮箱决定密码找回的信寄到哪 |
+| GET | `/api/me` | 档案 + 评分（`system` / `adjustment` / `effective` / `breakdown`）+ 位置偏好。`user.emailConfirmed` 表示本人有没有点过「我确认这个邮箱能收到信」。`gameAccount.avatarUrl` 是 Steam/STRATZ 抓来的公开头像（没抓到为 `null`，玩家卡据此决定是否渲染头像）。`breakdown` 来自 `player_ratings.breakdown_json`：`{components:[{key,weight,value,score,basis}], estimatedMmr, attendanceBp, attendancePlayed, attendanceRegistered}`，老数据为 `null` |
+| PATCH | `/api/me` | `{displayName?, bio?, qqNumber?, email?, currentPassword?}`。改 `email` 时**必须**同时提供 `currentPassword`（密码错 → 401，邮箱被占用 → 409），并写审计 `user.email`——邮箱决定密码找回的信寄到哪。换邮箱会清空 `email_confirmed_at`，要求重新确认 |
+| POST | `/api/me/email/confirm` | 记录"本人确认这个邮箱能收到信"（`email_confirmed_at = now`），写审计 `user.email-confirm`。它不验证任何东西，只是让顶部提醒消失；未确认时前端会一直提示 |
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
 | GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
 | GET | `/api/players` | 玩家列表，`?query=&position=&sort=rating|name&page=` |
@@ -103,15 +104,17 @@
 
 报名时机：`events.status = REGISTRATION_OPEN` 且当前时间在窗口内。写入时**必须**从 `player_ratings` 读取并写入三个快照字段 + `position_snapshot` + `snapshot_at`。
 
-名额规则（详见 [UI.md §5.1](UI.md)）：`capacity` 是**目标人数**（20 = 2 场 × 10），不是座位数。报名期一律 `CONFIRMED`，**不生成比赛**；封盘时 `finalizeRoster()` 按 `floor(confirmed / 10)` 切分场次，余数转 `WAITLIST` 并分配 `waitlist_position`。候补只在两种情况下出现：超出 `capacity`，或已经封盘。
+**到点自动结算**：`registration_closes_at` 不只是"拒绝新报名"。每分钟的 Cron 会扫一次到点的赛事，自动完成：关闭报名（`REGISTRATION_CLOSED`）→ 封盘（够 10 人就打，余数进候补）→ 生成阵容 → 发布（`PUBLISHED`），全部记 `SYSTEM` 审计（`event.auto-close` / `event.auto-finalize` / `match.publish`）。见 `services/event-auto.ts`。报名不足 10 人时只关闭报名、不猜"延期还是取消"，留给管理员。
+
+名额规则（详见 [UI.md §5.1](UI.md)）：`capacity` 是**目标人数**（20 = 2 场 × 10），不是座位数。报名期一律 `CONFIRMED`，**不生成比赛**；封盘时按 `floor(confirmed / 10)` 切分场次，余数转 `WAITLIST` 并分配 `waitlist_position`。候补只在两种情况下出现：超出 `capacity`，或已经封盘。
 
 赛事详情返回 `targetMatches`、`slotsToNextMatch`（还差几人凑满下一场）、`pendingBench[]`（封盘后的待定名单，封盘前为空）。
 
-**封盘结算**是独立接口，不做隐式触发：
+管理员也可以在截止前手动封盘（此时人数卡在两档之间必须显式选）：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/events/:id/finalize` | `{oddPlayersPolicy: "START_PARTIAL" \| "EXTEND" \| "CANCEL"}`。人数卡在两档之间时必须显式选择，不允许服务端静默决定 |
+| POST | `/api/admin/events/:id/finalize` | `{policy?: "START_PARTIAL" \| "EXTEND" \| "CANCEL", extendHours?}`。人数卡在两档之间时（如 12 人 / 目标 2 场）必须显式选择，不允许服务端静默决定；Cron 自动结算那条路径视为已经选了 `START_PARTIAL` |
 
 退赛或取消时：候补顺序自动前移；已 `PUBLISHED` 阵容中的玩家不允许退赛，需管理员先 `VOID` 该场次。
 

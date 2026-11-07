@@ -100,6 +100,12 @@ export const users = sqliteTable(
      * role=ADMIN 是可以授予/撤销的角色，创始人是一次性身份。
      */
     isFounder: integer('is_founder').notNull().default(0),
+    /**
+     * 邮箱可用性确认（0015 追加，物理位置在末尾）。
+     * 玩家在「账号设置」点一次「我确认这个邮箱能收到信」写时间戳；
+     * 换邮箱时清空（新地址要重新确认）。纯提示用途，不影响登录。
+     */
+    emailConfirmedAt: integer('email_confirmed_at'),
   },
   (t) => [
     uniqueIndex('ux_users_username').on(t.username),

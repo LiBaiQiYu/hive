@@ -33,7 +33,7 @@ meRoutes.get('/', async (c) => {
             qq_number AS qqNumber, avatar_url AS avatarUrl, bio, created_at AS createdAt,
             card_material AS cardMaterial, card_frame AS cardFrame,
             card_frame_color AS frameColor, card_frame_effect AS frameEffect,
-            is_founder AS isFounder
+            is_founder AS isFounder, email_confirmed_at AS emailConfirmedAt
        FROM users WHERE id = ?`,
   )
     .bind(userId)
@@ -43,6 +43,7 @@ meRoutes.get('/', async (c) => {
       frameColor: string;
       frameEffect: string;
       isFounder: number;
+      emailConfirmedAt: number | null;
       [key: string]: unknown;
     }>();
 
@@ -118,12 +119,20 @@ meRoutes.get('/', async (c) => {
     }>();
 
   if (!user) throw new ApiError('NOT_FOUND', '账号不存在');
-  const { cardMaterial, cardFrame, frameColor, frameEffect, isFounder, ...profile } = user;
+  const {
+    cardMaterial,
+    cardFrame,
+    frameColor,
+    frameEffect,
+    isFounder,
+    emailConfirmedAt,
+    ...profile
+  } = user;
 
   return c.json({
     data: {
-      // founder 是布尔语义：库里是 0/1，别让前端去猜
-      user: { ...profile, founder: isFounder === 1 },
+      // founder / emailConfirmed 是布尔语义：库里是 0/1 与时间戳，别让前端去猜
+      user: { ...profile, founder: isFounder === 1, emailConfirmed: emailConfirmedAt !== null },
       cardSkin: toCardSkin({
         material: cardMaterial,
         frame: cardFrame,
@@ -353,6 +362,8 @@ meRoutes.patch('/', async (c) => {
 
       assignments.push('email = ?');
       values.push(email);
+      // 换了收件地址 = 之前的确认失效，重新提示「确认邮箱能收到信」
+      assignments.push('email_confirmed_at = NULL');
       emailChanged = true;
     }
   }
@@ -608,6 +619,35 @@ meRoutes.post('/game-account/claim', async (c) => {
           : `段位来自 ${rankSource === 'STRATZ' ? 'STRATZ' : 'OpenDota'}；账号归属未验证，徽章会显示「归属未验证」`,
     },
   });
+});
+
+/* --------------------------------------------------------------------------
+ * POST /api/me/email/confirm —— 玩家自己确认"这个邮箱能收到信"
+ *
+ * 它不验证任何东西（我们没有发确认信的能力），只是一个明确的"我看过了"动作：
+ * 未确认之前页面顶部会一直挂着提醒，因为密码找回只有这条路能走通。
+ * 换邮箱会把确认状态清空，要求重新确认。
+ * ------------------------------------------------------------------------ */
+meRoutes.post('/email/confirm', async (c) => {
+  const userId = requireUser(c);
+  const env = c.env;
+  const now = Date.now();
+
+  const updated = await env.DB.prepare(
+    `UPDATE users SET email_confirmed_at = ?, updated_at = ? WHERE id = ?`,
+  )
+    .bind(now, now, userId)
+    .run();
+  if ((updated.meta.changes ?? 0) === 0) throw new ApiError('NOT_FOUND', '账号不存在');
+
+  await env.DB.prepare(
+    `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, created_at)
+     VALUES (?, ?, 'PLAYER', 'user.email-confirm', 'user', ?, ?)`,
+  )
+    .bind(newId(now), userId, userId, now)
+    .run();
+
+  return c.json({ data: { emailConfirmed: true, confirmedAt: now } });
 });
 
 /* --------------------------------------------------------------------------

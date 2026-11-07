@@ -14,6 +14,7 @@
     "build": "pnpm --filter @hive/web build",
     "typecheck": "tsc -p tsconfig.json --pretty false",
     "test": "vitest run",
+    "web:check": "node scripts/check-vue-templates.mjs",
     "db:generate": "drizzle-kit generate --config packages/database/drizzle.config.ts",
     "db:migrate:local": "wrangler d1 migrations apply hive --local -c packages/database/wrangler.d1.jsonc",
     "db:migrate:remote": "wrangler d1 migrations apply hive --remote -c packages/database/wrangler.d1.jsonc",

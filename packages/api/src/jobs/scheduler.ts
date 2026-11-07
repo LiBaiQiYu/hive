@@ -9,6 +9,7 @@ import { intVar } from '../env';
 import { ALGO_VERSION } from '../algorithms/rating';
 import { recomputeUserRating } from '../services/rating';
 import { reorderOpenEventWaitlists } from '../services/waitlist';
+import { closeDueRegistrations } from '../services/event-auto';
 import { claimJobs, completeJob, failJob, reclaimExpired } from './queue';
 import { handleJob } from './handlers';
 
@@ -139,7 +140,9 @@ export async function dailyMaintenance(
   };
 }
 
-/** 所有 Cron 共用的入口：按表达式分流 */
+/**
+ * 所有 Cron 共用的入口：按表达式分流
+ */
 export async function runScheduled(cron: string, env: Env): Promise<void> {
   // 只有每日维护那条表达式走维护分支；其余（包括本地
   // `curl /cdn-cgi/local/scheduled` 这种不带 cron 的触发）一律抽队列。
@@ -147,6 +150,13 @@ export async function runScheduled(cron: string, env: Env): Promise<void> {
     const result = await dailyMaintenance(env);
     console.log('maintenance', JSON.stringify(result));
     return;
+  }
+
+  // 每分钟先看有没有到点的赛事：关闭报名 → 封盘 → 分队 → 发布。
+  // 放在抽队列之前，是因为它对"玩家看得到的页面"影响最大（到点就该出名单）。
+  const closed = await closeDueRegistrations(env);
+  if (closed.length > 0) {
+    console.log('auto-close', JSON.stringify(closed));
   }
 
   const summary = await drainJobs(env);

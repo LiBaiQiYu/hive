@@ -437,3 +437,69 @@
     border-color 0.16s ease,
     box-shadow 0.16s ease;
 }
+
+/* ==========================================================================
+   邮箱确认提醒条（App.vue 顶部常驻）
+   它挂在导航条下面、正文上面：不挡操作，但一直在视野里。
+   ========================================================================== */
+.email-banner {
+  border-bottom: 1px solid var(--line);
+  /* 淡淡的琥珀色渐变：比纯色底更像"提示"，不像"报错" */
+  background: linear-gradient(90deg, rgba(212, 173, 51, 0.12), rgba(212, 173, 51, 0.02) 65%);
+}
+
+.email-banner-inner {
+  display: flex;
+  align-items: center;
+  gap: 8px 10px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.email-banner-icon {
+  color: var(--gold-2);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.email-banner-text {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.email-banner-text b {
+  color: var(--gold-2);
+  font-weight: 600;
+}
+
+.email-banner-error {
+  color: var(--amber);
+}
+
+.email-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.email-banner-link {
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.email-banner-link:hover {
+  color: var(--gold-2);
+}
+
+@media (max-width: 640px) {
+  .email-banner-inner {
+    padding: 8px 0;
+    font-size: 12px;
+  }
+}

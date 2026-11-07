@@ -14,8 +14,8 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
 
 ```
 已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + STRATZ，无 token 时退回 OpenDota）
-        密码找回（注册邮箱发信 → Worker 回信带一次性链接；另有管理员重置与脚本兜底）
-        赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归
+        密码找回（注册邮箱发信 → Worker 回信带一次性链接；另有管理员重置与脚本兜底；未确认邮箱的账号登录后顶部常驻提醒）
+        赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归 / **到点自动截止 → 分队 → 发布**
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
         评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员设定（天梯分或段位 + 星级）+ 修正 + 历史
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
@@ -59,9 +59,10 @@ pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直�
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
 pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，抓语法错与未定义绑定
 ```
 
-交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`，改过鉴权/接口再补一条 `pnpm sec:check`。
+交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`（改过 `.vue` 再补 `pnpm web:check`），改过鉴权/接口再补一条 `pnpm sec:check`。
 
 ## 已经踩过的坑（别再踩）
 
@@ -92,10 +93,19 @@ pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/
 | 登录接口 200，但页面显示仍未登录；tail 里 `/api/me` 500 且错误是 `D1_ERROR: no such column: xxx` | 生产有**未应用的迁移**，而 `pnpm run deploy` 发出去的是**整个工作区**——别的 agent 刚写的、引用新列的代码也会被一起发到线上。症状与「登录没反应」一模一样。**部署前先 `npx wrangler d1 migrations list hive --remote -c packages/database/wrangler.d1.jsonc`，有 pending 就先 `pnpm db:migrate:remote`**（破坏性迁移前先 `pnpm db:backup`） |
 | 「当前密码」框被浏览器密码管理器自动填满（`autocomplete="current-password"` 就是叫它填），于是改密码/改找回邮箱这两道"证明是你本人"的检查退化成"证明浏览器记得你的密码"——任何人走到没锁屏的电脑前点一下就过 | 当前密码一律用 `apps/web/src/components/CurrentPasswordInput.vue`：初始 `readonly`（自动填充会跳过 readonly 字段），点进来或 Tab 到才解锁；`autocomplete="off"` + `data-lpignore` / `data-1p-ignore` / `data-bwignore`。别再手写 `NInput type="password"` 当当前密码框 |
 | `estimateMmr(rankTier, declaredMmr)` 的入参顺序容易写反（两个都是 `number \| null`，TS 不报错） | 段位模式和分数字段写反时，评分计划里会出现"段位 45 → 系统分 5"这种数：本地实测过一次，落库后被 `recomputeUserRating` 纠正回 293，但审计/历史里留下了错的中间值。**改这条路径后一定本地跑一遍两种模式**，看 `mmr` / `system` 是否符合预期 |
+| 写"系统任务"时给 `matches.created_by` 传 `null` → `D1_ERROR: NOT NULL constraint failed: matches.created_by`（Cron 自动分队踩过） | `matches.created_by` / `events.created_by` 都是 `NOT NULL` 外键。系统任务没有"人"可填，就把 `actor.id` 填成赛事创建者（`events.created_by`），`actor.role` 仍记 `SYSTEM`——审计里照样看得出是自动跑的 |
 
 ## 关键设计决策（改了会连累别处）
 
 - **`capacity` 是目标人数**（20 = 2 场 × 10 人），不是座位数。报名期不生成比赛；封盘时按 `floor(confirmed/10)` 切场，余数进候补。人数卡在两档之间时**必须由管理员显式选** `START_PARTIAL / EXTEND / CANCEL`（`AUTO_FINALIZE_ODD=false`）。
+- **到点自动结算 = 管理员已经选了「按现有人数开局」**：每分钟 Cron 扫 `status='REGISTRATION_OPEN' AND registration_closes_at <= now`，
+  一口气跑完「关闭报名 → 封盘 → 分队 → 发布」，全程记 `SYSTEM` 审计（`services/event-auto.ts`）。
+  所以 `AUTO_FINALIZE_ODD=false` 只约束**手动**封盘那条路；自动路径固定走 `START_PARTIAL`
+  （12 人 → 1 场 + 2 候补），**不足 10 人只关闭报名、不自动取消**（自动取消风险太大，等管理员延期或取消）。
+  想改期就在截止前改时间或手动封盘。
+- **赛事通知先留接口、不发信**：`services/notify.ts` 只统计「该通知谁 / 其中几个能收信」并写审计 `event.notify`。
+  Cloudflare 免费版只能发给**已验证目的地地址**（官方定价页原文：任意收件人需要 Workers Paid），
+  要真发得先在控制台开通 Email Sending 并逐个验证收件箱；通道定了只改这一个文件，调用点不用动。
 - **实力与可靠性分开**：`system_rating = clamp(round(估计 MMR / 10), 0, 1000)`，没有段位/MMR 时给 500 中性值；出勤**不进入**实力分。`confidence = career_matches/300` 只影响不确定度与管理员修正上限，不再把分数往 500 收缩。近期表现/位置能力/英雄池都不进评分——位置属于**分队**逻辑。
 - **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
@@ -133,6 +143,9 @@ pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/
    - 给 `POST /api/auth/login` 加一条按 IP 的速率限制规则；
    - **Email → Email Routing** 里把 `reset@cwa1e.top` 建成 Custom address，动作选 **Send to Worker** → `hive`。
      这一步没做，邮件自助找回就不生效（管理员重置仍然可用）。
+   - **赛事通知想真发信，得先定通道**：控制台 Compute → Email Service → Email Sending 开通 cwa1e.top，
+     然后把收件箱逐个加为 Destination address（免费版上限 200、各点一次确认信），或升级 Workers Paid。
+     代码侧只需要改 `services/notify.ts`。
 2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」，再决定要不要给 `_headers` 补 HSTS
    （现在刻意没写，本地 http 会被钉死）。
 3. Cloudflare 会自动往 HTML 注入 Web Analytics 的 `beacon.min.js`，被我们的 `script-src 'self'` 挡掉。

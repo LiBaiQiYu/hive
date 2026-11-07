@@ -6,7 +6,8 @@ import { requireAdmin } from '../guard';
 import { countRegistrations, loadEvent, toEventView } from './events';
 import { planFinalize, type FinalizePolicy } from '../services/roster';
 import { recomputeEventRatings } from '../services/rating';
-import { reorderWaitlist, sortWaitlist, type WaitlistPriorityRow } from '../services/waitlist';
+import { benchToWaitlist } from '../services/finalize';
+import { sortWaitlist, type WaitlistPriorityRow } from '../services/waitlist';
 import {
   assertPromotable,
   assertTitleEditable,
@@ -347,32 +348,7 @@ adminEventRoutes.post('/:id/finalize', async (c) => {
   let changed = 0;
 
   if (decision.outcome === 'START_PARTIAL') {
-    // 顺序必须与 compareForSelection 一致：有段位 → 评分降序 → 报名时间升序 → id 升序。
-    // 段位看的是**实时** player_stats，不是报名快照：报名后发现没填段位、补上了就该算数。
-    const rows = await env.DB.prepare(
-      `SELECT r.id FROM registrations r
-         LEFT JOIN player_stats ps ON ps.user_id = r.user_id
-        WHERE r.event_id = ? AND r.status = 'CONFIRMED'
-        ORDER BY (CASE WHEN ps.rank_tier IS NOT NULL OR ps.declared_mmr IS NOT NULL THEN 1 ELSE 0 END) DESC,
-                 r.effective_rating_snapshot DESC, r.created_at ASC, r.id ASC`,
-    )
-      .bind(event.id)
-      .all<{ id: string }>();
-
-    const benched = (rows.results ?? []).slice(decision.playCount);
-    if (benched.length > 0) {
-      const statements = benched.map((row, index) =>
-        env.DB.prepare(
-          `UPDATE registrations SET status = 'WAITLIST', waitlist_position = ?, updated_at = ?
-            WHERE id = ? AND status = 'CONFIRMED'`,
-        ).bind(index + 1, now, row.id),
-      );
-      // batch 是事务：要么全部进候补，要么一条都不动
-      await env.DB.batch(statements);
-      // 位置只是临时值；真正顺序由"出勤 → 实力 → 报名时间"决定
-      await reorderWaitlist(env, event.id);
-      changed = benched.length;
-    }
+    changed = await benchToWaitlist(env, event.id, decision.playCount, now);
   } else if (decision.outcome === 'EXTEND') {
     const hours = parsed.data.extendHours ?? 2;
     const base = event.registration_closes_at ?? now;

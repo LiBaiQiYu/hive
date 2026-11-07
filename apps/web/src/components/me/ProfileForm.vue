@@ -20,9 +20,30 @@ const message = useMessage();
 
 const profile = ref({ displayName: '', bio: '', qqNumber: '', email: '' });
 const emailPassword = ref('');
+const confirming = ref(false);
 const profileSaving = ref(false);
 const profileError = ref('');
 const profileSaved = ref(false);
+
+/**
+ * 点一下「我确认能收到信」：写一个时间戳，顶部提醒条随之消失。
+ * 它不验证任何东西——真正的验证是"用这个邮箱发一封信到 reset@"，
+ * 这一步只是让人现在就意识到"密码找回走的是这个地址"。
+ */
+async function confirmEmail() {
+  if (confirming.value) return;
+  confirming.value = true;
+  profileError.value = '';
+  try {
+    await api('/me/email/confirm', { method: 'POST' });
+    if (session.me) session.me.user.emailConfirmed = true;
+    message.success('已记录：这个邮箱能收到信');
+  } catch (err) {
+    profileError.value = err instanceof ApiError ? err.message : '操作失败';
+  } finally {
+    confirming.value = false;
+  }
+}
 
 function fillProfile() {
   const user = session.me?.user;
@@ -136,6 +157,13 @@ async function saveProfile() {
           :input-props="{ autocomplete: 'email', spellcheck: 'false' }"
           size="medium"
         />
+        <span v-if="session.me?.user.emailConfirmed" class="email-status email-status-ok">
+          ✓ 已确认这个邮箱能收到信
+        </span>
+        <span v-else class="email-status">
+          还没确认这个邮箱能收到信
+          <NButton size="tiny" :loading="confirming" @click="confirmEmail">我确认能收到信</NButton>
+        </span>
       </label>
 
       <label v-if="emailChanged" class="field" style="margin: 0">

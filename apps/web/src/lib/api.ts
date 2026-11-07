@@ -129,6 +129,8 @@ export interface Me {
     displayName: string;
     /** 密码找回的收件地址；只有本人可见 */
     email?: string;
+    /** 玩家有没有点过「我确认这个邮箱能收到信」；换邮箱会重置为 false */
+    emailConfirmed?: boolean;
     bio?: string | null;
     qqNumber?: string | null;
     role: 'PLAYER' | 'ADMIN';
