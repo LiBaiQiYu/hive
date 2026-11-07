@@ -94,6 +94,7 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | 「当前密码」框被浏览器密码管理器自动填满（`autocomplete="current-password"` 就是叫它填），于是改密码/改找回邮箱这两道"证明是你本人"的检查退化成"证明浏览器记得你的密码"——任何人走到没锁屏的电脑前点一下就过 | 当前密码一律用 `apps/web/src/components/CurrentPasswordInput.vue`：初始 `readonly`（自动填充会跳过 readonly 字段），点进来或 Tab 到才解锁；`autocomplete="off"` + `data-lpignore` / `data-1p-ignore` / `data-bwignore`。别再手写 `NInput type="password"` 当当前密码框 |
 | `estimateMmr(rankTier, declaredMmr)` 的入参顺序容易写反（两个都是 `number \| null`，TS 不报错） | 段位模式和分数字段写反时，评分计划里会出现"段位 45 → 系统分 5"这种数：本地实测过一次，落库后被 `recomputeUserRating` 纠正回 293，但审计/历史里留下了错的中间值。**改这条路径后一定本地跑一遍两种模式**，看 `mmr` / `system` 是否符合预期 |
 | 写"系统任务"时给 `matches.created_by` 传 `null` → `D1_ERROR: NOT NULL constraint failed: matches.created_by`（Cron 自动分队踩过） | `matches.created_by` / `events.created_by` 都是 `NOT NULL` 外键。系统任务没有"人"可填，就把 `actor.id` 填成赛事创建者（`events.created_by`），`actor.role` 仍记 `SYSTEM`——审计里照样看得出是自动跑的 |
+| 部署完立刻抓首页核对新代码，结果 bundle 里什么都找不到（以为没生效） | 刚发版的那几秒，边缘还在返回旧的 `index.html`（`Cache-Control: max-age=0, must-revalidate` 不等于立即刷新）。看 `curl -D -` 的 `ETag` 变没变，等 10~30 秒再取一次；确认时按 HTML 里当前的 `<script src>` 名重新下载，别用发版前记下的 chunk 名 |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -118,6 +119,7 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
   留着旧分数就等于没改段位。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。
   旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
 - **密码找回走"收信 → 回信"**：免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到 `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，用 `message.reply()` 回一封带一次性令牌的链接。令牌只存 `sha256`、30 分钟、一次性，重置成功作废该账号全部会话。**控制台还要把 `reset@cwa1e.top` 建为 Custom address 并指到 Worker**，代码替代不了这一步。
+- **`email_confirmed_at` 只是提示状态**：不参与鉴权，也不代表地址真的可达（我们没有发确认信的能力）。它只决定顶部提醒条是否出现（`components/EmailReminder.vue`），换邮箱会清空要求重新确认。别拿它当"已验证邮箱"用。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
 - 所有 `db.batch()` 是事务：分组落库、封盘、评分修正都靠它，别拆成多次单条写入。

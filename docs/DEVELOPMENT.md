@@ -51,18 +51,21 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 
 | 脚本 | 作用 |
 | --- | --- |
-| `pnpm dev` | `vite` + `wrangler dev --config packages/api/wrangler.jsonc` 并行 |
-| `pnpm build` | 构建前端到 `apps/web/dist`，类型检查 |
-| `pnpm typecheck` | `tsc --noEmit`（全 workspace） |
-| `pnpm lint` | ESLint + Prettier 检查 |
-| `pnpm test` | Vitest（单测 + Worker 集成测试） |
+| `pnpm dev` | 迁移本地库 → 构建前端 → `wrangler dev`（8787） |
+| `pnpm dev:api` | 同上但不重建前端（后端改动时更快） |
+| `pnpm dev:remote` | Worker 跑在边缘、直连**生产 D1**（只读调试用，别做破坏性操作） |
+| `pnpm dev:web` | Vite 热更新（5173，已配 `/api` 代理） |
+| `pnpm build` | 只构建前端到 `apps/web/dist` |
+| `pnpm typecheck` | `tsc --noEmit`（全 workspace，不含 .vue 模板） |
+| `pnpm test` | Vitest 单测 |
+| `pnpm web:check` | Vue 模板体检：用 `@vue/compiler-sfc` 编一遍全部 `.vue`，抓语法错与未定义绑定 |
 | `pnpm db:generate` | `drizzle-kit generate`（只生成，不执行） |
 | `pnpm db:migrate:local` | `wrangler d1 migrations apply hive --local -c packages/database/wrangler.d1.jsonc` |
-| `pnpm db:migrate:remote:staging` | 同上，加 `--remote --env staging` |
-| `pnpm db:migrate:remote:production` | 同上，加 `--remote`（执行前必须先 `db:backup`） |
-| `pnpm db:backup` | `wrangler d1 export hive --output backups/<ts>.sql -c packages/database/wrangler.d1.jsonc` |
-| `pnpm db:check` | 跑两个 Python 校验脚本 |
-| `pnpm deploy:staging` / `pnpm deploy:production` | `wrangler deploy --config packages/api/wrangler.jsonc [--env staging]` |
+| `pnpm db:migrate:remote` | 同上加 `--remote`（执行前必须先 `pnpm db:backup`） |
+| `pnpm db:backup` | `wrangler d1 export hive --remote --output backups/hive.sql` |
+| `pnpm db:check` | 跑两个 Python 校验脚本（schema 与迁移是否对齐） |
+| `pnpm sec:check` | 安全攻击用例 74 项（需要先起 `pnpm dev` / `dev:api`） |
+| `pnpm run deploy` | `wrangler deploy --config packages/api/wrangler.jsonc`（必须带 `run`） |
 
 ## 4. 数据库改动流程
 
@@ -189,3 +192,39 @@ pnpm dlx wrangler d1 execute hive --remote -c packages/database/wrangler.d1.json
 ```
 
 脚本生成的哈希格式与 `packages/api/src/password.ts` 完全一致（`pbkdf2_sha256$p1$…`），执行后即可用新口令登录。**pepper 用错不会报错**，只会让所有账号统统登录失败——线上那一步务必确认 pepper 来源。
+
+## 9. 赛事到点自动结算（本地怎么验）
+
+截止时间到点后的「关闭报名 → 封盘 → 分队 → 发布」由每分钟的 Cron 驱动
+（`packages/api/src/services/event-auto.ts`）。本地不会自动跑 Cron，用 wrangler dev
+提供的本地触发端点手动打一次即可，全部是真实代码路径：
+
+1. 起服务：`pnpm dev:api`（它会先跑 `db:migrate:local`）。
+   端口看启动日志的 `Ready on http://127.0.0.1:xxxx` —— 8787 被占用时会顺延。
+2. 建赛事并开报名（管理员账号，非 GET 请求要带 `x-hive-csrf: 1` 与 `Origin` 头）：
+   `POST /api/admin/events` → `POST /api/admin/events/:id/transition {"to":"REGISTRATION_OPEN"}`。
+3. 用各自的账号报名：`POST /api/events/:id/registrations`。
+4. 把截止时间改成过去（直接改库最省事，API 改时间要走管理员编辑接口）：
+
+   ```bash
+   npx wrangler d1 execute hive --local -c packages/database/wrangler.d1.jsonc \
+     --persist-to packages/database/.wrangler/state \
+     --command "UPDATE events SET registration_closes_at = <毫秒时间戳> WHERE id = '<赛事 id>';"
+   ```
+
+5. 手动触发一次 Cron：
+
+   ```bash
+   curl http://127.0.0.1:8787/cdn-cgi/local/scheduled
+   ```
+
+6. 核对四件事：`GET /api/events/:id` 的状态变成 `PUBLISHED`；`/matches` 里有已发布场次；
+   `/registrations` 里出现 `WAITLIST` 且带排队序号；`audit_logs` 里有三条 `SYSTEM` 记录
+   （`event.auto-close` / `event.auto-finalize` / `match.publish`）。
+
+预期结果按人数算：**12 人 / 容量 20 → 1 场（10 人）+ 2 名候补**；满 20 人 → 2 场；
+不足 10 人 → 只关闭报名，不开赛也不取消。自动路径固定按 `START_PARTIAL` 处理，
+管理员手动封盘那条路径仍会在人数卡两档时要求选择。
+
+排查时看 `wrangler dev` 的 stdout：Cron 会打一行 `auto-close [...]`，
+其中 `error` 非空就是某一场生成失败（最常见的是 `matches.created_by` 这类 NOT NULL 外键）。
