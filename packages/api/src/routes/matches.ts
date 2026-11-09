@@ -126,8 +126,9 @@ async function loadLineup(env: Env, matchId: string) {
   );
 
   /**
-   * 没进这套阵容的人：本场被换下的（含弃赛）、赛事里的候补、截止前退赛的。
-   * 只收「赛事里本该上场却没出现」的，另一场的人不算——见 services/bench.ts。
+   * 没进这套阵容的人：本场被换下的（含弃赛）、赛事里的候补、正选但没排到的、截止前退赛的。
+   * 三种状态都要查，因为"没进阵容"不等于"不是正选"——12 人报名只开一场时，
+   * 剩下 2 个人状态仍是 CONFIRMED，但一场只上 10 人（见 services/bench.ts）。
    */
   const benchRegistrations = await env.DB.prepare(
     `SELECT r.user_id AS userId, u.display_name AS displayName, r.status,
@@ -135,7 +136,7 @@ async function loadLineup(env: Env, matchId: string) {
             r.waitlist_position AS waitlistPosition,
             r.effective_rating_snapshot AS rating
        FROM registrations r JOIN users u ON u.id = r.user_id
-      WHERE r.event_id = ? AND r.status IN ('WAITLIST', 'WITHDRAWN')`,
+      WHERE r.event_id = ? AND r.status IN ('WAITLIST', 'CONFIRMED', 'WITHDRAWN')`,
   )
     .bind(match.eventId)
     .all<{
@@ -147,12 +148,25 @@ async function loadLineup(env: Env, matchId: string) {
       rating: number | null;
     }>();
 
+  /**
+   * 该赛事**所有场次**阵容里出现过的人。用来把"在另一场上场的人"排除掉：
+   * 一个赛事开两场时，另一场的 10 个人也不在这套阵容里，但他们不是没进阵容。
+   */
+  const eventLineup = await env.DB.prepare(
+    `SELECT DISTINCT tm.user_id AS userId
+       FROM team_members tm JOIN matches m ON m.id = tm.match_id
+      WHERE m.event_id = ? AND tm.user_id IS NOT NULL`,
+  )
+    .bind(match.eventId)
+    .all<{ userId: string }>();
+
   const bench = buildBench({
     substitutions: substitutions.results ?? [],
     registrations: benchRegistrations.results ?? [],
     lineupUserIds: new Set(
       memberRows.map((member) => member.userId).filter((id): id is string => Boolean(id)),
     ),
+    eventLineupUserIds: new Set((eventLineup.results ?? []).map((row) => row.userId)),
   });
 
   return {

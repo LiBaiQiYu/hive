@@ -1,20 +1,24 @@
 /**
  * 「没进阵容的人」——报名了却没出现在这套阵容里，以及为什么。
  *
- * 四种原因，数据来源不同：
- *   · WAITLIST     报名状态就是候补（人数超出容量或封盘切场），带候补顺位
- *   · ABSENT       换人时勾了「本人没来」：那场记弃赛，阵容里已经被顶掉
- *   · SUBSTITUTED  临场调整被换下（MANUAL），不算弃赛
- *   · WITHDRAWN    截止前自己退赛
+ * 五种原因，数据来源不同：
+ *   · WAITLIST      报名状态就是候补（人数超出容量或封盘切场），带候补顺位
+ *   · NOT_SELECTED  还是正选（CONFIRMED），但这场只排 10 人，没排到——
+ *                   常见于"报名 12 人、只开一场"：容量写着两场，实际只编了一场的 10 个人
+ *   · ABSENT        换人时勾了「本人没来」：那场记弃赛，阵容里已经被顶掉
+ *   · SUBSTITUTED   临场调整被换下（MANUAL），不算弃赛
+ *   · WITHDRAWN     截止前自己退赛
  *
  * 这里只做纯数据整理、不碰数据库，方便单测。排序：本场换人（按位置）
- * → 候补（按顺位）→ 退赛；同一个人只出现一次（换人优先，因为它更"具体"）。
+ * → 候补（按顺位）→ 未入选 → 退赛；同一个人只出现一次（换人优先，因为它更"具体"）。
  *
- * 注意：**只收本场被换下的**，不是"赛事里所有没上场的人"。
- * 一个赛事开两场时，另一场的 10 个人也不在这套阵容里，但他们不是在"候补"。
+ * 注意「在不在阵容里」要分两个集合看：
+ *   · `lineupUserIds`       **本场**阵容：用来判断换人流水里被换下的人现在还在不在场上
+ *   · `eventLineupUserIds`  该赛事**所有场次**的阵容：用来判断一个报名者是不是
+ *                           已经在另一场上场了——那种人不是"没进阵容"，不能列出来
  */
 
-export type BenchReason = 'WAITLIST' | 'ABSENT' | 'SUBSTITUTED' | 'WITHDRAWN';
+export type BenchReason = 'WAITLIST' | 'NOT_SELECTED' | 'ABSENT' | 'SUBSTITUTED' | 'WITHDRAWN';
 
 export interface BenchRow {
   userId: string | null;
@@ -52,13 +56,16 @@ export interface BenchRegistrationRow {
 
 export interface BuildBenchInput {
   substitutions: readonly SubstitutionOutRow[];
+  /** 该赛事**所有状态**的报名行（WAITLIST / CONFIRMED / WITHDRAWN） */
   registrations: readonly BenchRegistrationRow[];
-  /** 当前阵容里所有"有账号"的人（含临时参赛者以外的正选与替补） */
+  /** 当前这套阵容里"有账号"的人 */
   lineupUserIds: ReadonlySet<string>;
+  /** 该赛事**所有场次**阵容里有账号的人（含其它场） */
+  eventLineupUserIds: ReadonlySet<string>;
 }
 
 export function buildBench(input: BuildBenchInput): BenchRow[] {
-  const { substitutions, registrations, lineupUserIds } = input;
+  const { substitutions, registrations, lineupUserIds, eventLineupUserIds } = input;
   const rows: BenchRow[] = [];
   const seen = new Set<string>();
 
@@ -84,7 +91,7 @@ export function buildBench(input: BuildBenchInput): BenchRow[] {
   }
 
   const candidates = registrations.filter(
-    (row) => !lineupUserIds.has(row.userId) && !seen.has(row.userId),
+    (row) => !eventLineupUserIds.has(row.userId) && !seen.has(row.userId),
   );
 
   const waitlisted = candidates
@@ -107,6 +114,28 @@ export function buildBench(input: BuildBenchInput): BenchRow[] {
         row.waitlistPosition !== null
           ? `候补第 ${row.waitlistPosition} 位`
           : '候补（顺位待重排）',
+    });
+  }
+
+  // 还是正选、却不在任何一场里：人够开一场不够两场（或管理员只开了一场），10 个位置满了
+  const notSelected = candidates
+    .filter((row) => row.status === 'CONFIRMED')
+    .sort(
+      (a, b) =>
+        (a.position ?? 99) - (b.position ?? 99) ||
+        (b.rating ?? 0) - (a.rating ?? 0) ||
+        (a.displayName ?? '').localeCompare(b.displayName ?? '', 'zh'),
+    );
+
+  for (const row of notSelected) {
+    seen.add(row.userId);
+    rows.push({
+      userId: row.userId,
+      displayName: row.displayName ?? '（未知玩家）',
+      position: row.position,
+      reason: 'NOT_SELECTED',
+      rank: null,
+      detail: '正选名单里，但这场只排 10 人，没排到',
     });
   }
 

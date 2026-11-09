@@ -890,17 +890,18 @@ a {
 
 /* ------------------------------------------------------ 未进阵容（候补等） */
 /* 一行一个人：原因标签 → 名字 → 位置 → 一句说明。
-   标签用 pill、说明用 muted 小字，整体比阵容区轻一档，不要抢对阵的注意力。 */
+   用 grid 而不是 flex：flex 里名字是 `flex:1`，长度不同会把位置列挤得参差不齐
+   （位置那一列必须每行都落在同一个 x 上）。窄屏改成两行排，位置跟名字同一行。 */
 
 .bench-card {
   padding: 8px 16px 14px;
 }
 
 .bench-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 64px minmax(0, 1.15fr);
   align-items: baseline;
-  flex-wrap: wrap;
-  gap: 8px 10px;
+  gap: 10px;
   padding: 9px 0;
   border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
 }
@@ -910,7 +911,7 @@ a {
 }
 
 .bench-tag {
-  flex: none;
+  justify-self: start;
   padding: 1px 7px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -933,21 +934,25 @@ a {
   color: #8aa4d6;
 }
 
-.bench-name {
-  flex: 1 1 auto;
-  min-width: 96px;
+.bench-tag[data-reason='NOT_SELECTED'] {
+  border-color: rgba(140, 160, 200, 0.45);
+  color: #9aa8c4;
 }
 
+.bench-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* 位置列定宽 + 右对齐：2 号位 / 5 号位 的右边缘对齐成一条线 */
 .bench-pos {
-  flex: none;
-  width: 52px;
   font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .bench-detail {
-  flex: 1 1 240px;
   font-size: 12px;
-  text-align: right;
 }
 
 /* 图例：把"为什么"写在下面，别每题都去 tooltip 里找 */
@@ -976,10 +981,15 @@ a {
   line-height: 1.6;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
+  .bench-row {
+    grid-template-columns: 76px minmax(0, 1fr) 64px;
+    row-gap: 4px;
+  }
+  /* 窄屏把"说明"整行铺开，位置留在名字右侧 */
   .bench-detail {
-    flex: 1 1 100%;
-    text-align: left;
+    grid-column: 1 / -1;
+    padding-left: 86px;
   }
   .bench-legend > div {
     grid-template-columns: 1fr;

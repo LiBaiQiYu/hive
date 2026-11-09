@@ -31,7 +31,7 @@ interface Team {
   members: Member[];
 }
 
-type BenchReason = 'WAITLIST' | 'ABSENT' | 'SUBSTITUTED' | 'WITHDRAWN';
+type BenchReason = 'WAITLIST' | 'NOT_SELECTED' | 'ABSENT' | 'SUBSTITUTED' | 'WITHDRAWN';
 
 /** 报了名却没出现在这套阵容里的人和原因（服务端算好，见 services/bench.ts） */
 interface BenchRow {
@@ -104,6 +104,7 @@ const won = computed(() => {
 /** 原因标签：文案只活在前端，服务端只给枚举 */
 const BENCH_LABEL: Record<BenchReason, string> = {
   WAITLIST: '候补',
+  NOT_SELECTED: '未入选',
   ABSENT: '弃赛',
   SUBSTITUTED: '临场换下',
   WITHDRAWN: '退赛',
@@ -248,6 +249,12 @@ const bench = computed(() => match.value?.bench ?? []);
               <dt><span class="bench-tag" data-reason="WAITLIST">候补</span></dt>
               <dd class="muted">
                 报名人数超出容量（每一场 10 人），按「出勤率 → 实力分 → 报名时间」排位，有人退赛时依次补上。
+              </dd>
+            </div>
+            <div>
+              <dt><span class="bench-tag" data-reason="NOT_SELECTED">未入选</span></dt>
+              <dd class="muted">
+                还在正选名单里，但这场只排 10 个人、位置已满（例如 12 人报名只开一场）；下一场排上就能上场。
               </dd>
             </div>
             <div>
