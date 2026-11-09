@@ -25,6 +25,8 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
               也可以让没报名的人临时参赛（只填名字，可选天梯分）；发布后仍可操作，写 `match_substitutions`
               流水与 `match.substitute` 审计。临时参赛者 `team_members.user_id` 为 NULL、只有 `guest_name/guest_mmr`，
               不进排行榜/战绩（没有账号）
+              **弃赛**：换人时勾「本人没来」记 `reason=ABSENT`，那场结束后计入弃赛；
+              排行榜、战绩页、个人主页都显示次数与明细，不计胜负、出勤率按未出场算
               成员管理（授予/撤销管理员、重置密码，禁止改自己、禁止降级最后一名管理员）
               队列健康（`/admin/jobs`，DEAD 可重试）、审计日志（`/admin/audit`，只读可筛）
               概览仪表盘（成员/赛事/本月报名/待发布/任务积压）
@@ -102,6 +104,7 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | 部署完立刻抓首页核对新代码，结果 bundle 里什么都找不到（以为没生效） | 刚发版的那几秒，边缘还在返回旧的 `index.html`（`Cache-Control: max-age=0, must-revalidate` 不等于立即刷新）。看 `curl -D -` 的 `ETag` 变没变，等 10~30 秒再取一次；确认时按 HTML 里当前的 `<script src>` 名重新下载，别用发版前记下的 chunk 名 |
 | 发信接口返回 200 但 `sent: 0`，`error` 是 `E_RECIPIENT_NOT_ALLOWED: destination address is not a verified address` | 不是代码问题：免费版只放行**已验证目的地地址**。`wrangler email routing addresses create <email>` 先把确认信发出去，本人在收件箱点掉链接（`wrangler email routing addresses list` 里 `verified` 从 `pending` 变 `verified`），再调一次接口就发出去了。`send_email` 绑定已收窄成管理员那一个地址，别"顺手"放宽（放宽＝要 Workers Paid） |
 | 单测里 import 了带 `cloudflare:email` 的模块 → vitest 直接报 `Cannot find module 'cloudflare:email'` | 这个模块只在 Workers 运行时存在。`services/mailer.ts` 因此把 `import('cloudflare:email')` 放在函数内部（模块顶层不碰它），并先判断 `env.EMAIL` 是否存在（`mailConfigured()`）；写新的发信代码时照抄这个结构，别在顶层静态 import |
+| 有了"临时参赛"（`team_members.user_id` 可为 NULL）之后，录入赛果 / 赛事转 COMPLETED 直接 500：`D1_ERROR: NOT NULL constraint failed: player_ratings.user_id` | `recomputeEventRatings` 会把 team_members 里的 user_id 全部拿去重算，遇到 guest 的 NULL 行就炸。凡是"按 user 聚合 team_members"的查询都要显式 `AND user_id IS NOT NULL`（已修，见 `services/rating.ts`）；本次弃赛统计也照这个规矩写 |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -140,6 +143,11 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
   阵容最终以 `team_members` 为准。临时参赛者 `user_id IS NULL`、只有 `guest_name/guest_mmr`，
   所有按 user 聚合的统计（排行榜、战绩、评分重算）天然跳过他们；替补用当时评分做快照，换完重算队伍总分与分差，
   但不回溯改报名快照。已 `PUBLISHED` 的比赛允许换人（比赛开始前才有人说来不了），`COMPLETED` / `VOID` 不允许。
+- **弃赛只认一种事实**：`match_substitutions.reason = 'ABSENT'` 且那场比赛已 `COMPLETED`。
+  换人时 team_members 里那一行已经被删掉，所以出勤率的"实际出场"天然不含他——
+  统计（`services/attendance.ts`）只是把这批事实数出来给排行榜/战绩/个人主页看，
+  **不另存计数**，避免出现"计数说弃赛 3 次、出勤率却是 100%"的漂移。
+  `MANUAL`（纯临场调整）不算弃赛；后台换人对话框里「本人没来」默认勾选，取消勾选即记 MANUAL。
 - **身份三路径**：Steam OpenID（VERIFIED，绿）> 数字 ID + OpenDota（CLAIMED，黄）> 手填（SELF_REPORTED，灰）。归属验证**只有** Steam 能给。
 - 所有 `db.batch()` 是事务：分组落库、封盘、评分修正都靠它，别拆成多次单条写入。
 

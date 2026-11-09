@@ -8,6 +8,7 @@ import { verifyPassword } from '../password';
 import { explainRejection, normalizePositions } from '../services/positions';
 import { fetchRankSnapshot } from '../services/rank-provider';
 import { recomputeUserRating } from '../services/rating';
+import { countNoShows, listNoShows } from '../services/attendance';
 import { rankTierFromMmr } from '../algorithms/rating';
 
 export const meRoutes = new Hono<AppEnv>();
@@ -244,6 +245,10 @@ meRoutes.get('/matches', async (c) => {
   const wins = matches.filter((match) => match.won).length;
   const played = matches.length;
 
+  /* 弃赛：报名了、进了正选，但没来被换下去的场次（只展示，不进胜负） */
+  const noShows = await countNoShows(c.env, userId);
+  const noShowMatches = await listNoShows(c.env, userId, 20);
+
   return c.json({
     data: {
       summary: {
@@ -251,7 +256,10 @@ meRoutes.get('/matches', async (c) => {
         wins,
         losses: played - wins,
         winRateBp: played > 0 ? Math.round((wins / played) * 10000) : null,
+        /** 报名后未到场（被替补顶下来）的场次；计入出勤率的不出场，不计入胜负 */
+        noShows,
       },
+      noShowMatches,
       matches,
     },
     meta: { requestId: c.get('requestId') },

@@ -150,11 +150,13 @@ export async function recomputeUserRating(env: Env, userId: string): Promise<Rec
  */
 export async function recomputeEventRatings(env: Env, eventId: string): Promise<number> {
   const rows = await env.DB.prepare(
+    // tm.user_id 可能是 NULL（临时参赛的guest，没有账号）：不排除的话
+    // 会拿 null 去 upsert player_ratings，撞 NOT NULL 约束把整个请求打成 500。
     `SELECT user_id AS userId FROM registrations WHERE event_id = ?1
      UNION
      SELECT tm.user_id AS userId FROM team_members tm
        JOIN matches m ON m.id = tm.match_id
-      WHERE m.event_id = ?1`,
+      WHERE m.event_id = ?1 AND tm.user_id IS NOT NULL`,
   )
     .bind(eventId)
     .all<{ userId: string }>();

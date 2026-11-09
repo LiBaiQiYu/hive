@@ -84,6 +84,13 @@
   border-color: rgba(138, 143, 156, 0.3);
 }
 
+/* 「弃赛」：和候补同为琥珀色系，但语义不同（候补是等位，弃赛是没到场），单列一个类名 */
+.tag-absent {
+  color: var(--amber);
+  border-color: rgba(224, 160, 40, 0.4);
+  background: rgba(224, 160, 40, 0.1);
+}
+
 .admin-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -951,8 +958,18 @@
   background: rgba(201, 162, 39, 0.1);
 }
 
-.sub-bench {
+/* 换人原因：勾了就是弃赛（影响出勤率），不勾只是临场调整 */
+.sub-reason {
   display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+
+.sub-bench {  display: flex;
   flex-direction: column;
   gap: 6px;
   max-height: 280px;

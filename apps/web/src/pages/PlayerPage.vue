@@ -45,6 +45,17 @@ interface MatchRow {
   playedAt: number | null;
 }
 
+/** 弃赛记录：进了正选但没到场，被替补顶下来的那一场 */
+interface NoShowRow {
+  matchId: string;
+  matchNo: number;
+  eventId: string;
+  eventTitle: string;
+  at: number;
+  position: number;
+  side: 'RADIANT' | 'DIRE';
+}
+
 interface CommentItem {
   id: string;
   parentId: string | null;
@@ -67,7 +78,15 @@ const playerId = computed(() => String(route.params.id ?? ''));
 const loading = ref(true);
 const error = ref('');
 const player = ref<PlayerProfile | null>(null);
-const summary = ref({ played: 0, wins: 0, losses: 0, winRateBp: null as number | null });
+const summary = ref({
+  played: 0,
+  wins: 0,
+  losses: 0,
+  winRateBp: null as number | null,
+  /** 报名后未到场、被替补顶下来的场次 */
+  noShows: 0,
+});
+const noShowMatches = ref<NoShowRow[]>([]);
 const matches = ref<MatchRow[]>([]);
 const reactions = ref({ likes: 0, dislikes: 0, mine: null as 'LIKE' | 'DISLIKE' | null });
 const isSelf = ref(false);
@@ -86,12 +105,14 @@ async function loadProfile() {
       player: PlayerProfile;
       summary: typeof summary.value;
       matches: MatchRow[];
+      noShowMatches?: NoShowRow[];
       reactions: typeof reactions.value;
       isSelf: boolean;
     }>(`/players/${playerId.value}`);
     player.value = data.player;
     summary.value = data.summary;
     matches.value = data.matches;
+    noShowMatches.value = data.noShowMatches ?? [];
     reactions.value = data.reactions;
     isSelf.value = data.isSelf;
   } catch (err) {
@@ -291,6 +312,15 @@ watch(playerId, async () => {
               <span class="stat-label">胜率</span>
               <span class="mono player-stat-value">{{ winRate }}</span>
             </div>
+            <div class="player-stat">
+              <span class="stat-label" title="报名后没到场、被替补顶下来的场次：计入出勤率的未出场">弃赛</span>
+              <span
+                class="mono player-stat-value"
+                :style="summary.noShows > 0 ? 'color: var(--amber)' : ''"
+              >
+                {{ summary.noShows ?? 0 }}
+              </span>
+            </div>
           </div>
 
           <div class="player-votes">
@@ -376,6 +406,21 @@ watch(playerId, async () => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- 弃赛单独列：这些场次没打，混进上表会被误读成"打输了" -->
+        <div v-if="noShowMatches.length > 0" class="no-show-box">
+          <span class="no-show-title">报名后未到场（{{ noShowMatches.length }} 场）</span>
+          <ul class="no-show-list">
+            <li v-for="item in noShowMatches" :key="item.matchId">
+              <span class="muted">{{ formatDate(item.at) }}</span>
+              <RouterLink :to="`/events/${item.eventId}`" class="no-show-link">
+                {{ item.eventTitle }}
+              </RouterLink>
+              <span class="muted">第 {{ item.matchNo }} 场 · {{ item.position }} 号位</span>
+              <span class="tag tag-absent">弃赛</span>
+            </li>
+          </ul>
         </div>
       </section>
 

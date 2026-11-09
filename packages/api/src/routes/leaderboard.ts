@@ -13,6 +13,7 @@
  */
 import { Hono } from 'hono';
 import type { AppEnv } from '../env';
+import { noShowCountMap } from '../services/attendance';
 
 export const leaderboardRoutes = new Hono<AppEnv>();
 
@@ -86,9 +87,14 @@ leaderboardRoutes.get('/', async (c) => {
     .bind(limit)
     .all<Row>();
 
+  const noShows = await noShowCountMap(c.env);
+
   const entries = (rows.results ?? []).map((row, index) => ({
     rank: index + 1,
     ...row,
+    // 弃赛：报名了、进了正选，但比赛时没来、被替补顶下来的场次。
+    // 它不进入胜负统计（那场他没打），只影响出勤率与这里的展示。
+    noShows: noShows.get(row.id) ?? 0,
     // 胜率用基点，和项目里其它比率字段保持一致
     winRateBp: row.played > 0 ? Math.round((row.wins / row.played) * 10000) : null,
   }));

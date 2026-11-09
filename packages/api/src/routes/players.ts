@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { ApiError, newId } from '@hive/shared';
 import type { AppEnv } from '../env';
 import { requireUser } from '../guard';
+import { countNoShows, listNoShows } from '../services/attendance';
 
 export const playerRoutes = new Hono<AppEnv>();
 
@@ -122,6 +123,10 @@ playerRoutes.get('/:id', async (c) => {
   const wins = matches.filter((match) => match.won).length;
   const played = matches.length;
 
+  /* 弃赛：报名了、进了正选，但没来被换下去的场次（只展示，不进胜负） */
+  const noShows = await countNoShows(env, row.userId);
+  const noShowMatches = await listNoShows(env, row.userId, 10);
+
   /* 点赞点踩：总数 + 自己投过什么 */
   const reactionRow = await env.DB.prepare(
     `SELECT
@@ -160,7 +165,10 @@ playerRoutes.get('/:id', async (c) => {
         wins,
         losses: played - wins,
         winRateBp: played > 0 ? Math.round((wins / played) * 10000) : null,
+        /** 报名后未到场（被替补顶下来）的场次；计入出勤率的不出场，不计入胜负 */
+        noShows,
       },
+      noShowMatches,
       matches,
       reactions: {
         likes: reactionRow?.likes ?? 0,

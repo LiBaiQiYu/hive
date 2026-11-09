@@ -36,6 +36,19 @@ interface Summary {
   wins: number;
   losses: number;
   winRateBp: number | null;
+  /** 报名后未到场、被替补顶下来的场次 */
+  noShows?: number;
+}
+
+/** 我的弃赛记录：进了正选但没来，被换下去的那几场 */
+interface NoShowMatch {
+  matchId: string;
+  matchNo: number;
+  eventId: string;
+  eventTitle: string;
+  at: number;
+  position: number;
+  side: 'RADIANT' | 'DIRE';
 }
 
 interface LeaderRow extends PlayerListRow {
@@ -44,12 +57,14 @@ interface LeaderRow extends PlayerListRow {
   role: string;
   losses: number;
   played: number;
+  noShows?: number;
 }
 
 const loading = ref(true);
 const error = ref('');
 const summary = ref<Summary | null>(null);
 const matches = ref<MyMatch[]>([]);
+const noShows = ref<NoShowMatch[]>([]);
 const board = ref<LeaderRow[]>([]);
 
 /** 全员胜场默认按胜场降序；点表头可以换段位 / MMR / WARROOM / 胜率 */
@@ -82,9 +97,14 @@ async function load() {
     board.value = community.entries;
 
     if (session.me) {
-      const mine = await api<{ summary: Summary; matches: MyMatch[] }>('/me/matches');
+      const mine = await api<{
+        summary: Summary;
+        matches: MyMatch[];
+        noShowMatches?: NoShowMatch[];
+      }>('/me/matches');
       summary.value = mine.summary;
       matches.value = mine.matches;
+      noShows.value = mine.noShowMatches ?? [];
     }
   } catch (err) {
     error.value = err instanceof ApiError ? err.message : '加载失败';
@@ -112,6 +132,7 @@ const pct = (bp: number | null) => (bp === null ? '—' : `${(bp / 100).toFixed(
             '① 只统计已结束、有胜负记录的对局',
             '② 候补与流局不计入',
             '③ 胜率 = 胜 /（胜 + 负），没有记录时显示「—」',
+            '④ 弃赛 = 进了正选但没到场、被替补顶下来；不计胜负，只拉低出勤率',
           ]"
           note="这里的数据来自管理员录入的赛果；评委分与修正记录不在这里，见「我的」。"
         />
@@ -155,6 +176,31 @@ const pct = (bp: number | null) => (bp === null ? '—' : `${(bp / 100).toFixed(
               <div class="stat-label">胜率</div>
               <div class="record-value mono">{{ pct(summary?.winRateBp ?? null) }}</div>
             </div>
+            <div class="record-stat">
+              <div class="stat-label">弃赛</div>
+              <div
+                class="record-value mono"
+                :style="(summary?.noShows ?? 0) > 0 ? 'color: var(--amber)' : ''"
+                title="进了正选但没到场、被替补顶下来的场次：不计胜负，计入出勤率的未出场"
+              >
+                {{ summary?.noShows ?? 0 }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 弃赛明细：和"我的对局"分开列，否则会被误读成打过这几场 -->
+          <div v-if="noShows.length > 0" class="no-show-box">
+            <span class="no-show-title">报名后未到场</span>
+            <ul class="no-show-list">
+              <li v-for="item in noShows" :key="item.matchId">
+                <span class="muted">{{ formatDate(item.at) }}</span>
+                <RouterLink :to="`/events/${item.eventId}`" class="no-show-link">
+                  {{ item.eventTitle }}
+                </RouterLink>
+                <span class="muted">第 {{ item.matchNo }} 场 · {{ item.position }} 号位</span>
+                <span class="tag tag-absent">弃赛</span>
+              </li>
+            </ul>
           </div>
 
           <div v-if="matches.length === 0" class="empty" style="margin-top: 14px">
@@ -244,6 +290,12 @@ const pct = (bp: number | null) => (bp === null ? '—' : `${(bp / 100).toFixed(
                     <th class="num th-sort" @click="onSort('wins')">
                       胜 / 负 <span class="sort-arrow">{{ sortArrow('wins') }}</span>
                     </th>
+                    <th
+                      class="num"
+                      title="报名后没到场、被替补顶下来的场次：不计胜负，但会拉低出勤率"
+                    >
+                      弃赛
+                    </th>
                     <th class="num th-sort" @click="onSort('winRate')">
                       胜率 <span class="sort-arrow">{{ sortArrow('winRate') }}</span>
                     </th>
@@ -284,6 +336,16 @@ const pct = (bp: number | null) => (bp === null ? '—' : `${(bp / 100).toFixed(
                       {{ row.effective }}
                     </td>
                     <td class="num mono">{{ row.wins }} / {{ row.losses }}</td>
+                    <td class="num mono">
+                      <span
+                        v-if="(row.noShows ?? 0) > 0"
+                        class="no-show-count"
+                        :title="`${row.noShows} 场报名后未到场，出勤率按未出场计算`"
+                      >
+                        {{ row.noShows }}
+                      </span>
+                      <span v-else class="muted">—</span>
+                    </td>
                     <td class="num mono">{{ pct(row.winRateBp ?? null) }}</td>
                   </tr>
                 </tbody>

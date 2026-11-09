@@ -57,9 +57,9 @@
 | PUT | `/api/me/positions` | `[{position, rank, proficiency}]`，5 条全量覆盖 |
 | GET | `/api/me/rating-history` | 自己的评分调整记录（`rating_adjustments`，含原因与操作人，倒序最多 50 条） |
 | GET | `/api/players` | 玩家列表，`?query=&position=&sort=rating|name&page=` |
-| GET | `/api/players/:id` | 公开档案：段位、位置、英雄池 Top 10、近期战绩、评分构成 |
+| GET | `/api/players/:id` | 公开档案：段位、位置、英雄池 Top 10、近期战绩、评分构成；`summary.noShows` 是弃赛场次，`noShowMatches[]` 是明细（`{matchId, matchNo, eventId, eventTitle, at, position, side}`） |
 | POST | `/api/me/steam/sync` | 投递同步任务，返回 `202 {queued: true}` |
-| GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`（默认 `rating`）；返回 `{rank, user, effective, wins, losses, played, winRateBp}`。`mvp` 排序暂不提供——`match_player_stats` 还没有数据 |
+| GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`（默认 `rating`）；返回 `{rank, user, effective, wins, losses, played, winRateBp, noShows}`。`noShows` = 进了正选但没到场、被替补顶下来的场次（只展示，不参与排序）。`mvp` 排序暂不提供——`match_player_stats` 还没有数据 |
 | POST | `/api/me/game-account/claim` | `{accountId: 109902856}` 声明式绑定：先查段位源（配了 `STRATZ_API_TOKEN` 走 STRATZ，否则退回 OpenDota）确认账号存在，写入 `provider=DOTA_ACCOUNT_ID`、`verification=CLAIMED`。抓到公开段位才覆盖 `player_stats` 并清掉手填 MMR；**抓不到时只更新场次，保留原有的自报段位**（旧绑定同步来的 `OPENDOTA` / `STRATZ` 段位会清掉），返回 `hiddenData: true` |
 | DELETE | `/api/me/game-account` | 解绑；已有进行中报名时返回 `CONFLICT` |
 | PUT | `/api/me/rank` | `{rankTier?, declaredMmr?}` 手动填写段位，写 `rank_source=SELF_REPORTED` |
@@ -128,7 +128,7 @@
 | POST | `/api/admin/matches/:id/regenerate` | `{seed}`，仅 `DRAFT`；`version` 不变，`generation_seed` 更新 |
 | POST | `/api/admin/matches/:id/publish` | 校验 10 人 / 位次唯一 / 两侧各 5 人 → 冻结快照 → `PUBLISHED` |
 | GET | `/api/admin/matches/:id/substitutes` | 换人候选：本赛事已报名、还没进这场阵容的玩家（按出勤率 → 评分 → 报名时间排序，`busyInMatchNo` 标记已在其它场次）；同时返回本场换人流水 `history` |
-| POST | `/api/admin/matches/:id/substitutions` | `{outMemberId, inUserId?, guest?: {name, mmr?}, reason?, note?}`；`inUserId` 与 `guest` 二选一。允许 `DRAFT` / `PUBLISHED` / `IN_PROGRESS`。换下原队员、按同一位置插入替补（临时参赛者 `user_id` 为空、只存名字），重算队伍总分/分差、`version+1`、写 `match_substitutions` 与审计 `match.substitute` |
+| POST | `/api/admin/matches/:id/substitutions` | `{outMemberId, inUserId?, guest?: {name, mmr?}, reason?, note?}`；`inUserId` 与 `guest` 二选一。允许 `DRAFT` / `PUBLISHED` / `IN_PROGRESS`。换下原队员、按同一位置插入替补（临时参赛者 `user_id` 为空、只存名字），重算队伍总分/分差、`version+1`、写 `match_substitutions` 与审计 `match.substitute`。`reason` 默认 `ABSENT`（本人没来 → 记为**弃赛**，出勤率按未出场算），`MANUAL` 只是临场调整 |
 | POST | `/api/admin/matches/:id/void` | 流局，`VOID` |
 | GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度；临时参赛者 `userId` 为 `null`、`isGuest=1` |
 
@@ -211,7 +211,7 @@
 | --- | --- | --- |
 | GET | `/api/stats/summary` | 首页四宫格：`{members, totalMatches, monthRegistrations, topPlayer}` |
 | GET | `/api/matches` | `?eventId=&page=` 近期对局，按 `scheduled_at` 倒序；公开 |
-| GET | `/api/me/matches` | 战绩页「我的对局」：`{summary:{played,wins,losses,winRateBp}, matches:[{matchId,eventTitle,side,won,durationSeconds,playedAt}]}`。只算正选出场且比赛已结束有胜负的场次，**不含 KDA**（那要等对局导入） |
+| GET | `/api/me/matches` | 战绩页「我的对局」：`{summary:{played,wins,losses,winRateBp,noShows}, matches:[{matchId,eventTitle,side,won,durationSeconds,playedAt}], noShowMatches:[{matchId,matchNo,eventId,eventTitle,at,position,side}]}`。只算正选出场且比赛已结束有胜负的场次，**不含 KDA**（那要等对局导入）；`noShows` 是弃赛场次，单独列出、不计胜负 |
 | GET | `/api/leaderboard` | `?sort=rating\|wins&limit=`，公开；胜场由 `team_members` + `matches.radiant_win` 现算，不依赖 `match_player_stats` |
 
 ```json

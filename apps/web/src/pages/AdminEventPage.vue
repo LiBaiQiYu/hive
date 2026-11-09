@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   NButton,
+  NCheckbox,
   NDatePicker,
   NInput,
   NInputNumber,
@@ -579,6 +580,11 @@ const substituteHistory = ref<SubHistoryRow[]>([]);
 const substituteMode = ref<'bench' | 'guest'>('bench');
 const substitutePickId = ref<string | null>(null);
 const substituteGuest = ref<{ name: string; mmr: number | null }>({ name: '', mmr: null });
+/**
+ * 换下的原因：默认"本人没来"（记为弃赛，计入出勤率的未出场）。
+ * 纯粹为了平衡/临场调整的换人取消勾选，记为 MANUAL，不进个人主页的弃赛统计。
+ */
+const substituteAbsent = ref(true);
 
 /** 已发布的阵容也能换人（比赛开始前才有人说来不了），只有结束/流局不行 */
 const canSubstitute = computed(() =>
@@ -595,6 +601,7 @@ function openSubstitute(member: LineupMember, side: string) {
   substituteMode.value = 'bench';
   substitutePickId.value = null;
   substituteGuest.value = { name: '', mmr: null };
+  substituteAbsent.value = true;
   substituteOpen.value = true;
   void loadSubstitutes();
 }
@@ -627,13 +634,14 @@ async function confirmSubstitute() {
   if (!matchId || !target || !substituteReady.value) return;
   substituteSaving.value = true;
   try {
+    const reason = substituteAbsent.value ? 'ABSENT' : 'MANUAL';
     const body =
       substituteMode.value === 'bench'
-        ? { outMemberId: target.id, inUserId: substitutePickId.value, reason: 'ABSENT' }
+        ? { outMemberId: target.id, inUserId: substitutePickId.value, reason }
         : {
             outMemberId: target.id,
             guest: { name: substituteGuest.value.name.trim(), mmr: substituteGuest.value.mmr },
-            reason: 'ABSENT',
+            reason,
           };
     applyLineup(await api<LineupView>(`/admin/matches/${matchId}/substitutions`, { method: 'POST', body }));
     toast.success(
@@ -1348,6 +1356,15 @@ const statusPill = (status: string) => {
           <p class="muted" style="font-size: 12px; margin: 8px 0 0; line-height: 1.7">
             临时参赛者没有账号，只记录在这场的阵容和换人流水里，不进排行榜。
           </p>
+        </div>
+
+        <div class="sub-reason">
+          <NCheckbox v-model:checked="substituteAbsent">
+            本人没来（记为弃赛）
+          </NCheckbox>
+          <span class="muted" style="font-size: 12px">
+            勾选后这场计入他的弃赛，出勤率按未出场算；只是临时调整位置的话取消勾选。
+          </span>
         </div>
       </template>
 

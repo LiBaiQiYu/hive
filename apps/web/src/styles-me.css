@@ -112,10 +112,10 @@
   background: rgba(27, 32, 51, 0.08);
 }
 
-/* 战绩页：四宫格统计 */
+/* 战绩页：统计卡（场次/胜/负/胜率/弃赛，数量变了也不会挤成两行） */
 .record-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 12px;
 }
 
@@ -137,6 +137,54 @@
   .record-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* 弃赛：列表里的计数（琥珀色，0 时不显示） */
+.no-show-count {
+  color: var(--amber);
+  font-weight: 600;
+}
+
+/* 弃赛明细块：左侧一条琥珀色竖线，和"打过的对局"在视觉上分开 */
+.no-show-box {
+  margin-top: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.no-show-title {
+  color: var(--amber);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.no-show-list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.no-show-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.no-show-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.no-show-link:hover {
+  color: var(--gold-2);
 }
 
 /* 评分调整记录：第一行是时间/修正/结果/操作人，原因单独占一整行 */

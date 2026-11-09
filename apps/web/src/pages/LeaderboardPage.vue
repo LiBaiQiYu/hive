@@ -28,6 +28,8 @@ interface Entry extends PlayerListRow {
   confidenceBp: number;
   losses: number;
   played: number;
+  /** 报名后未到场、被替补顶下来的场次（只展示，不参与排序） */
+  noShows?: number;
 }
 
 const entries = ref<Entry[]>([]);
@@ -130,6 +132,12 @@ const sortArrow = (key: PlayerSortKey) =>
               <th class="num th-sort" @click="onSort('wins')">
                 胜 / 负 <span class="sort-arrow">{{ sortArrow('wins') }}</span>
               </th>
+              <th
+                class="num"
+                title="报名后没到场、被替补顶下来的场次：不计胜负，但会拉低出勤率"
+              >
+                弃赛
+              </th>
               <th class="num th-sort" @click="onSort('winRate')">
                 胜率 <span class="sort-arrow">{{ sortArrow('winRate') }}</span>
               </th>
@@ -169,6 +177,16 @@ const sortArrow = (key: PlayerSortKey) =>
               <td class="num mono">
                 {{ entry.wins }} / {{ entry.losses }}
                 <span v-if="entry.played === 0" class="muted" style="font-size: 11px">（无记录）</span>
+              </td>
+              <td class="num mono">
+                <span
+                  v-if="(entry.noShows ?? 0) > 0"
+                  class="no-show-count"
+                  :title="`${entry.noShows} 场报名后未到场，出勤率按未出场计算`"
+                >
+                  {{ entry.noShows }}
+                </span>
+                <span v-else class="muted">—</span>
               </td>
               <td class="num mono">{{ winRate(entry) }}</td>
             </tr>
