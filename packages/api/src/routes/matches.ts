@@ -129,10 +129,17 @@ async function loadLineup(env: Env, matchId: string) {
    * 没进这套阵容的人：本场被换下的（含弃赛）、赛事里的候补、正选但没排到的、截止前退赛的。
    * 三种状态都要查，因为"没进阵容"不等于"不是正选"——12 人报名只开一场时，
    * 剩下 2 个人状态仍是 CONFIRMED，但一场只上 10 人（见 services/bench.ts）。
+   *
+   * 位置要显式挑整数列：`position_snapshot` 在部分行里存的是**偏好数组 JSON**
+   * （如 `[{"position":1,"rank":1},…]`），直接 COALESCE 会把这串 JSON 拼进"号位"里。
    */
   const benchRegistrations = await env.DB.prepare(
     `SELECT r.user_id AS userId, u.display_name AS displayName, r.status,
-            COALESCE(r.position_preference, r.position_snapshot) AS position,
+            CASE
+              WHEN r.position_preference BETWEEN 1 AND 5 THEN r.position_preference
+              WHEN r.position_snapshot BETWEEN 1 AND 5 THEN r.position_snapshot
+              ELSE NULL
+            END AS position,
             r.waitlist_position AS waitlistPosition,
             r.effective_rating_snapshot AS rating
        FROM registrations r JOIN users u ON u.id = r.user_id
