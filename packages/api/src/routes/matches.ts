@@ -6,6 +6,7 @@ import { requireAdmin } from '../guard';
 import { computePositionFit, CONFLICT_THRESHOLD, type BalanceResult } from '../algorithms/team-balancing';
 import { MATCH_SIZE, TEAM_SIZE } from '../services/roster';
 import { attachPositions, generateMatchLineup, publishMatch } from '../services/lineup';
+import { buildBench } from '../services/bench';
 import { recomputeEventRatings } from '../services/rating';
 import { loadEvent } from './events';
 
@@ -96,24 +97,68 @@ async function loadLineup(env: Env, matchId: string) {
    * 替补顶上来的是谁：阵容里只显示「临时」看不出换掉了谁，
    * 这里按 in_member_id 把被换下的人名带上（`replacedName`），
    * 供阵容页渲染「临时 · 替 朝田诗乃」。换人流水本身是 append-only，不改阵容数据。
+   *
+   * out_user_id / in_name / position 同时被下面的"未进阵容"名单复用：
+   * 一个人被换下之后，team_members 里那一行已经删了，只剩这条流水能证明他来过。
    */
   const substitutions = await env.DB.prepare(
-    `SELECT in_member_id AS inMemberId, out_name AS outName, reason
+    `SELECT in_member_id AS inMemberId, out_name AS outName, reason,
+            out_user_id AS outUserId, in_name AS inName,
+            assigned_position AS position, created_at AS createdAt
        FROM match_substitutions WHERE match_id = ? ORDER BY created_at ASC`,
   )
     .bind(matchId)
-    .all<{ inMemberId: string; outName: string; reason: string }>();
+    .all<{
+      inMemberId: string;
+      outName: string | null;
+      reason: string;
+      outUserId: string | null;
+      inName: string | null;
+      position: number | null;
+      createdAt: number;
+    }>();
 
   const replacedByMember = new Map(
     (substitutions.results ?? []).map((row) => [
       row.inMemberId,
-      { outName: row.outName, reason: row.reason },
+      { outName: row.outName ?? '', reason: row.reason },
     ]),
   );
+
+  /**
+   * 没进这套阵容的人：本场被换下的（含弃赛）、赛事里的候补、截止前退赛的。
+   * 只收「赛事里本该上场却没出现」的，另一场的人不算——见 services/bench.ts。
+   */
+  const benchRegistrations = await env.DB.prepare(
+    `SELECT r.user_id AS userId, u.display_name AS displayName, r.status,
+            COALESCE(r.position_preference, r.position_snapshot) AS position,
+            r.waitlist_position AS waitlistPosition,
+            r.effective_rating_snapshot AS rating
+       FROM registrations r JOIN users u ON u.id = r.user_id
+      WHERE r.event_id = ? AND r.status IN ('WAITLIST', 'WITHDRAWN')`,
+  )
+    .bind(match.eventId)
+    .all<{
+      userId: string;
+      displayName: string | null;
+      status: string;
+      position: number | null;
+      waitlistPosition: number | null;
+      rating: number | null;
+    }>();
+
+  const bench = buildBench({
+    substitutions: substitutions.results ?? [],
+    registrations: benchRegistrations.results ?? [],
+    lineupUserIds: new Set(
+      memberRows.map((member) => member.userId).filter((id): id is string => Boolean(id)),
+    ),
+  });
 
   return {
     match: {
       ...match,
+      bench,
       teams: (teams.results ?? []).map((team) => ({
         ...team,
         members: memberRows

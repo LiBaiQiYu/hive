@@ -888,6 +888,105 @@ a {
   white-space: nowrap;
 }
 
+/* ------------------------------------------------------ 未进阵容（候补等） */
+/* 一行一个人：原因标签 → 名字 → 位置 → 一句说明。
+   标签用 pill、说明用 muted 小字，整体比阵容区轻一档，不要抢对阵的注意力。 */
+
+.bench-card {
+  padding: 8px 16px 14px;
+}
+
+.bench-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 9px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.bench-row:last-of-type {
+  border-bottom: none;
+}
+
+.bench-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 17px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* 弃赛是"负面事实"，用金色把它和普通候补区分开；候补用信息蓝；
+   临场换下是中性的调度，退赛已经离场，都用最轻的灰。 */
+.bench-tag[data-reason='ABSENT'] {
+  border-color: rgba(201, 162, 39, 0.5);
+  color: var(--gold-2);
+}
+
+.bench-tag[data-reason='WAITLIST'] {
+  border-color: rgba(120, 180, 255, 0.4);
+  color: #8aa4d6;
+}
+
+.bench-name {
+  flex: 1 1 auto;
+  min-width: 96px;
+}
+
+.bench-pos {
+  flex: none;
+  width: 52px;
+  font-size: 12px;
+}
+
+.bench-detail {
+  flex: 1 1 240px;
+  font-size: 12px;
+  text-align: right;
+}
+
+/* 图例：把"为什么"写在下面，别每题都去 tooltip 里找 */
+.bench-legend {
+  margin: 12px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 7px;
+}
+
+.bench-legend > div {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.bench-legend dt,
+.bench-legend dd {
+  margin: 0;
+}
+
+.bench-legend dd {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .bench-detail {
+    flex: 1 1 100%;
+    text-align: left;
+  }
+  .bench-legend > div {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
 .vs {
   align-self: center;
   font-family: var(--display);

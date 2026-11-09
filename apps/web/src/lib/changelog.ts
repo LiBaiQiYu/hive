@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.5.0';
+export const APP_VERSION = '1.6.0';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,13 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.6.0',
+    date: '2026-11-09',
+    items: [
+      '阵容页列出未进入阵容的玩家，并说明原因（候补、弃赛、临场换下、退赛）',
+    ],
+  },
   {
     version: '1.5.0',
     date: '2026-11-09',

@@ -31,6 +31,18 @@ interface Team {
   members: Member[];
 }
 
+type BenchReason = 'WAITLIST' | 'ABSENT' | 'SUBSTITUTED' | 'WITHDRAWN';
+
+/** 报了名却没出现在这套阵容里的人和原因（服务端算好，见 services/bench.ts） */
+interface BenchRow {
+  userId: string | null;
+  displayName: string;
+  position: number | null;
+  reason: BenchReason;
+  rank: number | null;
+  detail: string | null;
+}
+
 interface MatchView {
   match: {
     id: string;
@@ -45,6 +57,7 @@ interface MatchView {
     scheduledAt: number | null;
     version: number;
     teams: Team[];
+    bench: BenchRow[];
   };
 }
 
@@ -87,6 +100,16 @@ const won = computed(() => {
   if (!current || current.radiantWin === null) return null;
   return current.radiantWin === 1 ? 'RADIANT' : 'DIRE';
 });
+
+/** 原因标签：文案只活在前端，服务端只给枚举 */
+const BENCH_LABEL: Record<BenchReason, string> = {
+  WAITLIST: '候补',
+  ABSENT: '弃赛',
+  SUBSTITUTED: '临场换下',
+  WITHDRAWN: '退赛',
+};
+
+const bench = computed(() => match.value?.bench ?? []);
 </script>
 
 <template>
@@ -194,6 +217,56 @@ const won = computed(() => {
         括号里的数字是位置契合度（0–100）：低于 40 说明这个人不常打这个位置。
         阵容在发布时冻结，之后改评分或改偏好都不会让已公布的分队发生变化。
       </p>
+
+      <!-- 没进阵容的人：候补、本场被换下的、退赛的。原因由服务端归因，前端只负责讲清楚 -->
+      <section v-if="bench.length > 0" class="section">
+        <div class="section-head">
+          <h2 class="section-title">未进阵容</h2>
+          <span class="muted" style="font-size: 13px">{{ bench.length }} 人</span>
+        </div>
+
+        <div class="card bench-card">
+          <div v-for="row in bench" :key="`${row.userId ?? row.displayName}-${row.reason}`" class="bench-row">
+            <span class="bench-tag" :data-reason="row.reason">{{ BENCH_LABEL[row.reason] }}</span>
+
+            <RouterLink
+              v-if="row.userId"
+              class="bench-name slot-name-link"
+              :to="`/players/${row.userId}`"
+              :title="`看看 ${row.displayName} 的主页`"
+            >{{ row.displayName }}</RouterLink>
+            <span v-else class="bench-name">{{ row.displayName }}</span>
+
+            <span class="bench-pos muted">
+              {{ row.position ? `${row.position} 号位` : '位置未填' }}
+            </span>
+            <span class="bench-detail muted">{{ row.detail }}</span>
+          </div>
+
+          <dl class="bench-legend">
+            <div>
+              <dt><span class="bench-tag" data-reason="WAITLIST">候补</span></dt>
+              <dd class="muted">
+                报名人数超出容量（每一场 10 人），按「出勤率 → 实力分 → 报名时间」排位，有人退赛时依次补上。
+              </dd>
+            </div>
+            <div>
+              <dt><span class="bench-tag" data-reason="ABSENT">弃赛</span></dt>
+              <dd class="muted">
+                报名后没到场，位置由临时参赛者顶替；该场计入弃赛，不计胜负与出勤。
+              </dd>
+            </div>
+            <div>
+              <dt><span class="bench-tag" data-reason="SUBSTITUTED">临场换下</span></dt>
+              <dd class="muted">管理员在本场做了调整（人到了但不打这个位置），不算弃赛。</dd>
+            </div>
+            <div>
+              <dt><span class="bench-tag" data-reason="WITHDRAWN">退赛</span></dt>
+              <dd class="muted">在报名截止前主动退出，不占名额、也不计入任何统计。</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
     </template>
   </div>
 </template>
