@@ -28,6 +28,7 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
               成员管理（授予/撤销管理员、重置密码，禁止改自己、禁止降级最后一名管理员）
               队列健康（`/admin/jobs`，DEAD 可重试）、审计日志（`/admin/audit`，只读可筛）
               概览仪表盘（成员/赛事/本月报名/待发布/任务积压）
+              开赛提醒邮件：赛事页手动发，`TEST` 只发管理员自己（验通道）、`ALL` 遍历确认名单
 前端    Vue 3 + vue-router + **Naive UI**（按钮/下拉/日期/输入/确认框/Toast），深/浅色双主题，玩家卡片（3D 倾斜）
         主题映射在 `apps/web/src/lib/ui.ts`（Naive 色板 → HIVE 的 --gold/--surface），后台路由按需加载
         `NConfigProvider` 挂了 `zhCN` + `dateZhCN`；日期选择器要「只到分钟」就传 `time-picker-format="HH:mm"`
@@ -100,6 +101,7 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | 写"系统任务"时给 `matches.created_by` 传 `null` → `D1_ERROR: NOT NULL constraint failed: matches.created_by`（Cron 自动分队踩过） | `matches.created_by` / `events.created_by` 都是 `NOT NULL` 外键。系统任务没有"人"可填，就把 `actor.id` 填成赛事创建者（`events.created_by`），`actor.role` 仍记 `SYSTEM`——审计里照样看得出是自动跑的 |
 | 部署完立刻抓首页核对新代码，结果 bundle 里什么都找不到（以为没生效） | 刚发版的那几秒，边缘还在返回旧的 `index.html`（`Cache-Control: max-age=0, must-revalidate` 不等于立即刷新）。看 `curl -D -` 的 `ETag` 变没变，等 10~30 秒再取一次；确认时按 HTML 里当前的 `<script src>` 名重新下载，别用发版前记下的 chunk 名 |
 | 发信接口返回 200 但 `sent: 0`，`error` 是 `E_RECIPIENT_NOT_ALLOWED: destination address is not a verified address` | 不是代码问题：免费版只放行**已验证目的地地址**。`wrangler email routing addresses create <email>` 先把确认信发出去，本人在收件箱点掉链接（`wrangler email routing addresses list` 里 `verified` 从 `pending` 变 `verified`），再调一次接口就发出去了。`send_email` 绑定已收窄成管理员那一个地址，别"顺手"放宽（放宽＝要 Workers Paid） |
+| 单测里 import 了带 `cloudflare:email` 的模块 → vitest 直接报 `Cannot find module 'cloudflare:email'` | 这个模块只在 Workers 运行时存在。`services/mailer.ts` 因此把 `import('cloudflare:email')` 放在函数内部（模块顶层不碰它），并先判断 `env.EMAIL` 是否存在（`mailConfigured()`）；写新的发信代码时照抄这个结构，别在顶层静态 import |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -109,9 +111,17 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
   所以 `AUTO_FINALIZE_ODD=false` 只约束**手动**封盘那条路；自动路径固定走 `START_PARTIAL`
   （12 人 → 1 场 + 2 候补），**不足 10 人只关闭报名、不自动取消**（自动取消风险太大，等管理员延期或取消）。
   想改期就在截止前改时间或手动封盘。
-- **赛事通知先留接口、不发信**：`services/notify.ts` 只统计「该通知谁 / 其中几个能收信」并写审计 `event.notify`。
-  Cloudflare 免费版只能发给**已验证目的地地址**（官方定价页原文：任意收件人需要 Workers Paid），
-  要真发得先在控制台开通 Email Sending 并逐个验证收件箱；通道定了只改这一个文件，调用点不用动。
+- **邮件分两条路，别混**：
+  · **收信回信**（`email.ts` + `message.reply()`）：密码找回用，免费、发件人不限；
+  · **主动发信**（`services/mailer.ts` + `EMAIL` 绑定，发件人 `notify@cwa1e.top`）：
+    免费版只放行**已验证目的地地址**，`wrangler.jsonc` 因此把绑定收窄成
+    `destination_address: 625071316@qq.com`（管理员本人）。越界会抛
+    `E_RECIPIENT_NOT_ALLOWED`——这是套餐边界，不是 bug。
+  目前只有**开赛提醒**真的发信（后台手动触发，`POST /admin/events/:id/notify-starting-soon`，
+  `TEST` 只发管理员自己、`ALL` 遍历确认名单里能收信的地址，上限 20 封，逐封统计失败）；
+  **报名截止的 `event.finalized` 通知仍然只写审计 `event.notify` 不发信**。
+  想让全体玩家收到，要么逐个把地址加进 Destination addresses（免费、上限 200、各点一次确认信），
+  要么升级 Workers Paid。
 - **实力与可靠性分开**：`system_rating = clamp(round(估计 MMR / 10), 0, 1000)`，没有段位/MMR 时给 500 中性值；出勤**不进入**实力分。`confidence = career_matches/300` 只影响不确定度与管理员修正上限，不再把分数往 500 收缩。近期表现/位置能力/英雄池都不进评分——位置属于**分队**逻辑。
 - **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
@@ -154,9 +164,10 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
    - 给 `POST /api/auth/login` 加一条按 IP 的速率限制规则；
    - **Email → Email Routing** 里把 `reset@cwa1e.top` 建成 Custom address，动作选 **Send to Worker** → `hive`。
      这一步没做，邮件自助找回就不生效（管理员重置仍然可用）。
-   - **赛事通知想真发信，得先定通道**：控制台 Compute → Email Service → Email Sending 开通 cwa1e.top，
-     然后把收件箱逐个加为 Destination address（免费版上限 200、各点一次确认信），或升级 Workers Paid。
-     代码侧只需要改 `services/notify.ts`。
+   - **邮件通道目前只开了「管理员一个地址」**：`EMAIL` 绑定收窄到 `625071316@qq.com`（已验证目的地），
+     发件人是 `notify@cwa1e.top`（域名已在 Email Sending 开通）。
+     想让全体玩家收到开赛提醒，得把每个人的邮箱加进 Destination addresses（免费、上限 200、各点一次确认信），
+     或升级 Workers Paid。报名截止的 `event.finalized` 通知还没接发信（`services/notify.ts` 里留了 TODO）。
 2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」，再决定要不要给 `_headers` 补 HSTS
    （现在刻意没写，本地 http 会被钉死）。
 3. Cloudflare 会自动往 HTML 注入 Web Analytics 的 `beacon.min.js`，被我们的 `script-src 'self'` 挡掉。
