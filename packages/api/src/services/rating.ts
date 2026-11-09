@@ -17,8 +17,16 @@ import { reorderOpenEventWaitlists } from './waitlist';
 /**
  * 汇总一个玩家的评分输入。
  *
- * 出勤口径：报名过、且赛事已经结束（COMPLETED）的场次 vs 真正上过场
- * （正选，不含临时替补，且那场比赛已结束）。它只影响候补优先级，不进入实力分。
+ * 出勤口径（v3.1）：
+ *   · 分子 played：赛事已结束、且他真的在正选名单里上过场的场次（临时参赛者没有账号，天然不计）
+ *   · 分母 expected：**被排进过阵容**的已结束赛事场次——在 team_members 里出现过，
+ *     或者虽然被人顶下来、但换人流水记着他（`out_user_id`）
+ *
+ * 为什么分母不是"报名且已结束的场次"：12 人报名、只开 10 人那一场时，剩下 2 个人
+ * 根本没进阵容，那是**候补**不是缺勤。按报名数算会把"愿意来但没位置"的人记成 0% 出勤，
+ * 候补排序也跟着吃亏。没进阵容 = 不计入分母，等于这场没发生在他身上。
+ *
+ * 出勤只影响候补优先级，不进入实力分。
  */
 export async function collectInput(env: Env, userId: string): Promise<RatingInput> {
   const stats = await env.DB.prepare(
@@ -37,13 +45,20 @@ export async function collectInput(env: Env, userId: string): Promise<RatingInpu
   const attendance = await env.DB.prepare(
     `SELECT
        (SELECT count(*) FROM registrations r JOIN events e ON e.id = r.event_id
-         WHERE r.user_id = ?1 AND r.status = 'CONFIRMED'
-           AND e.status IN ('COMPLETED')) AS registered,
+         WHERE r.user_id = ?1 AND r.status = 'CONFIRMED' AND e.status = 'COMPLETED'
+           AND (
+             EXISTS (SELECT 1 FROM team_members tm JOIN matches m ON m.id = tm.match_id
+                      WHERE tm.user_id = r.user_id AND m.event_id = r.event_id
+                        AND m.status = 'COMPLETED' AND tm.is_substitute = 0)
+             OR EXISTS (SELECT 1 FROM match_substitutions ms JOIN matches m2 ON m2.id = ms.match_id
+                         WHERE ms.out_user_id = r.user_id AND m2.event_id = r.event_id
+                           AND m2.status = 'COMPLETED' AND ms.reason = 'ABSENT')
+           )) AS expected,
        (SELECT count(*) FROM team_members tm JOIN matches m ON m.id = tm.match_id
          WHERE tm.user_id = ?1 AND tm.is_substitute = 0 AND m.status = 'COMPLETED') AS played`,
   )
     .bind(userId)
-    .first<{ registered: number; played: number }>();
+    .first<{ expected: number; played: number }>();
 
   return {
     rankTier: stats?.rankTier ?? null,
@@ -54,7 +69,7 @@ export async function collectInput(env: Env, userId: string): Promise<RatingInpu
      */
     declaredMmr: stats?.rankSource === 'SELF_REPORTED' ? (stats.declaredMmr ?? null) : null,
     careerMatches: stats?.careerMatches ?? 0,
-    communityRegistered: attendance?.registered ?? 0,
+    communityRegistered: attendance?.expected ?? 0,
     communityPlayed: attendance?.played ?? 0,
   };
 }

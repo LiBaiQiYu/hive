@@ -98,8 +98,8 @@ describe('computeRating · 实力分', () => {
     expect(zero.system).toBe(0);
   });
 
-  it('算法版本已升到 v3', () => {
-    expect(ALGO_VERSION).toBe('warroom-v3');
+  it('算法版本已升到 v3.1（v3.1 只改出勤分母：没进阵容的报名不再算缺勤）', () => {
+    expect(ALGO_VERSION).toBe('warroom-v3.1');
   });
 });
 

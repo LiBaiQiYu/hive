@@ -75,6 +75,9 @@ interface LineupMember {
   position: number;
   fitScore: number;
   effectiveRating: number;
+  /** 被这个替补换下去的人（loadLineup 带出来） */
+  replacedName?: string | null;
+  replaceReason?: 'ABSENT' | 'MANUAL' | null;
 }
 
 interface LineupTeam {
@@ -1128,6 +1131,13 @@ const statusPill = (status: string) => {
                         <span class="slot-name">
                           {{ slot.member.displayName }}
                           <span v-if="slot.member.isGuest" class="slot-guest-tag">临时</span>
+                          <span
+                            v-if="slot.member.replacedName"
+                            class="slot-replaced"
+                            :title="`${slot.member.replacedName} 已被换下`"
+                          >
+                            替 {{ slot.member.replacedName }}
+                          </span>
                         </span>
                         <span
                           class="slot-rating"

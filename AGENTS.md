@@ -126,7 +126,13 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
   想让全体玩家收到，要么逐个把地址加进 Destination addresses（免费、上限 200、各点一次确认信），
   要么升级 Workers Paid。
 - **实力与可靠性分开**：`system_rating = clamp(round(估计 MMR / 10), 0, 1000)`，没有段位/MMR 时给 500 中性值；出勤**不进入**实力分。`confidence = career_matches/300` 只影响不确定度与管理员修正上限，不再把分数往 500 收缩。近期表现/位置能力/英雄池都不进评分——位置属于**分队**逻辑。
-- **出勤是独立的候补指标**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。正选与分队不看它；报名、封盘转候补、候补转正、退赛后都要重排。
+- **出勤是独立的候补指标（口径 v3.1）**：`player_ratings.attendance_bp`（0..10000，无记录为 NULL），
+  只用于 `services/waitlist.ts` 的排序：**出勤率 → 实力分 → 报名时间**（无记录按 50% 中性值）。
+  **分母只算"被排进过阵容"的场次**（在 team_members 里、或被换人流水记着 `out_user_id`），
+  不是"报名过"——12 人报名只开 10 人那场时，剩下 2 个没进阵容的是**候补，不是缺勤**；
+  按报名数算会把愿意来但没位置的人记成 0% 出勤。分子是真正上过场的正选场次。
+  改这条口径时记得同步 `ALGO_VERSION`（v3.1 就是因为这个升的），否则旧 `attendance_bp` 不会重算。
+  正选与分队不看它。
 - **评分重算只有一处实现**：`services/rating.ts` 的 `recomputeUserRating`（`collectInput` 也在那里）。改段位、OpenDota 同步、管理员重算、**录入比赛结果**、**赛事转 COMPLETED** 全走它；`/api/me` 会返回 `breakdown`（MMR 实力项 + 出勤明细），前端评分卡直接画构成条。算法版本落后时每日维护会补算，管理员也可以立即点「重算全部」。
 - **MMR 与段位的优先级**：`rank_source='SELF_REPORTED'` 时才用 MMR；`OPENDOTA`/`ADMIN_SET` 时以勋章为准（同步时会清掉 MMR）。
 - **管理员改分只改输入，不改结果**：`PUT /api/admin/ratings/players/:id/declared-mmr` 有两种互斥输入——

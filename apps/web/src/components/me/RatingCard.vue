@@ -155,12 +155,13 @@ onMounted(() => {
         </div>
         <p class="rating-break-note muted">
           <template v-if="attendancePct === null">
-            还没有已结束的赛事；候补排序按 50% 中性值。
+            没有被排进过阵容的已结束赛事；候补排序按 50% 中性值。
           </template>
           <template v-else>
             <template v-if="attendanceCounts">实际出场 {{ attendanceCounts }} 场 · </template>
             候补顺序：出勤率 → 实力分 → 报名时间。
           </template>
+          只算被排进阵容的场次——报名了但因名额没上场（候补）不算缺勤；被替补顶下来的算。
           出勤不进入实力分，也不影响分队。
         </p>
       </div>

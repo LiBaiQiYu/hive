@@ -200,7 +200,7 @@ sort_key = (attendance_bp ?? 5000) DESC → effective_rating_snapshot DESC → c
 - **样本量只影响不确定度**。`career_matches` 来自 OpenDota，量级远大于社区赛；它不再把高分往 500 拉。旧版 `500 + (raw−500) × max(confidence, 0.8)` 会把 9000 分压到 820，等于用"打得少"否定真实水平；现在 9000 分就是 900，置信度单独显示。
 - **分数上限的来源**：`estimated_mmr` 优先用自报 MMR（仅 `SELF_REPORTED`），同步了 OpenDota 后以勋章/星级估算（`estimateMmr`），避免"手填 9000 + 同步到先锋"的错配；没有段位时 `system_rating = 500`、`confidence = 0`，由管理员在 ±500 范围内修正。
 - **候补优先级的顺序固定为出勤率 → 实力分（报名快照）→ 报名时间**。没有出勤记录时用 `5000`（50%）参与排序；位置在 `services/waitlist.ts` 里统一重排，报名/封盘/转正/退赛都走它。
-- **版本化**：每次计算写入 `algorithm_version`（`warroom-v3`）；算法升级后每日维护会把旧版本评分逐条重算，管理员也可以在评分页点「重算全部」立即刷新。`breakdown_json` 保留 `components`（v3 只有 `MMR` 一项）、`estimatedMmr`、`attendanceBp`、`attendancePlayed`、`attendanceRegistered`。
+- **版本化**：每次计算写入 `algorithm_version`（`warroom-v3.1`；v3.1 只改出勤分母——没进阵容的报名不再算缺勤）；算法升级后每日维护会把旧版本评分逐条重算，管理员也可以在评分页点「重算全部」立即刷新。`breakdown_json` 保留 `components`（v3 只有 `MMR` 一项）、`estimatedMmr`、`attendanceBp`、`attendancePlayed`、`attendanceRegistered`。
 - 管理员修正是一个**独立业务模块**：写 `rating_adjustments`（前后值 + 原因 + 操作人）+ 更新 `player_ratings.admin_adjustment` + `effective_rating` + 写 `audit_logs`，三者在同一个 batch 内完成。
 
 ## 7. 自动分组算法

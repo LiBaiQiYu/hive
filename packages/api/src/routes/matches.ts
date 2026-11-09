@@ -91,12 +91,39 @@ async function loadLineup(env: Env, matchId: string) {
     }>();
 
   const memberRows = members.results ?? [];
+
+  /**
+   * 替补顶上来的是谁：阵容里只显示「临时」看不出换掉了谁，
+   * 这里按 in_member_id 把被换下的人名带上（`replacedName`），
+   * 供阵容页渲染「临时 · 替 朝田诗乃」。换人流水本身是 append-only，不改阵容数据。
+   */
+  const substitutions = await env.DB.prepare(
+    `SELECT in_member_id AS inMemberId, out_name AS outName, reason
+       FROM match_substitutions WHERE match_id = ? ORDER BY created_at ASC`,
+  )
+    .bind(matchId)
+    .all<{ inMemberId: string; outName: string; reason: string }>();
+
+  const replacedByMember = new Map(
+    (substitutions.results ?? []).map((row) => [
+      row.inMemberId,
+      { outName: row.outName, reason: row.reason },
+    ]),
+  );
+
   return {
     match: {
       ...match,
       teams: (teams.results ?? []).map((team) => ({
         ...team,
-        members: memberRows.filter((member) => member.teamId === team.id),
+        members: memberRows
+          .filter((member) => member.teamId === team.id)
+          .map((member) => ({
+            ...member,
+            /** 被这个替补换下去的人（只有换上来的人才有；原生阵容为 null） */
+            replacedName: replacedByMember.get(member.id)?.outName ?? null,
+            replaceReason: replacedByMember.get(member.id)?.reason ?? null,
+          })),
       })),
     },
   };

@@ -880,6 +880,14 @@ a {
   white-space: nowrap;
 }
 
+/* 「替 朝田诗乃」：临时参赛者顶的是谁。用 muted 小字，别和队名抢注意力 */
+.slot-replaced {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .vs {
   align-self: center;
   font-family: var(--display);

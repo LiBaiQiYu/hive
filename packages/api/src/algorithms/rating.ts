@@ -18,7 +18,7 @@
  *   15 人社区的 20 局样本噪音极大；英雄池需要 OpenDota 数据，
  *   而大多数人不一定开着公开战绩。
  */
-export const ALGO_VERSION = 'warroom-v3';
+export const ALGO_VERSION = 'warroom-v3.1';
 
 /** MMR → 0..1000 的缩放；10000 分 = 1000 */
 export const MMR_TO_RATING_DIVISOR = 10;

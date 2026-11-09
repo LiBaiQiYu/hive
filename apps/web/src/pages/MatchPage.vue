@@ -16,6 +16,10 @@ interface Member {
   position: number;
   fitScore: number;
   effectiveRating: number;
+  /** 被这个替补换下去的人；原生阵容为 null */
+  replacedName?: string | null;
+  /** 换人的原因：ABSENT = 本人没来（计入弃赛），MANUAL = 临场调整 */
+  replaceReason?: 'ABSENT' | 'MANUAL' | null;
 }
 
 interface Team {
@@ -160,6 +164,17 @@ const won = computed(() => {
                 <span v-else class="slot-name">
                   {{ slot.member.displayName }}
                   <span class="slot-guest-tag">临时</span>
+                  <span
+                    v-if="slot.member.replacedName"
+                    class="slot-replaced"
+                    :title="
+                      slot.member.replaceReason === 'MANUAL'
+                        ? `临场调整：${slot.member.replacedName} 换下`
+                        : `${slot.member.replacedName} 报名后未到场，由临时参赛者顶替`
+                    "
+                  >
+                    替 {{ slot.member.replacedName }}
+                  </span>
                 </span>
                 <span
                   class="slot-rating"

@@ -76,7 +76,7 @@
 { "rating": {
     "system": 520, "adjustment": 50, "effective": 570,
     "confidenceBp": 10000, "uncertainty": 0,
-    "algorithmVersion": "warroom-v3", "computedAt": 1761822000000,
+    "algorithmVersion": "warroom-v3.1", "computedAt": 1761822000000,
     "breakdown": {
       "components": [
         { "key": "MMR", "weight": 1000, "value": 0.52, "score": 520, "basis": "SELF_MMR" }
@@ -130,7 +130,7 @@
 | GET | `/api/admin/matches/:id/substitutes` | 换人候选：本赛事已报名、还没进这场阵容的玩家（按出勤率 → 评分 → 报名时间排序，`busyInMatchNo` 标记已在其它场次）；同时返回本场换人流水 `history` |
 | POST | `/api/admin/matches/:id/substitutions` | `{outMemberId, inUserId?, guest?: {name, mmr?}, reason?, note?}`；`inUserId` 与 `guest` 二选一。允许 `DRAFT` / `PUBLISHED` / `IN_PROGRESS`。换下原队员、按同一位置插入替补（临时参赛者 `user_id` 为空、只存名字），重算队伍总分/分差、`version+1`、写 `match_substitutions` 与审计 `match.substitute`。`reason` 默认 `ABSENT`（本人没来 → 记为**弃赛**，出勤率按未出场算），`MANUAL` 只是临场调整 |
 | POST | `/api/admin/matches/:id/void` | 流局，`VOID` |
-| GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度；临时参赛者 `userId` 为 `null`、`isGuest=1` |
+| GET | `/api/matches/:id` | 公开阵容：`PUBLISHED` / `IN_PROGRESS` / `COMPLETED` 可见，`DRAFT` 只有管理员能看（其他人 404）；返回与 lineup 同结构，含 `ratingGap` / `radiantWin` / 每人契合度；临时参赛者 `userId` 为 `null`、`isGuest=1`，并带 `replacedName`（被谁换下）与 `replaceReason`（`ABSENT` = 本人没来 / `MANUAL` = 临场调整） |
 
 `PATCH lineup` 的响应必须带实时汇总，前端不用自己算：
 
