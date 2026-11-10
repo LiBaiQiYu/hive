@@ -355,6 +355,8 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
       - 画布按 `devicePixelRatio`（上限 2）渲染：倒角和高频颗粒在 1x 下会被 CSS 拉伸糊掉。每帧只在指针移动 / 尺寸变化时画一次，没有动画循环，`prefers-reduced-motion` 天然满足。
       - 上下文丢失（`webglcontextlost`）→ 整页标记不可用，后续一律走 `paintFallback` 的 2D 渐变，不留白。
       - 这个材质的来历：参考了 React Bits 的 `ReflectiveCard`（React + WebGL2 + 视频反射）。**没搬它的组件**——它自带 `pointermove` 与 `rotateX/rotateY`，会和 `.pcard-inner` 的 CSS 3D 打架（卡片转一次、板面再转一次）；反射源是 `<video>` / 摄像头，而 `apps/web/public/_headers` 里 `Permissions-Policy: camera=(), microphone=()` 明确禁用了相机。只沿用了它的着色思路。
+
+      ![镜面材质](assets/card-mirror.png)
 6. **边框动效分三套**：`corners` / `frost` / `spark` 是 `components/CardFrameFX.vue` 的 CSS 图层，动画只用 transform / opacity（合成器逐帧插值，不重绘），配色读材质的 `--skin-*`；四角是四个镜像的角标（两条臂 + 沿臂巡游的光点 + 依次点亮的角光 + 角尖星点）。`hairline` / `double` 只要颜色 / 光效不是 `auto` + `steady`，就挂 `components/CardLineFX.vue`（发丝线 1px、双线 2px+1px 描边；流动彩色走 1px 遮罩环里的旋转 conic-gradient，呼吸 / 闪烁只动整层 opacity），同时把 `--skin-border-width` 归零、原生边框透明，避免出现两条描边。只有 `arc` 还是 `apps/web/scripts/make_border_anims.py` 生成的逐帧 WebP。`prefers-reduced-motion` 下三套都退回静态描边 / 静态角标，不播动画。
    - 只有 `hairline` / `double` 会在边框分组下面出现「颜色与光效」入口；点开是 `NModal` 弹窗，选色不离开弹窗，左侧卡片实时预览，`MePage` 的 350ms 防抖负责自动保存。
 7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006/0014/0017）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
