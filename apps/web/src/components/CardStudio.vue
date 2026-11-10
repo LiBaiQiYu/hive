@@ -172,7 +172,7 @@ const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
       { key: 'curvY', label: '纵向曲率', hint: '给大了竖线会拧成波浪，0.2 附近是安全区', step: 0.01 },
       { key: 'brush', label: '拉丝', hint: '横向细纹的强度', step: 0.001 },
       { key: 'grain', label: '颗粒', hint: '完全没有会像塑料', step: 0.001 },
-      { key: 'tiltGain', label: '倾斜增益', hint: '指针带动反射的幅度', step: 0.01 },
+      { key: 'tiltGain', label: '倾斜增益', hint: '指针带动反射的幅度；0.2 以上会像在拖动画面', step: 0.01 },
     ],
   },
   {

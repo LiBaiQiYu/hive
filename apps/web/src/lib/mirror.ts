@@ -177,7 +177,11 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   curvY: 0.18,
   brush: 0.01,
   grain: 0.012,
-  tiltGain: 0.55,
+  /**
+   * 0.13 而不是 0.55：整条取样跨度是 ±1，0.55 意味着指针扫一遍反射能扫过
+   * 场景宽度的 68%——看着像在拖动一张图，不像"板子在晃"。
+   */
+  tiltGain: 0.13,
   specPower: 700,
   specGain: 2,
   glare: 0.1,
@@ -479,8 +483,11 @@ void main() {
   N.xy += (vec2(vnoise(p * 2.6), vnoise(p * 2.6 + 11.3)) - 0.5) * 0.055;
   N = normalize(N);
 
-  // 视线方向随倾斜变化：指针在哪一侧，反射就扫向哪一侧
-  vec3 V = normalize(vec3(uTilt.x * uRimCfg.w, uTilt.y * uRimCfg.w, 1.0));
+  // 视线方向：**x 要取反**。V 是"从板面指向观察者"的方向，而卡片向右倾时
+  // 板面法线是朝右的，反射应该映到场景的右侧。直接用 +uTilt.x 会让整张反射
+  // 往反方向跑（用户报的就是这个：指针往右，画面却往右滑）。
+  // y 保持原样——竖直方向用户的观感是对的，别顺手改。
+  vec3 V = normalize(vec3(-uTilt.x * uRimCfg.w, uTilt.y * uRimCfg.w, 1.0));
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
