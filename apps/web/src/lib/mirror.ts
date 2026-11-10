@@ -216,8 +216,8 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   spotY: 0.62,
   spotRadius: 0.11,
   spotStrength: 0.95,
-  avatarGain: 2.6,
-  lampWarm: 0.11,
+  avatarGain: 3,
+  lampWarm: 0.16,
   curvX: 0.4,
   curvY: 0.18,
   grain: 0.012,
@@ -492,6 +492,9 @@ vec3 sceneEnvironment(vec2 uvScene) {
   // 取高 mip：金属映出来的是"远处的屋子"，本来就该是虚的。
   // 清晰的原图反而像贴纸，而且和卡片上的文字抢对比度（踩过）。
   vec3 col = textureLod(uScene, uv, uEnvCfg.z).rgb * uEnvCfg.w;
+  // 去色只作用于**场景照片**，不能作用于下面那盏肖像灯——
+  // 灯是这个材质里唯一的暖色，去色会把"你"直接洗成灰色（踩过）。
+  col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
 
   // 房间里的那盏"肖像灯"：把本人头像当成一块发光的画挂进场景。
   // 位置在场景图的地平线以上（uv.y > 0.47），否则就成了"地上摊着一张会发光的画"。
@@ -609,8 +612,11 @@ void main() {
 
   // 金属度：0 = 哑光（反射几乎没了，只剩底色），1 = 纯金属
   col = mix(vec3(0.02) + uTint * 0.10, col, uMisc2.x);
-  // 去色：原版那样把反射画面压成灰的
-  col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
+  // 去色：只有"没有场景图"那条兜底路径才在 main 里补一次
+  // （有场景图时已经在 sceneEnvironment 里对照片做过，灯要保留颜色）
+  if (uEnvReady.x < 0.5) {
+    col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
+  }
   // 丝的亮度调制（参考组件：scene *= 1 + (grain-0.5)*brush*0.3）
   col *= 1.0 + (grain - 0.5) * brush * 0.35;
 
