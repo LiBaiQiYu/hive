@@ -114,6 +114,160 @@ export function mirrorPalette(key: string, rankTier?: number | null): MirrorPale
 }
 
 /* ==========================================================================
+ * 可调参数（「调整参数」弹窗用）
+ *
+ * 每一项都直接进着色器 uniform，改完整个站点立刻生效。
+ * 存 **localStorage** 而不是数据库：这是调参，不是用户数据。定稿之后应该把
+ * DEFAULT_MIRROR_PARAMS 改掉再发版，而不是让线上永远读某个人浏览器里的值。
+ * ========================================================================== */
+
+export interface MirrorParams {
+  /** 场景取样跨度（横向 / 纵向）：越小越"放大" */
+  spanX: number;
+  spanY: number;
+  /** 场景模糊（mip 级）：越大越像"远处的屋子" */
+  sceneLod: number;
+  /** 场景亮度 */
+  sceneGain: number;
+  /** 肖像灯中心（场景图 uv） */
+  spotX: number;
+  spotY: number;
+  /** 肖像灯半径 */
+  spotRadius: number;
+  /** 肖像灯混合强度 */
+  spotStrength: number;
+  /** 头像本身的提亮倍数 */
+  avatarGain: number;
+  /** 暖色灯罩强度 */
+  lampWarm: number;
+  /** 板面曲率（横向 / 纵向）：纵向给大了竖线会拧成波浪 */
+  curvX: number;
+  curvY: number;
+  /** 拉丝强度 */
+  brush: number;
+  /** 颗粒强度 */
+  grain: number;
+  /** 指针倾斜对反射的增益 */
+  tiltGain: number;
+  /** 主光高光指数 / 强度 */
+  specPower: number;
+  specGain: number;
+  /** 跟随指针的柔光 */
+  glare: number;
+  /** 曝光 */
+  exposure: number;
+  /** 倒角：起始位置 / 亮度 / 板内压暗 */
+  rimStart: number;
+  rimGain: number;
+  bevelShade: number;
+}
+
+export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
+  spanX: 0.62,
+  spanY: 0.95,
+  sceneLod: 2.4,
+  sceneGain: 0.94,
+  spotX: 0.7,
+  spotY: 0.62,
+  spotRadius: 0.11,
+  spotStrength: 0.95,
+  avatarGain: 2.6,
+  lampWarm: 0.11,
+  curvX: 0.4,
+  curvY: 0.18,
+  brush: 0.01,
+  grain: 0.012,
+  tiltGain: 0.55,
+  specPower: 700,
+  specGain: 2,
+  glare: 0.1,
+  exposure: 0.95,
+  rimStart: 0.9,
+  rimGain: 0.62,
+  bevelShade: 0.14,
+};
+
+/** 每个参数的合法区间：滑块范围与"从 localStorage 读回来时的夹取"共用这一份 */
+export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, number]> = {
+  spanX: [0.2, 1],
+  spanY: [0.3, 1.3],
+  sceneLod: [0, 5],
+  sceneGain: [0.3, 1.6],
+  spotX: [0, 1],
+  spotY: [0, 1],
+  spotRadius: [0.03, 0.3],
+  spotStrength: [0, 1.5],
+  avatarGain: [0, 5],
+  lampWarm: [0, 0.5],
+  curvX: [0.1, 0.8],
+  curvY: [0, 0.5],
+  brush: [0, 0.05],
+  grain: [0, 0.05],
+  tiltGain: [0, 1.5],
+  specPower: [100, 2000],
+  specGain: [0, 4],
+  glare: [0, 0.5],
+  exposure: [0.4, 2],
+  rimStart: [0.6, 0.98],
+  rimGain: [0, 2],
+  bevelShade: [0, 0.4],
+};
+
+const MIRROR_PARAM_KEYS = Object.keys(DEFAULT_MIRROR_PARAMS) as (keyof MirrorParams)[];
+const MIRROR_STORAGE_KEY = 'hive-mirror-params';
+
+/** 脏值一律夹到区间里，缺的用默认值——localStorage 是用户可以手改的，别信它 */
+export function normalizeMirrorParams(
+  input?: Partial<MirrorParams> | null,
+): MirrorParams {
+  const output = { ...DEFAULT_MIRROR_PARAMS };
+  if (!input || typeof input !== 'object') return output;
+  for (const key of MIRROR_PARAM_KEYS) {
+    const value = input[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    const [min, max] = MIRROR_PARAM_RANGES[key];
+    output[key] = Math.min(max, Math.max(min, value));
+  }
+  return output;
+}
+
+function saveMirrorParams(value: MirrorParams): void {
+  try {
+    globalThis.localStorage?.setItem(MIRROR_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    /* 隐私模式 / 配额满：存不下就算了，本次会话内仍然有效 */
+  }
+}
+
+function loadMirrorParams(): MirrorParams {
+  try {
+    const raw = globalThis.localStorage?.getItem(MIRROR_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_MIRROR_PARAMS };
+    return normalizeMirrorParams(JSON.parse(raw) as Partial<MirrorParams>);
+  } catch {
+    return { ...DEFAULT_MIRROR_PARAMS };
+  }
+}
+
+let params: MirrorParams = loadMirrorParams();
+
+export function getMirrorParams(): MirrorParams {
+  return { ...params };
+}
+
+export function setMirrorParams(next: Partial<MirrorParams>): MirrorParams {
+  params = normalizeMirrorParams({ ...params, ...next });
+  saveMirrorParams(params);
+  return { ...params };
+}
+
+export function resetMirrorParams(): MirrorParams {
+  params = { ...DEFAULT_MIRROR_PARAMS };
+  saveMirrorParams(params);
+  return { ...params };
+}
+
+/* ==========================================================================
  * 素材：场景图 + 头像
  *
  * 两张都是异步就绪：没就绪就继续用程序化环境，绝不阻塞首帧。
@@ -192,14 +346,6 @@ export function ensureMirrorAssets(avatarUrl?: string | null): Promise<void> | n
   return Promise.all(waits).then(() => undefined);
 }
 
-/**
- * 肖像灯在场景图里的位置（uv）、半径、亮度。
- * 场景图的地平线在 uv.y ≈ 0.47，往上是墙、往下是抛光地面，
- * 所以灯必须挂在 0.5 以上——否则就成了"地上摊着一张会发光的画"。
- * 横向放在偏右：卡面左半边是名字和头像，灯放那里会把大标题压糊。
- */
-const AVATAR_SPOT = { x: 0.7, y: 0.62, radius: 0.11, strength: 0.95 } as const;
-
 /* ==========================================================================
  * 着色器
  * ========================================================================== */
@@ -222,7 +368,14 @@ uniform vec3 uAccent; // 段位色：程序化环境里左下角那块副光
 uniform sampler2D uScene;  // 场景图（sRGB，硬件转线性）
 uniform sampler2D uAvatar; // 本人头像（sRGB）
 uniform vec2 uEnvReady;    // x: 场景图就绪, y: 头像就绪
-uniform vec4 uSpot;        // xy 中心(uv) / z 半径 / w 强度
+// 可调参数（「调整参数」弹窗）。打包成 vec4 是为了少传几次 uniform，
+// 每一项对应 MirrorParams 里的一个字段，注释写清了顺序。
+uniform vec4 uEnvCfg;   // x 横向跨度 y 纵向跨度 z 场景 mip w 场景亮度
+uniform vec4 uSpotCfg;  // xy 灯中心(uv) z 半径 w 强度
+uniform vec4 uLampCfg;  // x 头像提亮 y 暖光强度
+uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 拉丝 w 颗粒
+uniform vec4 uLightCfg; // x 高光指数 y 高光强度 z 指针柔光 w 曝光
+uniform vec4 uRimCfg;   // x 倒角起始 y 倒角亮度 z 板内压暗 w 倾斜增益
 
 // 便宜的确定性噪声。镜面的细节频率不高，用不上贴图。
 float hash21(vec2 p) {
@@ -281,24 +434,25 @@ vec3 proceduralEnvironment(vec3 R) {
 // 场景图是一张平面幕布（不是等距柱状全景），所以直接拿方向的 xy 当 uv 偏移——
 // 几何上相当于"远处的一面墙"，视觉上够用，而且指针一动整张图就在板面上滑。
 vec3 sceneEnvironment(vec3 R) {
-  vec2 uv = clamp(0.5 + R.xy * vec2(0.62, 0.95), 0.002, 0.998);
+  vec2 uv = clamp(0.5 + R.xy * uEnvCfg.xy, 0.002, 0.998);
   // 取高 mip：金属映出来的是"远处的屋子"，本来就该是虚的。
   // 清晰的原图反而像贴纸，而且和卡片上的文字抢对比度（踩过）。
-  vec3 col = textureLod(uScene, uv, 2.4).rgb * 0.94;
+  vec3 col = textureLod(uScene, uv, uEnvCfg.z).rgb * uEnvCfg.w;
 
   // 房间里的那盏"肖像灯"：把本人头像当成一块发光的画挂进场景。
+  // 位置在场景图的地平线以上（uv.y > 0.47），否则就成了"地上摊着一张会发光的画"。
   if (uEnvReady.y > 0.5) {
-    vec2 local = (uv - uSpot.xy) / uSpot.z;
+    vec2 local = (uv - uSpotCfg.xy) / uSpotCfg.z;
     float d = length(local);
     float mask = 1.0 - smoothstep(0.62, 1.0, d);
     vec3 av = textureLod(uAvatar, clamp(local * 0.5 + 0.5, 0.002, 0.998), 1.6).rgb;
     // 用 max 而不是直接替换：头像大多偏暗，直接盖上去会在板面上砸出一个黑洞。
     // 只允许它"提亮"，这样它才像一盏灯，而不是一张贴上去的图。
-    vec3 lamp = max(col, av * av * 2.6 + av * 0.55 + vec3(0.02, 0.04, 0.09));
-    col = mix(col, lamp, mask * uSpot.w);
+    vec3 lamp = max(col, av * av * uLampCfg.x + av * 0.55 + vec3(0.02, 0.04, 0.09));
+    col = mix(col, lamp, mask * uSpotCfg.w);
     // 暖色灯罩：整间屋子都是冷蓝的，唯一一处暖光就是"你"——这也是全局里
     // 唯一能让人一眼找到头像的线索，别改成冷色。
-    col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * 0.11;
+    col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * uLampCfg.y;
   }
   return col;
 }
@@ -318,15 +472,15 @@ void main() {
 
   // 法线：一块微微弯起来的金属板。**纵向曲率要小**——纵向一弯，
   // 场景里的竖线（立柱、平台边）就会被拧成波浪，看着像贴图被揉皱了。
-  vec3 N = normalize(vec3(p.x * 0.40, p.y * 0.18, 1.0));
+  vec3 N = normalize(vec3(p.x * uSurface.x, p.y * uSurface.y, 1.0));
   // 拉丝：低频横纹，只给一点点扰动（高频噪声在 1x 下就是砂纸）
-  N.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * 0.010, 0.0);
+  N.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * uSurface.z, 0.0);
   // 曲面上的细微不均匀：抛光留下的起伏。没有这一层，反射会像 CAD 渲染一样干净得假
   N.xy += (vec2(vnoise(p * 2.6), vnoise(p * 2.6 + 11.3)) - 0.5) * 0.055;
   N = normalize(N);
 
   // 视线方向随倾斜变化：指针在哪一侧，反射就扫向哪一侧
-  vec3 V = normalize(vec3(uTilt.x * 0.55, uTilt.y * 0.55, 1.0));
+  vec3 V = normalize(vec3(uTilt.x * uRimCfg.w, uTilt.y * uRimCfg.w, 1.0));
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
@@ -337,31 +491,31 @@ void main() {
   // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色
   vec3 L = normalize(vec3(-0.28, -0.52, 0.81));
   vec3 H = normalize(L + V);
-  col += uTint * pow(clamp(dot(N, H), 0.0, 1.0), 700.0) * 2.0;
+  col += uTint * pow(clamp(dot(N, H), 0.0, 1.0), uLightCfg.x) * uLightCfg.y;
 
   // 跟着指针走的一团柔光（很轻：它只负责"手在动"的反馈，不该盖掉环境）
   vec2 glareAt = 0.5 + uTilt * 0.26;
   float glareDist = length((uv - glareAt) * vec2(aspect, 1.0));
-  col += vec3(1.0, 0.98, 0.95) * exp(-glareDist * glareDist * 16.0) * 0.10;
+  col += vec3(1.0, 0.98, 0.95) * exp(-glareDist * glareDist * 16.0) * uLightCfg.z;
 
   // 倒角：紧贴边内侧压一道，再在倒角面上按光来的方向补一记亮线。
   // 有方向的倒角才像压出来的钢板；四边等亮的圆环只会像描边。
   // 法线里不做这件事：径向扰动会把环境里的灯带拧成弧形，看着像脏污。
   float edgeDist = max(abs(radial.x), abs(radial.y));
-  float rimMask = smoothstep(0.90, 1.0, edgeDist);
+  float rimMask = smoothstep(uRimCfg.x, 1.0, edgeDist);
   vec2 outward = normalize(p + vec2(1e-4));
   float rimLight = clamp(dot(outward, normalize(vec2(-0.55, 0.84))), 0.0, 1.0);
-  col *= mix(0.86, 1.0, smoothstep(0.0, 0.20, edgeDist));
-  col += (uTint * 0.6 + vec3(0.4)) * rimMask * (0.08 + 0.62 * rimLight);
+  col *= mix(1.0 - uRimCfg.z, 1.0, smoothstep(0.0, 0.20, edgeDist));
+  col += (uTint * 0.6 + vec3(0.4)) * rimMask * (0.08 + uRimCfg.y * rimLight);
 
   // 顶亮底暗：板子是被上方灯照着的
   col *= mix(0.92, 1.04, uv.y);
 
   // 颗粒：绝对光滑的镜面看着像塑料
-  col += (hash21(gl_FragCoord.xy) - 0.5) * 0.012;
+  col += (hash21(gl_FragCoord.xy) - 0.5) * uSurface.w;
 
   // 色调映射 + gamma：避免灯带处整片死白
-  col = vec3(1.0) - exp(-col * 0.95);
+  col = vec3(1.0) - exp(-col * uLightCfg.w);
   fragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
 }
 `;
@@ -381,7 +535,12 @@ interface GlState {
   scene: WebGLUniformLocation | null;
   avatar: WebGLUniformLocation | null;
   envReady: WebGLUniformLocation | null;
-  spot: WebGLUniformLocation | null;
+  envCfg: WebGLUniformLocation | null;
+  spotCfg: WebGLUniformLocation | null;
+  lampCfg: WebGLUniformLocation | null;
+  surface: WebGLUniformLocation | null;
+  lightCfg: WebGLUniformLocation | null;
+  rimCfg: WebGLUniformLocation | null;
   /** 没图时占位用的 1×1 黑纹理，免得采样到"不完整纹理" */
   blank: WebGLTexture | null;
 }
@@ -505,7 +664,12 @@ function createState(): GlState | null {
     scene: gl.getUniformLocation(program, 'uScene'),
     avatar: gl.getUniformLocation(program, 'uAvatar'),
     envReady: gl.getUniformLocation(program, 'uEnvReady'),
-    spot: gl.getUniformLocation(program, 'uSpot'),
+    envCfg: gl.getUniformLocation(program, 'uEnvCfg'),
+    spotCfg: gl.getUniformLocation(program, 'uSpotCfg'),
+    lampCfg: gl.getUniformLocation(program, 'uLampCfg'),
+    surface: gl.getUniformLocation(program, 'uSurface'),
+    lightCfg: gl.getUniformLocation(program, 'uLightCfg'),
+    rimCfg: gl.getUniformLocation(program, 'uRimCfg'),
     blank: (() => {
       const texture = gl.createTexture();
       if (!texture) return null;
@@ -556,11 +720,11 @@ function paintFallback(
     const oy = (h - dh) * 0.5 - tiltY * (dh - h) * 0.22;
     ctx.drawImage(sceneImage, ox, oy, dw, dh);
 
-    // 肖像灯：位置是卡面坐标，不追求和 shader 完全一致，够像就行
+    // 肖像灯：位置直接从参数换到卡面坐标，不追求和 shader 完全一致，够像就行
     const avatar = avatarUrl ? avatarImages.get(avatarUrl) : undefined;
-    const x = w * 0.3 - tiltX * w * 0.05;
-    const y = h * 0.36 - tiltY * h * 0.05;
-    const radius = h * 0.17;
+    const x = w * params.spotX - tiltX * w * 0.05;
+    const y = h * (1 - params.spotY) - tiltY * h * 0.05;
+    const radius = h * params.spotRadius * 1.6;
     const halo = ctx.createRadialGradient(x, y, radius * 0.5, x, y, radius * 2.4);
     halo.addColorStop(0, 'rgba(120, 170, 255, 0.26)');
     halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
@@ -720,12 +884,25 @@ export function renderMirrorFrame(
     gl.uniform1i(glState.scene, 0);
     gl.uniform1i(glState.avatar, 1);
     gl.uniform2f(glState.envReady, sceneTexture ? 1 : 0, avatarTexture ? 1 : 0);
+
+    // 可调参数（「调整参数」弹窗改的就是这一组）
+    gl.uniform4f(glState.envCfg, params.spanX, params.spanY, params.sceneLod, params.sceneGain);
     gl.uniform4f(
-      glState.spot,
-      AVATAR_SPOT.x,
-      AVATAR_SPOT.y,
-      AVATAR_SPOT.radius,
-      AVATAR_SPOT.strength,
+      glState.spotCfg,
+      params.spotX,
+      params.spotY,
+      params.spotRadius,
+      params.spotStrength,
+    );
+    gl.uniform4f(glState.lampCfg, params.avatarGain, params.lampWarm, 0, 0);
+    gl.uniform4f(glState.surface, params.curvX, params.curvY, params.brush, params.grain);
+    gl.uniform4f(glState.lightCfg, params.specPower, params.specGain, params.glare, params.exposure);
+    gl.uniform4f(
+      glState.rimCfg,
+      params.rimStart,
+      params.rimGain,
+      params.bevelShade,
+      params.tiltGain,
     );
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);

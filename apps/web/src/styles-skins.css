@@ -1207,6 +1207,83 @@
   border-top: 1px solid var(--line);
 }
 
+/* ---------------------------------------------------------------- 镜面调参 */
+/* 二十多个滑块，弹窗里要能滚；分组标题复用「颜色与光效」那套 frame-style-head。 */
+.mirror-tuning {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: min(66vh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+/* 弹窗里的实时预览：调参时卡片必须一直在视野里。
+   它在滚动区域外面，往下翻参数也不会滚走。 */
+.mirror-tuning-preview {
+  width: 100%;
+  max-width: 330px;
+  margin: 0 auto 14px;
+}
+
+.mirror-tuning-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mirror-tuning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: center;
+  gap: 2px 14px;
+}
+
+.mirror-tuning-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.mirror-tuning-value {
+  flex: none;
+  color: var(--gold-2);
+  font-size: 12px;
+}
+
+/* 提示跨两列，压在滑块下面 */
+.mirror-tuning-hint {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.mirror-tuning-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* 底栏：提示在上、按钮在下右——22 个滑块本身就够挤，别再横向抢位置 */
+.mirror-tuning-footer {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+@media (max-width: 520px) {
+  .mirror-tuning-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .frame-style-footer-note {
   font-size: 11px;
   line-height: 1.5;

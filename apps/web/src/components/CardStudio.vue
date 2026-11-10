@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { NButton, NModal } from 'naive-ui';
+import { NButton, NModal, NSlider } from 'naive-ui';
 import CardLineFX from './CardLineFX.vue';
 import PlayerCard, { type PlayerCardData } from './PlayerCard.vue';
+import {
+  MIRROR_PARAM_RANGES,
+  getMirrorParams,
+  resetMirrorParams,
+  setMirrorParams,
+  type MirrorParams,
+} from '../lib/mirror';
 import {
   CARD_FRAME_COLOR_OPTIONS,
   CARD_FRAME_EFFECT_OPTIONS,
@@ -99,12 +106,143 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
   if (draft.value[key] === value) return;
   commit({ ...draft.value, [key]: value });
 }
+
+/* ---------------------------------------------------------------- 镜面调参 */
+/* 着色器里所有可变的量都在这一组里。改任何一个立刻应用到全站（模块级参数），
+   所以预览卡要顶一个 revision 才会重画一帧。
+   值只存本机 localStorage——这是调参，不是用户数据；定稿后把默认值写进
+   lib/mirror.ts 的 DEFAULT_MIRROR_PARAMS 再发版。 */
+
+interface TuningItem {
+  key: keyof MirrorParams;
+  label: string;
+  hint: string;
+  step: number;
+}
+
+/** 顺序 = 弹窗里的顺序；区间统一从 MIRROR_PARAM_RANGES 取，别两处各写一份 */
+const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
+  {
+    title: '场景',
+    note: '反射取样哪一块、糊到什么程度',
+    items: [
+      { key: 'spanX', label: '横向跨度', hint: '越小越"放大"；太大会把左右立柱挤出画面', step: 0.01 },
+      { key: 'spanY', label: '纵向跨度', hint: '越大映到的地面越多', step: 0.01 },
+      {
+        key: 'sceneLod',
+        label: '模糊（mip）',
+        hint: '清晰的原图会像贴纸；2 以上才像"远处的屋子"',
+        step: 0.1,
+      },
+      { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
+    ],
+  },
+  {
+    title: '肖像灯',
+    note: '本人头像在场景里挂在哪、亮成什么样',
+    items: [
+      {
+        key: 'spotX',
+        label: '灯 · 横向',
+        hint: '场景图 uv 的横坐标；避开卡面左半边（名字在那儿）',
+        step: 0.01,
+      },
+      {
+        key: 'spotY',
+        label: '灯 · 纵向',
+        hint: '地平线在 0.47 附近，必须大于它，否则灯会落在地上',
+        step: 0.01,
+      },
+      { key: 'spotRadius', label: '灯 · 半径', hint: '太小会变成一个小光点', step: 0.005 },
+      { key: 'spotStrength', label: '灯 · 强度', hint: '和场景混合的程度', step: 0.01 },
+      { key: 'avatarGain', label: '头像提亮', hint: '头像大多偏暗，靠它才亮得起来', step: 0.1 },
+      {
+        key: 'lampWarm',
+        label: '暖光灯罩',
+        hint: '整间屋子是冷蓝的，这圈暖光是唯一的"你"',
+        step: 0.01,
+      },
+    ],
+  },
+  {
+    title: '板面',
+    note: '曲率与纹理——决定"像不像一块金属"',
+    items: [
+      { key: 'curvX', label: '横向曲率', hint: '越大反射扫得越开', step: 0.01 },
+      { key: 'curvY', label: '纵向曲率', hint: '给大了竖线会拧成波浪，0.2 附近是安全区', step: 0.01 },
+      { key: 'brush', label: '拉丝', hint: '横向细纹的强度', step: 0.001 },
+      { key: 'grain', label: '颗粒', hint: '完全没有会像塑料', step: 0.001 },
+      { key: 'tiltGain', label: '倾斜增益', hint: '指针带动反射的幅度', step: 0.01 },
+    ],
+  },
+  {
+    title: '光照',
+    note: '高光、柔光与最终曝光',
+    items: [
+      { key: 'specPower', label: '高光锐度', hint: '指数越大，亮点越小越硬', step: 10 },
+      { key: 'specGain', label: '高光强度', hint: '0 就是完全没有点状高光', step: 0.05 },
+      { key: 'glare', label: '指针柔光', hint: '跟着鼠标走的那团光', step: 0.01 },
+      { key: 'exposure', label: '曝光', hint: '色调映射强度，1.0 以上开始发白', step: 0.01 },
+    ],
+  },
+  {
+    title: '倒角',
+    note: '边缘那道亮线——板子的"厚度"来自它',
+    items: [
+      { key: 'rimStart', label: '起始位置', hint: '0.98 只留最外圈；0.7 是宽宽一圈', step: 0.01 },
+      { key: 'rimGain', label: '亮度', hint: '按光来的方向加权，左上亮右下暗', step: 0.01 },
+      { key: 'bevelShade', label: '板内压暗', hint: '紧贴边内侧压一道，制造倒角面', step: 0.01 },
+    ],
+  },
+];
+
+const showMirrorTuning = ref(false);
+const tuning = ref<MirrorParams>(getMirrorParams());
+/** 参数变了之后顶一下这个计数，预览卡才会重画 */
+const tuningRevision = ref(0);
+const tuningCopied = ref(false);
+
+/** 小数位跟着步长走：0.001 的步长只显示 3 位就别显示 6 位 */
+function tuningDigits(step: number): number {
+  if (step >= 1) return 0;
+  return step >= 0.1 ? 1 : 3;
+}
+
+function openMirrorTuning() {
+  tuning.value = getMirrorParams();
+  tuningCopied.value = false;
+  showMirrorTuning.value = true;
+}
+
+function updateParam(key: keyof MirrorParams, value: number) {
+  const next = { ...tuning.value };
+  next[key] = value;
+  tuning.value = setMirrorParams(next);
+  tuningRevision.value += 1;
+}
+
+function resetTuning() {
+  tuning.value = resetMirrorParams();
+  tuningRevision.value += 1;
+}
+
+async function copyTuning() {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(tuning.value, null, 2));
+    tuningCopied.value = true;
+    setTimeout(() => {
+      tuningCopied.value = false;
+    }, 1800);
+  } catch {
+    tuningCopied.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="skin-studio">
     <div class="skin-preview">
-      <PlayerCard :player="previewPlayer" />
+      <PlayerCard :player="previewPlayer" :revision="tuningRevision" />
       <p class="skin-preview-note muted">
         别人在报名名单里看到的就是这张卡。悬停可以试倾斜，皮肤只影响外观，
         不会动评分、段位和位置。
@@ -189,11 +327,28 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
         </button>
       </div>
 
+      <!-- 选中「镜面」才出现的调参入口：着色器里所有可变量都在那个弹窗里 -->
+      <div v-if="draft.material === 'mirror'" class="skin-frame-style">
+        <button
+          type="button"
+          class="skin-frame-style-btn"
+          aria-haspopup="dialog"
+          @click="openMirrorTuning"
+        >
+          <span class="skin-frame-style-copy">
+            <span class="skin-frame-style-title">调整参数</span>
+            <span class="skin-frame-style-hint">
+              取样范围、模糊、肖像灯、曲率、高光、倒角…（22 项）
+            </span>
+          </span>
+          <span class="skin-frame-style-open">调整</span>
+        </button>
+      </div>
+
       <div class="skin-actions">
         <NButton :disabled="saving" @click="commit(randomCardSkin(props.founder === true))">
           随便换一个
-        </NButton>
-        <NButton quaternary :disabled="saving" @click="commit({ ...DEFAULT_CARD_SKIN })">
+        </NButton>        <NButton quaternary :disabled="saving" @click="commit({ ...DEFAULT_CARD_SKIN })">
           恢复默认
         </NButton>
         <span class="skin-status">{{ saving ? '保存中…' : (status ?? '') }}</span>
@@ -273,6 +428,58 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
             选中的效果会立即应用到预览，并自动保存。
           </span>
           <NButton type="primary" @click="showFrameStyle = false">完成</NButton>
+        </div>
+      </div>
+    </NModal>
+
+    <!-- 镜面调参：滑块一动就重画预览卡（材质参数是模块级的，不用存盘） -->
+    <NModal
+      v-model:show="showMirrorTuning"
+      preset="card"
+      title="镜面 · 调整参数"
+      :bordered="false"
+      style="width: 600px; max-width: calc(100vw - 32px)"
+    >
+      <!-- 弹窗盖住了页面左边那张预览卡，所以这里再放一张：调参时必须能同时
+           看到卡片。它留在滚动区域**外面**，往下翻参数时也不会滚走。 -->
+      <div class="mirror-tuning-preview">
+        <PlayerCard :player="previewPlayer" :revision="tuningRevision" />
+      </div>
+
+      <div class="mirror-tuning">
+        <section v-for="group in MIRROR_TUNING" :key="group.title" class="mirror-tuning-group">
+          <div class="frame-style-head">
+            <span class="frame-style-heading">{{ group.title }}</span>
+            <span class="frame-style-note">{{ group.note }}</span>
+          </div>
+          <div v-for="item in group.items" :key="item.key" class="mirror-tuning-row">
+            <span class="mirror-tuning-label">
+              {{ item.label }}
+              <span class="mirror-tuning-value mono">
+                {{ tuning[item.key].toFixed(tuningDigits(item.step)) }}
+              </span>
+            </span>
+            <NSlider
+              :value="tuning[item.key]"
+              :min="MIRROR_PARAM_RANGES[item.key][0]"
+              :max="MIRROR_PARAM_RANGES[item.key][1]"
+              :step="item.step"
+              :tooltip="false"
+              @update:value="(value: number) => updateParam(item.key, value)"
+            />
+            <span class="mirror-tuning-hint">{{ item.hint }}</span>
+          </div>
+        </section>
+      </div>
+
+      <div class="frame-style-footer mirror-tuning-footer">
+        <span class="frame-style-footer-note">
+          存在本机浏览器，只影响你这台设备；定稿后告诉我，我把默认值改掉再发版。
+        </span>
+        <div class="mirror-tuning-actions">
+          <NButton size="small" @click="copyTuning">{{ tuningCopied ? '已复制' : '复制参数' }}</NButton>
+          <NButton size="small" @click="resetTuning">恢复默认</NButton>
+          <NButton type="primary" size="small" @click="showMirrorTuning = false">完成</NButton>
         </div>
       </div>
     </NModal>

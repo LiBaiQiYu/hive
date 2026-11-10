@@ -56,6 +56,8 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         "肖像灯"——**不用视频也不用摄像头**（`_headers` 里 camera/microphone 是禁用的）。
         头像能当纹理是因为 Steam CDN 带 `Access-Control-Allow-Origin: *`（实测过），
         加载时另开一个 `crossOrigin='anonymous'` 的 Image；别给卡片上显示用的 <img> 加 crossorigin。
+        着色器里 22 个可变量在「卡片外观 → 调整参数」弹窗里能手调（存 localStorage，
+        不是用户数据；定稿后要改 DEFAULT_MIRROR_PARAMS 再发版）。
         两者的边界与坑都写在 docs/UI.md §10。
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
         steam_id64 76561198659699463 / dota 699433735）。`STEAM_WEB_API_KEY` 生产与本地都已配置

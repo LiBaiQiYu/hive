@@ -31,9 +31,10 @@ export interface PlayerCardData {
   skin?: CardSkin | null;
 }
 
-const props = withDefaults(defineProps<{ player: PlayerCardData; index?: number }>(), {
-  index: 0,
-});
+const props = withDefaults(
+  defineProps<{ player: PlayerCardData; index?: number; revision?: number }>(),
+  { index: 0, revision: 0 },
+);
 
 /** rank_tier 编码：十位=勋章，个位=星级（拆解逻辑统一在 lib/rank.ts） */
 const rank = computed(() => rankParts(props.player.rankTier));
@@ -186,7 +187,9 @@ function scheduleSurface() {
 }
 
 watch(
-  () => [skin.value.material, tilt.value.mx, tilt.value.my],
+  // revision 是给「调整参数」弹窗用的：材质自身的可调参数不在 props 里，
+  // 改完只能靠外部顶一个计数让卡片重画一帧。
+  () => [skin.value.material, tilt.value.mx, tilt.value.my, props.revision],
   () => {
     // canvas 是 v-if 出来的：挂载后要重新 observe，才能拿到第一帧的尺寸
     const canvas = surfaceCanvas.value;

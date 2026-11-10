@@ -6,7 +6,16 @@
  * 它们一旦漂移，同一个人在名单页和个人主页上会长得不一样。
  */
 import { describe, expect, it } from 'vitest';
-import { mirrorPalette, mirrorSeed } from './mirror';
+import {
+  DEFAULT_MIRROR_PARAMS,
+  MIRROR_PARAM_RANGES,
+  getMirrorParams,
+  mirrorPalette,
+  mirrorSeed,
+  normalizeMirrorParams,
+  resetMirrorParams,
+  setMirrorParams,
+} from './mirror';
 
 const KEYS = ['u-01a19047', 'u-01a1b1ab', 'u-01a1c000', 'u-01a1c001'];
 
@@ -54,6 +63,44 @@ describe('镜面环境色', () => {
         expect(channel).toBeGreaterThanOrEqual(0);
         expect(channel).toBeLessThanOrEqual(1);
       }
+    }
+  });
+});
+
+describe('镜面可调参数', () => {
+  it('脏值夹到区间里，缺的补默认值', () => {
+    const params = normalizeMirrorParams({ curvY: 99, spanX: -5, sceneLod: Number.NaN });
+    expect(params.curvY).toBe(MIRROR_PARAM_RANGES.curvY[1]);
+    expect(params.spanX).toBe(MIRROR_PARAM_RANGES.spanX[0]);
+    expect(params.sceneLod).toBe(DEFAULT_MIRROR_PARAMS.sceneLod);
+    expect(normalizeMirrorParams(null)).toEqual(DEFAULT_MIRROR_PARAMS);
+    expect(normalizeMirrorParams(undefined)).toEqual(DEFAULT_MIRROR_PARAMS);
+    // localStorage 里可能被人塞进来别的类型
+    expect(normalizeMirrorParams({ exposure: '1.5' as unknown as number }).exposure).toBe(
+      DEFAULT_MIRROR_PARAMS.exposure,
+    );
+  });
+
+  it('每个参数都有自己的区间，且默认值落在区间内', () => {
+    for (const [key, range] of Object.entries(MIRROR_PARAM_RANGES)) {
+      const [min, max] = range;
+      expect(min).toBeLessThan(max);
+      const value = DEFAULT_MIRROR_PARAMS[key as keyof typeof DEFAULT_MIRROR_PARAMS];
+      expect(value).toBeGreaterThanOrEqual(min);
+      expect(value).toBeLessThanOrEqual(max);
+    }
+  });
+
+  it('set 之后 get 拿得到，reset 回到默认', () => {
+    const before = getMirrorParams();
+    try {
+      const applied = setMirrorParams({ exposure: 1.4, spotX: 0.25 });
+      expect(applied.exposure).toBeCloseTo(1.4, 6);
+      expect(getMirrorParams().spotX).toBeCloseTo(0.25, 6);
+    } finally {
+      expect(resetMirrorParams()).toEqual(DEFAULT_MIRROR_PARAMS);
+      // 别把状态留给同一进程里的其它用例
+      setMirrorParams(before);
     }
   });
 });
