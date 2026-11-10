@@ -409,6 +409,63 @@
   transform: translate3d(calc(var(--px, 0) * 22px), calc(var(--py, 0) * 16px), 0) scale(1.1);
 }
 
+/* ---------------------------------------------------------------- 镜面 */
+/* 底板由 WebGL2 画（lib/mirror.ts）：镀铬板 + 程序化环境（左上灯箱 / 地平线灯带 /
+   左下段位色副光）。canvas 已经压过整体暗调和上下 scrim，这里只补文字与边框的令牌：
+   文字全压在亮金属上，描边要比无限镜更重一点，否则浅色底上的小字会飘。 */
+[data-material='mirror'] {
+  --skin-bg: #0a0e15;
+  --skin-tex: none;
+  --skin-border: rgba(219, 231, 244, 0.55);
+  --skin-glow: rgba(150, 185, 220, 0.42);
+  --skin-foil: rgba(220, 236, 255, 0.2);
+  --skin-text: #f4f8ff;
+  --skin-muted: #c2cfe0;
+  --skin-accent: #dbe8ff;
+  --skin-accent-2: #a9bdd6;
+  --skin-ok: #93e9c0;
+  --skin-warn: #ffd98a;
+  --skin-info: #b4ccff;
+  --skin-divider: rgba(210, 226, 244, 0.22);
+  --skin-name-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.95),
+    0 0 12px rgba(0, 0, 0, 0.85);
+  --skin-body-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.92),
+    0 0 8px rgba(0, 0, 0, 0.75);
+  --skin-frame-bg: none;
+  /* 内圈冷白反光 + 底边压深；外圈霜边由 --skin-shadow 负责 */
+  --skin-frame-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(216, 230, 246, 0.32),
+    inset 0 -6px 16px rgba(3, 6, 12, 0.7),
+    inset 0 0 24px rgba(150, 190, 240, 0.16);
+  --skin-shadow:
+    0 20px 44px rgba(0, 0, 0, 0.58),
+    0 0 0 1px rgba(214, 230, 246, 0.5),
+    0 0 34px -10px rgba(150, 190, 240, 0.5);
+}
+
+/* 头像镶一圈冷白：镜面是中性色，暖金压在冷银上会显脏 */
+[data-material='mirror'] .pcard-avatar {
+  box-shadow:
+    0 0 0 1px rgba(238, 246, 255, 0.78),
+    0 0 16px rgba(160, 200, 255, 0.42);
+}
+
+/* 跟着指针的柔光由 shader 画；CSS 这层再叠一次就是两团光 */
+[data-material='mirror'] .pcard-glare {
+  display: none;
+}
+
+/* 镜面不需要另外的视差层：反射本来就随倾斜在动，再叠一层图案会显脏。
+   显式钉空，免得以后给 .pcard-depth 加通用底纹时漏掉这个材质。 */
+[data-material='mirror'] .pcard-depth::before,
+[data-material='mirror'] .pcard-depth::after {
+  background-image: none;
+  opacity: 0;
+}
+
 /* ---------------------------------------------------------------- 视差层 */
 /* 同款图案再叠一层，位移方向和幅度都跟底纹不同：转动卡片时图案之间互相错位，
    看起来就像图案分了好几层、卡面有厚度。指针回到中心时 --px/--py 为 0，一切归位。
@@ -722,6 +779,20 @@
       rgba(170, 235, 255, 0) 1px 7.5%
     ),
     linear-gradient(160deg, #06101f 0%, #0a1c36 55%, #04070f 100%);
+}
+
+/* 镜面色片：一条灯箱反光扫过冷银板面，就是缩小版的板子本身 */
+.skin-chip[data-material='mirror'] {
+  background-image:
+    linear-gradient(
+      148deg,
+      rgba(242, 249, 255, 0.92) 0%,
+      rgba(150, 175, 205, 0.55) 26%,
+      rgba(28, 38, 52, 0.92) 54%,
+      rgba(180, 210, 245, 0.5) 74%,
+      rgba(238, 246, 255, 0.85) 100%
+    ),
+    linear-gradient(160deg, #0b1018 0%, #1b2432 52%, #070a10 100%);
 }
 
 /* 边框色片：统一的深色底，只演示描边 */

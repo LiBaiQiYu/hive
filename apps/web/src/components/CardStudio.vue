@@ -10,6 +10,7 @@ import {
   CARD_MATERIAL_OPTIONS,
   DEFAULT_CARD_SKIN,
   isFrameStyleFrame,
+  isFounderOnlyMaterial,
   materialOptionsFor,
   optionLabel,
   randomCardSkin,
@@ -131,7 +132,9 @@ function pick<K extends keyof CardSkin>(key: K, value: CardSkin[K]) {
             <span class="skin-chip" :data-material="option.value" aria-hidden="true" />
             <span class="skin-swatch-label">
               {{ option.label }}
-              <span v-if="option.value === 'infinity'" class="skin-swatch-owner">创始人</span>
+              <span v-if="isFounderOnlyMaterial(option.value)" class="skin-swatch-owner">
+                创始人
+              </span>
             </span>
           </button>
         </div>

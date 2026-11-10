@@ -59,8 +59,8 @@ export const users = sqliteTable(
     createdAt: integer('created_at').notNull().default(TS_NOW),
     updatedAt: integer('updated_at').notNull().default(TS_NOW),
     /**
-     * 注册来源邀请码。物理上位于末尾（由 0002 的 ALTER TABLE 追加），
-     * 因此在本对象中也必须放在最后，才能与 SQL 的列顺序保持一致。
+     * 注册来源邀请码（0002 的 ALTER TABLE 追加）。位置跟着 SQL 的重放顺序走，
+     * 不是"最后一个字段"——卡片四列在 0017 之后排到了它后面（见下方注释）。
      *
      * 这里刻意不写 `.references()`：users ↔ invite_codes 双向 references 会形成
      * 类型推断环，TS 会把两张表都退化成 any（TS7022）。外键在 0002 的迁移里定义，
@@ -68,12 +68,30 @@ export const users = sqliteTable(
      */
     inviteCodeId: text('invite_code_id'),
     /**
-     * 卡片外观（纯展示，见迁移 0004 / 0009）。枚举值与 @hive/shared 的
-     * CARD_MATERIALS / CARD_FRAMES / CARD_FRAME_COLORS / CARD_FRAME_EFFECTS 保持一致；
-     * 不一致时 packages/api 的 card-skin 测试会直接失败。
+     * 创始人标记（0014 追加）。
+     * 只用来解锁创始人专属的东西（目前是「无限镜」「镜面」两个卡片材质），与 role 正交：
+     * role=ADMIN 是可以授予/撤销的角色，创始人是一次性身份。
+     */
+    isFounder: integer('is_founder').notNull().default(0),
+    /**
+     * 邮箱可用性确认（0015 追加）。
+     * 玩家在「账号设置」点一次「我确认这个邮箱能收到信」写时间戳；
+     * 换邮箱时清空（新地址要重新确认）。纯提示用途，不影响登录。
+     */
+    emailConfirmedAt: integer('email_confirmed_at'),
+    /**
+     * 卡片外观（纯展示，见迁移 0004 / 0009 / 0017）。
+     *
+     * **物理位置在表尾**：0017 为了给 card_material 的 CHECK 加 `mirror`，
+     * 把四列删掉再加回来，而 SQLite 的 ADD COLUMN 只能追加——
+     * 它们因此从 invite_code_id 之后搬到了最后。Drizzle 的书写顺序必须跟着搬，
+     * 否则 check_parity 报"列顺序不一致"。以后再改材质清单，这套搬法保持不变。
+     *
+     * 枚举值与 @hive/shared 的 CARD_MATERIALS / CARD_FRAMES / CARD_FRAME_COLORS /
+     * CARD_FRAME_EFFECTS 保持一致；不一致时 packages/api 的 card-skin 测试会直接失败。
      */
     cardMaterial: text('card_material', {
-      enum: ['basic', 'pixel', 'acrylic', 'sparkle', 'holo', 'gold', 'psi', 'infinity'],
+      enum: ['basic', 'pixel', 'acrylic', 'sparkle', 'holo', 'gold', 'psi', 'infinity', 'mirror'],
     })
       .notNull()
       .default('basic'),
@@ -94,18 +112,6 @@ export const users = sqliteTable(
     })
       .notNull()
       .default('steady'),
-    /**
-     * 创始人标记（0014 追加，物理位置在末尾）。
-     * 只用来解锁创始人专属的东西（目前是「无限镜」卡片材质），与 role 正交：
-     * role=ADMIN 是可以授予/撤销的角色，创始人是一次性身份。
-     */
-    isFounder: integer('is_founder').notNull().default(0),
-    /**
-     * 邮箱可用性确认（0015 追加，物理位置在末尾）。
-     * 玩家在「账号设置」点一次「我确认这个邮箱能收到信」写时间戳；
-     * 换邮箱时清空（新地址要重新确认）。纯提示用途，不影响登录。
-     */
-    emailConfirmedAt: integer('email_confirmed_at'),
   },
   (t) => [
     uniqueIndex('ux_users_username').on(t.username),

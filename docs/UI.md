@@ -311,15 +311,15 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
 ## 10. 玩家卡片皮肤（材质 / 边框）
 
 玩家卡不是固定皮肤：每个账号在「我的 → 卡片外观」里自选材质 + 边框，报名名单里所有人看到的就是他自己选的那套。
-两个基础维度是**正交**的，一共 7 × 8 = 56 种组合；发丝线 / 双线另外各带 8 种颜色 × 3 种光效。
-「无限镜」是**创始人专属**的第 8 种材质：只对 `users.is_founder = 1` 的账号出现在选择器里，
+两个基础维度是**正交**的，一共 8 × 8 = 64 种组合；发丝线 / 双线另外各带 8 种颜色 × 3 种光效。
+「无限镜」和「镜面」是**创始人专属**的第 8、第 9 种材质：只对 `users.is_founder = 1` 的账号出现在选择器里，
 且 `PUT /api/me/card-skin` 会对着一个人再校验一次（手搓请求 403）——前端藏入口不是权限。
 
 > 名字下面那行 `DOTA2 109902856 ↗` 是玩家的数字 ID（绑定 Steam 或声明数字 ID 才有），点开直链 STRATZ 公开资料（新窗口，且**不**触发卡片的跳转——赛事页整卡是链接，这个锚点用 `@click.stop` 拦住了冒泡）。它的用途是**让别人核对**段位与战绩，不是装饰；对方没开「公开比赛数据」时第三方也查不到，徽章会停在「自报」。
 
 | 维度 | 取值 | 负责什么 |
 | --- | --- | --- |
-| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 / `infinity` 无限镜（创始人专属） | 底色、纹理、**整套字色**（正文 / 次要 / 强调 / 语义色）；`gold` / `pixel` / `psi` / `infinity` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts` / `infinity.ts`），随倾斜重绘 |
+| `material` 材质 | `basic` 默认 / `pixel` 像素 / `acrylic` 亚克力 / `sparkle` 闪耀 / `holo` 全息 / `gold` 金色 / `psi` 灵能 / `infinity` 无限镜（创始人专属）/ `mirror` 镜面（创始人专属） | 底色、纹理、**整套字色**（正文 / 次要 / 强调 / 语义色）；`gold` / `pixel` / `psi` / `infinity` 的卡面由 canvas 程序化渲染（`apps/web/src/lib/metal.ts` / `pixel.ts` / `psi.ts` / `infinity.ts`），随倾斜重绘；`mirror` 走 **WebGL2**（`lib/mirror.ts`），渲完贴回同一个 `.pcard-surface` canvas |
 | `frame` 边框 | `hairline` 发丝线 / `none` 无边 / `double` 双线 / `corners` 四角 / `bevel` 浮雕 / `frost` 霜线 / `spark` 电光 / `arc` 雷纹 | `none` / `bevel` 是静态 CSS；`corners`/`frost`/`spark` 走 **GPU 合成**（`components/CardFrameFX.vue` + `styles-frame-fx.css`，只动 transform / opacity）；`arc` 仍是逐帧动画 WebP（480×398，`apps/web/scripts/make_border_anims.py` 生成） |
 | `frameColor` 颜色 | `auto` 跟随材质 / `gold` 鎏金 / `ice` 霜蓝 / `cyan` 电青 / `violet` 灵紫 / `rose` 霓虹 / `emerald` 翡翠 / `rainbow` 流动彩色 | **只对发丝线 / 双线生效**；`auto` 吃材质自己的 `--skin-border`，其他值覆盖描边与光晕，`rainbow` 是旋转的 conic-gradient |
 | `frameEffect` 光效 | `steady` 常亮 / `breathe` 呼吸 / `blink` 闪烁 | 只对发丝线 / 双线生效；只动整层 `opacity`。`rainbow` 自带色相旋转，光效叠加在它上面 |
@@ -346,10 +346,21 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
      - **符号要当心**：本文件的 +Z 是"往画面里"，CSS 的 +Z 是"朝观看者"，同一个旋转矩阵在两套坐标里视觉效果正好镜像。所以偏航要取反（`yaw = -tiltX * MAX_YAW`）、俯仰取正；反了就是"卡片右转、内景左转"（踩过）。判断方向对不对的笨办法：指针压到右边，卡片右边缘后退，廊道尽头应该往**左**偏。
      - 尽头那道光是**最远的元素，必须最先画**，否则斜看时会浮在近壁上（一眼假）；位置取该层中心的投影，不要拿某个角点当中心。
      - 画布尺寸每帧按 `clientWidth/clientHeight` 重算。实测（headless，无 GPU）真实卡片 340×233 下中位 16.6ms / p90 17.9ms；故意放大到 640×560 是 20.5 / 34.5ms（界面里没有这么大的卡，只当压力参考）。
+    - **镜面（`lib/mirror.ts`）是全站唯一用 WebGL2 的卡面**，也是唯一一条"着色器 + 2D 回贴"的管线：
+      - 全站**只有一个** WebGL2 上下文（离屏 canvas，`preserveDrawingBuffer: true`）：渲完一帧立刻 `drawImage` 贴回卡片自己的 `.pcard-surface`（2D canvas）。报名页十几张卡不会各开一个上下文（浏览器大约 16 个就开始丢最老的），也保住了"WebGL2 不可用时退回 2D 渐变"这条退路——同一个 canvas 不能换上下文类型，所以卡片侧永远坚持 2D。
+      - 板面法线 = 横向曲率略大于纵向的微弯（`p × 0.44 / 0.30`）+ 低频拉丝；环境是**程序化**的（没有视频、没有素材）：硬边地平线（亮天花板 / 暗地面）、两块硬边灯窗、两道细灯条、左下一块段位色副光。**边界必须硬**——0.05 的柔化映到板面上就糊成一片雾，金属感全丢（踩过，前后改了 4 版才定）。
+      - 反射 `R = reflect(-V, N)`，`V` 由 `--px/--py` 推出；Fresnel 用 Schlick，掠射时边缘发白。倒角**不放进法线**：径向扰动会把环境里的灯条拧成弧形，看着像脏污。倒角改成最后按光的方向补一道亮边（左上亮、右下暗），四边等亮的圆环只会像描边。
+      - 环境色相来自 `mirrorSeed(userId)`（FNV-1a）+ `rank_tier` 的十位：同一个人永远是同一个颜色，段位只换那块副光，所以名单页和个人主页不会出现两张不一样的脸。
+      - **不采样头像**：跨域图会把 canvas 标成 tainted（`getImageData` 直接抛），而加 `crossorigin` 又可能让头像整张加载失败。环境本来就要重度模糊，模糊之后"头像主色"和"身份 hash"几乎等价——不值得为它冒两个失败模式。
+      - 画布按 `devicePixelRatio`（上限 2）渲染：倒角和高频颗粒在 1x 下会被 CSS 拉伸糊掉。每帧只在指针移动 / 尺寸变化时画一次，没有动画循环，`prefers-reduced-motion` 天然满足。
+      - 上下文丢失（`webglcontextlost`）→ 整页标记不可用，后续一律走 `paintFallback` 的 2D 渐变，不留白。
+      - 这个材质的来历：参考了 React Bits 的 `ReflectiveCard`（React + WebGL2 + 视频反射）。**没搬它的组件**——它自带 `pointermove` 与 `rotateX/rotateY`，会和 `.pcard-inner` 的 CSS 3D 打架（卡片转一次、板面再转一次）；反射源是 `<video>` / 摄像头，而 `apps/web/public/_headers` 里 `Permissions-Policy: camera=(), microphone=()` 明确禁用了相机。只沿用了它的着色思路。
 6. **边框动效分三套**：`corners` / `frost` / `spark` 是 `components/CardFrameFX.vue` 的 CSS 图层，动画只用 transform / opacity（合成器逐帧插值，不重绘），配色读材质的 `--skin-*`；四角是四个镜像的角标（两条臂 + 沿臂巡游的光点 + 依次点亮的角光 + 角尖星点）。`hairline` / `double` 只要颜色 / 光效不是 `auto` + `steady`，就挂 `components/CardLineFX.vue`（发丝线 1px、双线 2px+1px 描边；流动彩色走 1px 遮罩环里的旋转 conic-gradient，呼吸 / 闪烁只动整层 opacity），同时把 `--skin-border-width` 归零、原生边框透明，避免出现两条描边。只有 `arc` 还是 `apps/web/scripts/make_border_anims.py` 生成的逐帧 WebP。`prefers-reduced-motion` 下三套都退回静态描边 / 静态角标，不播动画。
    - 只有 `hairline` / `double` 会在边框分组下面出现「颜色与光效」入口；点开是 `NModal` 弹窗，选色不离开弹窗，左侧卡片实时预览，`MePage` 的 350ms 防抖负责自动保存。
-7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006/0014）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
+7. **加新皮肤的顺序**：迁移改 CHECK（SQLite 改不了 CHECK，`users` 被大量子表引用又不能重建，所以走 `ALTER TABLE ... DROP COLUMN` 再按新清单加回来，见 0005/0006/0014/0017）→ `@hive/shared` 的 `CARD_*` → `apps/web/src/lib/cards.ts` 的选项与文案 → `styles-skins.css` 的令牌。
    `packages/api/src/card-skin.test.ts` 会比对迁移 SQL 与 shared 清单，漏改一侧直接红。
-   **0014 起要保住用户已选的皮肤**：删列前先把四列备份到临时表、重建后按 `id` 回填（0008 当年是删了直接加，等于把所有人的皮肤重置成默认值）。创始人专属材质还要在 `@hive/shared` 的 `FOUNDER_ONLY_MATERIALS` 里登记，`PUT /api/me/card-skin` 才对非创始人 403。
+   **0014 起要保住用户已选的皮肤**：删列前先把四列备份到临时表、重建后按 `id` 回填（0008 当年是删了直接加，等于把所有人的皮肤重置成默认值）。
+   **0017 起还要改列顺序**：`ADD COLUMN` 只能追加，四列重建后会落到表尾（`is_founder` / `email_confirmed_at` 之后），`packages/database/src/schema/users.ts` 里那四个字段的位置必须跟着搬，否则 `check_parity` 报"列顺序不一致"。
+   创始人专属材质还要在 `@hive/shared` 的 `FOUNDER_ONLY_MATERIALS` 里登记，`PUT /api/me/card-skin` 才对非创始人 403。
 8. **存储**：`users.card_material / card_frame / card_frame_color / card_frame_effect`，四个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame, frameColor, frameEffect }`，整份提交，不写审计、不重算评分、不冻快照。老客户端只传前两个字段时，服务端按 `auto` + `steady` 补齐。
    `users.is_founder`（迁移 0014）只用来解锁创始人专属材质，`/api/me` 的 `user.founder` 是它的布尔投影；换人直接改这一列，不进管理后台。

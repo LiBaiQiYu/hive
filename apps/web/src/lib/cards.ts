@@ -15,7 +15,8 @@ export type CardMaterial =
   | 'holo'
   | 'gold'
   | 'psi'
-  | 'infinity';
+  | 'infinity'
+  | 'mirror';
 export type CardFrame =
   | 'none'
   | 'hairline'
@@ -62,6 +63,11 @@ export const CARD_MATERIAL_OPTIONS: CardOption<CardMaterial>[] = [
     label: '无限镜',
     hint: '无限镜面板：两面镜之间的光廊，指针移动时整条光廊的透视跟着位移（创始人专属）',
   },
+  {
+    value: 'mirror',
+    label: '镜面',
+    hint: '镀铬镜面板：灯箱与段位色在板面上流动，指针移动时倒角高光跟着扫过（创始人专属）',
+  },
 ];
 
 export const CARD_FRAME_OPTIONS: CardOption<CardFrame>[] = [
@@ -106,7 +112,12 @@ const FRAME_COLORS = CARD_FRAME_COLOR_OPTIONS.map((option) => option.value);
 const FRAME_EFFECTS = CARD_FRAME_EFFECT_OPTIONS.map((option) => option.value);
 
 /** 创始人专属材质：与 @hive/shared 的 FOUNDER_ONLY_MATERIALS 保持一致 */
-const FOUNDER_ONLY: CardMaterial[] = ['infinity'];
+const FOUNDER_ONLY: CardMaterial[] = ['infinity', 'mirror'];
+
+/** 是不是创始人专属材质（选择器上打角标用；真正的权限在服务端） */
+export function isFounderOnlyMaterial(material: CardMaterial): boolean {
+  return FOUNDER_ONLY.includes(material);
+}
 
 /**
  * 当前身份能选的材质。

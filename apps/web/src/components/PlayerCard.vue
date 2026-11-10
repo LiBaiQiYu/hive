@@ -7,6 +7,7 @@ import RankIcon from './RankIcon.vue';
 import { normalizeCardSkin, type CardSkin } from '../lib/cards';
 import { renderInfinityFrame } from '../lib/infinity';
 import { renderMetalFrame } from '../lib/metal';
+import { renderMirrorFrame } from '../lib/mirror';
 import { renderPixelFrame } from '../lib/pixel';
 import { renderPsiFrame } from '../lib/psi';
 import { rankLabel, rankParts } from '../lib/rank';
@@ -162,6 +163,14 @@ function paintSurface() {
   else if (skin.value.material === 'pixel') renderPixelFrame(canvas, w, h, opts);
   else if (skin.value.material === 'psi') renderPsiFrame(canvas, w, h, opts);
   else if (skin.value.material === 'infinity') renderInfinityFrame(canvas, w, h, opts);
+  else if (skin.value.material === 'mirror') {
+    // 镜面的环境色由"这是谁的卡"决定（身份色相 + 段位副光），所以要带上 userId
+    renderMirrorFrame(canvas, w, h, {
+      ...opts,
+      key: props.player.userId,
+      rankTier: props.player.rankTier,
+    });
+  }
 }
 
 function scheduleSurface() {
@@ -223,13 +232,15 @@ onBeforeUnmount(() => {
            .pcard-inner 是 preserve-3d，overflow:hidden 在 3D 上下文里不生效，
            直接放这里的话，倾斜时贴图/光斑会溢出卡片轮廓（踩过）。 -->
       <div class="pcard-deco" aria-hidden="true">
-        <!-- 金色/像素/灵能/无限镜：canvas 程序化渲染，随倾斜重绘（无限镜的透视位移也在这里） -->
+        <!-- 金色/像素/灵能/无限镜/镜面：canvas 程序化渲染，随倾斜重绘
+             （无限镜的透视位移和镜面的反射都发生在这里） -->
         <canvas
           v-if="
             skin.material === 'gold' ||
             skin.material === 'pixel' ||
             skin.material === 'psi' ||
-            skin.material === 'infinity'
+            skin.material === 'infinity' ||
+            skin.material === 'mirror'
           "
           ref="surfaceCanvas"
           class="pcard-surface"

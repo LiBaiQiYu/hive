@@ -20,9 +20,19 @@ import SQL_0007 from '../../database/migrations/0007_drop_card_effect.sql?raw';
 import SQL_0008 from '../../database/migrations/0008_card_material_psi.sql?raw';
 import SQL_0009 from '../../database/migrations/0009_card_frame_style.sql?raw';
 import SQL_0014 from '../../database/migrations/0014_card_material_infinity.sql?raw';
+import SQL_0017 from '../../database/migrations/0017_card_material_mirror.sql?raw';
 
 /** 按迁移顺序扫描；后出现的 ADD COLUMN 覆盖先前的（0005 重写了整份材质清单） */
-const MIGRATIONS = [SQL_0004, SQL_0005, SQL_0006, SQL_0007, SQL_0008, SQL_0009, SQL_0014];
+const MIGRATIONS = [
+  SQL_0004,
+  SQL_0005,
+  SQL_0006,
+  SQL_0007,
+  SQL_0008,
+  SQL_0009,
+  SQL_0014,
+  SQL_0017,
+];
 
 function sqlList(column: string): string[] {
   const pattern = new RegExp(
