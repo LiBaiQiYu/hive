@@ -64,7 +64,7 @@ token/key 一律按 key 名逐行 `NAME=value` 写，不要加引号、不要在
 | `pnpm db:migrate:remote` | 同上加 `--remote`（执行前必须先 `pnpm db:backup`） |
 | `pnpm db:backup` | `wrangler d1 export hive --remote --output backups/hive.sql` |
 | `pnpm db:check` | 跑两个 Python 校验脚本（schema 与迁移是否对齐） |
-| `pnpm sec:check` | 安全攻击用例 74 项（需要先起 `pnpm dev` / `dev:api`） |
+| `pnpm sec:check` | 安全攻击用例 75 项（需要先起 `pnpm dev` / `dev:api`） |
 | `pnpm run deploy` | `wrangler deploy --config packages/api/wrangler.jsonc`（必须带 `run`） |
 
 ## 4. 数据库改动流程

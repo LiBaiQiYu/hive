@@ -72,7 +72,7 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
-pnpm sec:check      # 安全攻击用例 74 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm sec:check      # 安全攻击用例 75 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
 pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，抓语法错与未定义绑定
 ```
 

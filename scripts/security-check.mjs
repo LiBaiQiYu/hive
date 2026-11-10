@@ -173,15 +173,24 @@ const tester = await login(newUser, newPass)
 
 /* ---------------------- 3b. 创始人专属卡片材质 ---------------------- */
 {
-  // 前端对非创始人藏掉了「无限镜」，但藏按钮不是权限：手搓这个请求必须被挡。
+  // 前端对非创始人藏掉了这些材质，但藏按钮不是权限：手搓这个请求必须被挡。
+  // 清单与 @hive/shared 的 FOUNDER_ONLY_MATERIALS 保持一致——本脚本是纯 ESM、
+  // 不 import 那个 TS 包，加了新材质要记得同步这两行（漏了这里不会红，只会少验一条）。
+  const FOUNDER_ONLY = [
+    ['infinity', '无限镜'],
+    ['mirror', '镜面'],
+  ]
   const skin = (material) => ({
     material,
     frame: 'hairline',
     frameColor: 'auto',
     frameEffect: 'steady',
   })
-  const forbidden = await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin('infinity') })
-  check('授权', '非创始人保存「无限镜」被 403', forbidden.status === 403, `玩家 ${forbidden.status}`)
+
+  for (const [material, label] of FOUNDER_ONLY) {
+    const forbidden = await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin(material) })
+    check('授权', `非创始人保存「${label}」被 403`, forbidden.status === 403, `玩家 ${forbidden.status}`)
+  }
 
   const normal = await call('PUT', '/api/me/card-skin', { cookie: player.cookie, body: skin('psi') })
   check('授权', '普通材质照常可保存（对照组）', normal.status === 200, `玩家 ${normal.status}`)
