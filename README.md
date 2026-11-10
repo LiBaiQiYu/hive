@@ -1,192 +1,223 @@
 # HIVE
 
-**DOTA2 社区内战（WARROOM）平台**
+**A DOTA2 community in-house match platform.**
 
-把「凑十个人打一场内战」从群聊里的接龙，变成一条可报名、可分队、可追溯的流程。
+Turns "get ten people together for a game" from a chat-thread sign-up into a traceable flow: register → auto-finalize → auto-balance → publish lineups → enter results → ratings → leaderboards.
 
-![首页](docs/assets/home.jpg)
+[简体中文](README.zh-CN.md) · English
 
-## 目录
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+![Cloudflare D1](https://img.shields.io/badge/Cloudflare-D1-F38020?logo=cloudflare&logoColor=white)
+![Vue 3](https://img.shields.io/badge/Vue-3-42B883?logo=vuedotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
+![Node](https://img.shields.io/badge/Node-%E2%89%A520-339933?logo=nodedotjs&logoColor=white)
+![License](https://img.shields.io/badge/license-proprietary-lightgrey)
 
-- [项目简介](#项目简介)
-- [核心特性](#核心特性)
-- [界面预览](#界面预览)
-- [评分与分队](#评分与分队)
-- [技术架构](#技术架构)
-- [仓库结构](#仓库结构)
-- [本地运行](#本地运行)
-- [质量保障](#质量保障)
-- [项目边界](#项目边界)
-- [数据来源与致谢](#数据来源与致谢)
-- [相关文档](#相关文档)
+![HIVE home page](docs/assets/home.jpg)
 
-## 项目简介
+## Table of contents
 
-固定社区的内战有几个稳定的特征：人数固定、赛制固定（DOTA2 5v5）、组织者固定（管理员）。真正消耗精力的不是比赛本身，而是比赛之前的四件事：
+- [Overview](#overview)
+- [Features](#features)
+- [Screenshots](#screenshots)
+- [Ratings & team balancing](#ratings--team-balancing)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
+- [Scripts](#scripts)
+- [Quality gates](#quality-gates)
+- [Project structure](#project-structure)
+- [Non-goals](#non-goals)
+- [Data sources & credits](#data-sources--credits)
+- [Contributing](#contributing)
+- [Documentation](#documentation)
+- [License](#license)
 
-1. **报名**——群接龙容易漏人、改时间、临时退赛；
-2. **分队**——凭手感分人，强弱失衡，打完还要争论；
-3. **实力评估**——谁强谁弱全凭印象，新人尤其吃亏；
-4. **记录**——比赛结果散落在聊天记录里，无法沉淀成数据。
+## Overview
 
-HIVE 将上述环节收敛到单一系统中：**报名 → 到点自动截止 → 分队 → 阵容发布 →（临时换人）→ 结果录入 → 评分更新 → 排行榜与战绩**。所有评分、分队与快照规则均公开可解释，管理员的操作全程留有审计记录。
+In-house matches in a fixed community have stable properties: a fixed roster size, one game mode (DOTA2 5v5), and one organizer. The real effort is not the match itself, but the four things around it:
 
-系统面向**单一固定社区**设计，而非多租户的通用赛事平台；这一取舍体现在数据模型、权限模型与界面密度上。
+1. **Sign-ups** — chat-thread lists lose people, times change, players drop out late;
+2. **Team selection** — hand-picked teams are lopsided, and the argument continues after the game;
+3. **Skill assessment** — "who is better" is a matter of impression, and newcomers suffer;
+4. **Records** — results live in chat history and never become data.
 
-## 核心特性
+HIVE collapses all of it into one system: **registration → time-based auto-finalize → balancing → lineup publish → (late substitutions) → result entry → rating update → leaderboard & match history**. Every rating, balancing and snapshot rule is explainable, and every admin action is audited.
 
-| 模块 | 能力 |
+The system is built for a **single fixed community**, not as a multi-tenant tournament platform. That trade-off shows up in the data model, the permission model and the UI density.
+
+> Documentation in [`docs/`](docs) is written in Chinese; this README is the English entry point.
+
+## Features
+
+| Area | Capability |
 | --- | --- |
-| **赛事组织** | 创建赛事、开放/关闭报名、封盘、发布阵容、录入结果、流局；服务器区域（国服 / 全球服）可选；**报名到点自动截止 → 封盘 → 分队 → 发布**（Cron 每分钟巡检，全程记 `SYSTEM` 审计） |
-| **报名与候补** | 正选 / 候补两态；满员后按「出勤率 → 实力分 → 报名时间」自动排序候补；退赛自动回归并重排 |
-| **自动分队** | 按位置约束与实力均衡枚举全部可行组合，取分差最小者；结果附双方总分与位置契合度 |
-| **人工微调** | 管理员可视化拖拽换人，整份提交并带乐观锁版本号，避免多人同时编辑互相覆盖 |
-| **赛后换人** | 已发布的阵容仍可调整：从本赛事未上场者里选替补，或让没报名的人临时参赛（只记名字与可选天梯分）；换人写流水，被换下的正选按原因记为**弃赛**或**临场调整** |
-| **阵容页信息** | 除两队名单外，还列出**没进这套阵容的人**：候补（带顺位）、未入选（正选但这一场只排 10 人）、弃赛、临场换下、退赛，并逐条解释原因 |
-| **WARROOM 评分** | 由天梯 MMR 推导的实力分，出勤独立统计；评分构成、历史修正与调整原因均可查看；管理员可设定天梯分或「段位 + 星级」，与同步来的数据区分来源 |
-| **身份体系** | Steam OpenID（归属已验证）> 数字 ID 声明（数据已校验、归属未验证）> 手动填写（自报），三级徽章如实标注数据可信度 |
-| **账号与安全** | 邀请码注册、会话管理、登录失败锁定、CSRF 与同源校验、审计日志；**邮件自助找回密码**（回信一次性链接）与管理员重置双通道 |
-| **玩家档案** | 玩家卡（8 种材质、边框配色与光效，含创始人专属「无限镜」）、对局记录、胜负统计、位置偏好、公开主页、点赞与留言板 |
-| **排行榜与战绩** | 按评分或胜场排名，可筛选验证等级并按段位 / MMR 排序；全员胜场与个人对局记录；弃赛次数与明细可见 |
-| **通知** | 开赛提醒邮件：管理员在赛事页手动触发，可先只发自己验通道；免费版仅放行已验证目的地地址 |
-| **管理后台** | 赛事、邀请码、评分、成员、任务队列与审计日志；操作留痕、可筛选、只读可追溯 |
+| **Events** | Create events, open/close registration, lock the roster, publish lineups, record results, void a match; selectable server region (CN / global). Registration closes **automatically at the deadline → roster lock → balancing → publish** (a per-minute cron), recorded as a `SYSTEM` audit entry |
+| **Registration & waitlist** | Confirmed / waitlisted states; when full, the waitlist is ordered by **attendance → rating → sign-up time**; withdrawals return the slot and re-order the queue |
+| **Auto-balancing** | Enumerates every feasible assignment under position constraints and picks the lowest rating gap; both team totals and position fit are shown |
+| **Manual adjustments** | Drag-and-drop editor for admins; the whole lineup is submitted with an optimistic-lock version, so concurrent edits cannot silently overwrite each other |
+| **Post-publish changes** | Lineups can still change after publishing: pick a substitute from the event's unused registrants, or bring in a non-registered player (name + optional MMR). Changes are logged; the replaced player is recorded as **no-show (forfeit)** or **manual swap** |
+| **Lineup page** | Besides the two teams, it lists **everyone who did not make the lineup** — waitlisted (with position), not selected (confirmed but only 10 slots), forfeited, manually swapped out, withdrawn — each with a plain-language reason |
+| **WARROOM rating** | Skill score derived from MMR; attendance tracked separately. Score composition, adjustment history and reasons are visible; admins can set an MMR target or a medal + stars, and the source is labelled |
+| **Identity** | Steam OpenID (ownership verified) > numeric DOTA ID claim (data checked, ownership unverified) > self-reported, exposed as three honest badges |
+| **Accounts & security** | Invite-code registration, sessions, failed-login lockout, CSRF and same-origin checks, audit log; **self-service password reset by email** (one-time link via a reply email) plus admin reset |
+| **Player profiles** | Player card (8 materials, frame colours and effects, including the founder-only *Infinity Mirror*), match history, win/loss stats, position preferences, public profile, reactions and a comment board |
+| **Leaderboards & history** | Rank by rating or wins; filter by verification level, sort by medal / MMR; community-wide win counts and per-player match history; forfeits are counted and listed |
+| **Notifications** | Start-time reminder email, triggered manually by an admin (test mode sends only to the admin). On the free plan only verified destination addresses are allowed |
+| **Admin console** | Events, invite codes, ratings, members, job queue and audit log; all actions are traceable, filterable and read-only |
 
-## 界面预览
+## Screenshots
 
-**赛事详情与报名名单**——同一份数据支持卡片与列表两种视图，段位使用官方勋章图标：
+**Event detail and roster** — the same data renders as cards or a list; medals use the official DOTA2 assets:
 
-![赛事详情](docs/assets/event-roster.jpg)
+![Event detail](docs/assets/event-roster.jpg)
 
-**阵容页**——两队十人的位置与契合度；下方是未进阵容的名单与原因（候补 / 未入选 / 弃赛 / 临场换下 / 退赛）：
+**Lineup page** — two teams of five with position fit, followed by everyone who did not make the lineup and why:
 
-![阵容页](docs/assets/match-lineup.jpg)
+![Lineup page](docs/assets/match-lineup.jpg)
 
-**排行榜**——段位、天梯 MMR 与 WARROOM 分列展示，点击表头可切换排序：
+**Leaderboard** — medal, ladder MMR and WARROOM rating side by side; click a column header to sort:
 
-![排行榜](docs/assets/leaderboard.jpg)
+![Leaderboard](docs/assets/leaderboard.jpg)
 
-**玩家主页**——公开档案、对局记录与留言板：
+**Player profile** — public profile, match history and comment board:
 
-![玩家主页](docs/assets/player-profile.jpg)
+![Player profile](docs/assets/player-profile.jpg)
 
-## 评分与分队
+## Ratings & team balancing
 
-评分体系的设计目标只有一条：**让分队结果可以被解释，也可以被质疑后验证**。
+The rating system has a single goal: **make the outcome explainable, and verifiable when someone disputes it.**
 
-- **实力分**：`clamp(round(估计 MMR / 10), 0, 1000)`。MMR 由段位换算或玩家自行填写；没有任何数据时给予 500 的中性值，而不是 0 分。
-- **出勤独立**：出勤率不进入实力分，只参与候补排序。缺席一场不会让一个人「变弱」，但会让他下次报名时排得更靠后。
-- **出勤口径**：分母只算「被排进过阵容」的场次，而不是「报名过」——12 人报名只开一场时，没排上的 2 人是候补，不是缺勤。
-- **段位优先**：一旦通过 Steam 或数字 ID 同步到段位，手工填写的段位即失效；要恢复手填需先解除绑定。
-- **快照冻结**：报名与分队各保存一份快照，赛后修改评分不会回写历史快照，已发布的阵容不会悄然改变。
-- **弃赛只认一种事实**：换人时勾选「本人没来」才记为弃赛（`ABSENT`），临场调整（`MANUAL`）不算；统计从换人流水现算，不另存计数，避免与实际出勤漂移。
-- **分队**：在位置约束下枚举可行组合，最小化两队总分差；人数卡在两档之间时不做隐式决策，必须由管理员显式选择部分开局、延期或取消（到点自动结算时固定按「现有人数开局」处理）。
+- **Skill score** — `clamp(round(estimated MMR / 10), 0, 1000)`. MMR comes from the ranked medal or is self-reported; with no data at all the player gets a neutral 500, not 0.
+- **Attendance is independent** — attendance never feeds the skill score; it only orders the waitlist. Missing a game does not make someone "weaker", but it moves them down the queue next time.
+- **Attendance denominator** — only sessions where the player was actually placed in a lineup count. With 12 registrations and one 10-slot match, the two left out are *waitlisted*, not *absent*.
+- **Synced data wins** — once a medal arrives via Steam or a claimed ID, the self-reported medal is invalidated; self-reporting requires unlinking first.
+- **Snapshots are frozen** — registration and balancing each store a snapshot. Editing ratings afterwards never rewrites history, and a published lineup never changes quietly.
+- **Forfeits have one source of truth** — only "player did not show up" (set when substituting) counts as a forfeit; a tactical swap does not. Counts are derived from the substitution log rather than stored separately, so they cannot drift from the actual attendance.
+- **Balancing** — enumerate feasible assignments under position constraints and minimise the rating gap. When player count falls between two brackets the system does not guess: an admin must choose partial start, extend or cancel (the automatic path always plays with the current headcount).
 
-## 技术架构
+## Architecture
 
-单一运行时、单一数据库、无外部中间件：
+One runtime, one database, no external middleware:
 
 ```mermaid
 flowchart TB
-  B[浏览器 · Vue 3 SPA] --> W[Cloudflare Worker<br/>静态资源 + Hono API]
+  B[Browser · Vue 3 SPA] --> W[Cloudflare Worker<br/>static assets + Hono API]
   W --> D[(Cloudflare D1<br/>SQLite)]
-  W -->|OpenID 校验| S1[Steam]
-  W -->|段位 / 昵称 / 头像| S2[STRATZ · OpenDota]
-  W -->|找回邮件回信 / 通知| M[Email Routing]
+  W -->|OpenID verification| S1[Steam]
+  W -->|medal / persona / avatar| S2[STRATZ · OpenDota]
+  W -->|reset replies, reminders| M[Email Routing]
   C[[Cron Triggers]] --> W
 ```
 
-| 层 | 选型 |
+| Layer | Choice |
 | --- | --- |
-| 前端 | Vue 3、TypeScript、Vite、vue-router、Naive UI，深浅色双主题 |
-| 接口 | Hono（边缘运行时），REST + Zod 校验，统一错误码与请求 ID |
-| 数据 | Cloudflare D1（SQLite），Drizzle ORM 描述结构，SQL 迁移为唯一真源 |
-| 异步 | D1 outbox 表 + Cron 触发器（每日维护、每分钟任务派发与到点结算），无消息队列 |
-| 邮件 | 收信回复（重置链接）与主动发信（开赛提醒，`send_email` 绑定） |
-| 部署 | 单个 Worker 同时提供页面与接口，静态资源由 Workers Static Assets 承载 |
+| Frontend | Vue 3, TypeScript, Vite, vue-router, Naive UI; light and dark themes |
+| API | Hono on the edge runtime, REST + Zod validation, unified error codes and request IDs |
+| Data | Cloudflare D1 (SQLite); Drizzle ORM describes the schema, SQL migrations remain the source of truth |
+| Async | D1 outbox table + cron triggers (daily maintenance, per-minute job drain and deadline finalisation); no message queue |
+| Email | Inbound reply (reset links) and outbound notifications (`send_email` binding) |
+| Deployment | A single Worker serves both the SPA and the API; static assets via Workers Static Assets |
 
-运行基线为 **Workers 免费版**（单请求 CPU 10ms、Cron 至多 3 条、无 Queues、主动发信仅限已验证目的地）。这一约束直接影响了几个设计决策：密码哈希迭代次数按实测 CPU 校准、异步任务改用数据库表实现 outbox、每日维护合并进已有的 Cron 表达式、邮件只做「回信」而非群发。
+The baseline is the **Workers free plan** (10 ms CPU per request, at most 3 crons, no Queues, outbound email only to verified destinations). That constraint shaped several decisions: PBKDF2 iterations calibrated against measured CPU, an outbox table instead of a queue, maintenance folded into an existing cron, and email used only for replies rather than broadcasts.
 
-## 仓库结构
+## Getting started
 
-```text
-apps/web/                 前端 SPA（页面、组件、样式、资产）
-packages/api/             Worker 入口、路由、服务层与异步任务
-packages/database/        迁移 SQL、Drizzle Schema、结构一致性校验脚本
-packages/shared/          前后端共享的类型、常量与错误码
-scripts/                  安全自检、Vue 模板体检等仓库级脚本
-docs/                     架构、数据库、接口、界面、开发与安全文档（含配图）
-```
+### Prerequisites
 
-## 本地运行
+- Node.js **20+**
+- pnpm **9.15**
+- A Cloudflare account (only needed for deployment)
+- Optional: a [STRATZ](https://stratz.com) API token for medal syncing, a Steam Web API key for persona/avatar, and a Cloudflare Email Routing setup for password resets and reminders
 
-需要 Node.js 20 及以上、pnpm 9.15。
+### Install and run
 
 ```bash
 pnpm install
-pnpm build          # 构建前端产物（wrangler 需要 dist 才肯启动）
-pnpm dev            # 本地开发：迁移 → 构建 → 起服务（http://127.0.0.1:8787）
+pnpm build      # wrangler needs dist/ before it will start
+pnpm dev        # migrate → build → serve on http://127.0.0.1:8787
 ```
 
-| 脚本 | 用途 |
+Local development uses a local D1 database. Copy `packages/api/.dev.vars.example` to `packages/api/.dev.vars` and fill in the local secrets (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)). The same file name is used for remote secrets, which are uploaded with `wrangler secret put` and never committed.
+
+> `pnpm dev:remote` runs the Worker at the edge against the **production database** — use it only to reproduce production issues.
+
+## Scripts
+
+| Command | Purpose |
 | --- | --- |
-| `pnpm dev` / `pnpm dev:api` | 本地开发（后者跳过前端重建，只起 Worker） |
-| `pnpm dev:remote` | Worker 跑在边缘、直连**生产库**，只用于线上问题复现 |
-| `pnpm dev:web` | 仅 Vite 热更新（5173，`/api` 已代理到 8787） |
-| `pnpm build` | 构建前端产物 |
-| `pnpm typecheck` | 类型检查 |
-| `pnpm test` | 单元测试 |
-| `pnpm web:check` | Vue 模板体检（语法错与未定义绑定） |
-| `pnpm db:check` | 迁移与 Drizzle Schema 的逐列一致性校验 |
-| `pnpm db:migrate:local` / `db:migrate:remote` | 应用迁移 |
-| `pnpm db:backup` | 导出生产库到 `backups/` |
-| `pnpm sec:check` | 安全攻击用例（需先启动 `pnpm dev`） |
-| `pnpm run deploy` | 部署到 Cloudflare（必须带 `run`） |
+| `pnpm dev` / `pnpm dev:api` | Local development (the latter skips the frontend rebuild) |
+| `pnpm dev:remote` | Worker at the edge against the production D1 |
+| `pnpm dev:web` | Vite dev server only (port 5173, `/api` proxied to 8787) |
+| `pnpm build` | Build the frontend bundle |
+| `pnpm typecheck` | TypeScript checks |
+| `pnpm test` | Unit tests |
+| `pnpm web:check` | Vue template check (syntax errors, undefined bindings) |
+| `pnpm db:check` | Column-level parity between migrations and the Drizzle schema |
+| `pnpm db:migrate:local` / `db:migrate:remote` | Apply migrations |
+| `pnpm db:backup` | Export the production database to `backups/` |
+| `pnpm sec:check` | Security attack cases (requires `pnpm dev` to be running) |
+| `pnpm run deploy` | Deploy to Cloudflare (note the `run`) |
 
-数据库迁移使用 `pnpm db:migrate:local`，结构与 Drizzle Schema 的逐列一致性由 `pnpm db:check` 保证。详细的环境配置、脚本契约与常见问题见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。
+## Quality gates
 
-## 质量保障
-
-| 项目 | 现状 |
+| Item | Current state |
 | --- | --- |
-| 单元测试 | 20 个测试文件、199 个用例，覆盖评分公式、分队算法、快照冻结、候补排序、弃赛与未进阵容归因、Steam 回调校验、发信结构 |
-| 安全用例 | 74 项，覆盖授权矩阵、CSRF、注入、越权、隐私泄露、XSS 与异常输入 |
-| 结构校验 | SQL 迁移与 Drizzle Schema 逐列比对（24 表 / 288 列 / 55 索引） |
-| 模板体检 | 41 个 `.vue` 文件编译通过 |
-| 交付门禁 | `typecheck`、`test`、`build`、`db:check`、`web:check`；涉及鉴权与接口变更时追加 `sec:check` |
+| Unit tests | 20 files, 199 cases — rating formula, balancing, frozen snapshots, waitlist ordering, forfeit and lineup-gap attribution, Steam callback verification, mailer wiring |
+| Security cases | 74 — authorization matrix, CSRF, injection, privilege escalation, privacy leaks, XSS, malformed input |
+| Schema parity | Migrations compared column by column with the Drizzle schema (24 tables / 288 columns / 55 indexes) |
+| Template check | 41 `.vue` files compile |
+| Required before merge | `typecheck`, `test`, `build`, `db:check`, `web:check`; add `sec:check` for auth or API changes |
 
-安全设计与残余风险评估见 [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)。
+Security design and residual risk: [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md).
 
-## 项目边界
+## Project structure
 
-明确**不做**以下内容，以保持系统简单可控：
+```text
+apps/web/                 Vue SPA (pages, components, styles, assets)
+packages/api/             Worker entry, routes, services, background jobs
+packages/database/        Migration SQL, Drizzle schema, parity scripts
+packages/shared/          Shared types, constants and error codes
+scripts/                  Security self-check, Vue template check
+docs/                     Architecture, database, API, UI, development, security docs
+```
 
-- 队长选人与手动组队（分队由算法完成，人工只做微调）
-- 多社区 / 多租户、多赛制（仅 DOTA2 5v5）
-- KDA 与详细对局数据统计（胜负由管理员在赛后指定）；不做 OpenDota 对局导入
-- 自动建房、实时语音、聊天室、跨游戏扩展
-- 引入 Redis、消息队列、微服务等额外基础设施
-- 面向陌生人的公开注册（注册必须携带群内发放的邀请码）
+## Non-goals
 
-## 数据来源与致谢
+Deliberately out of scope, to keep the system small:
 
-段位、天梯分、游戏昵称与头像来自 [STRATZ](https://stratz.com) 的公开数据接口，段位缺失时回退 [OpenDota](https://www.opendota.com)。归属验证使用 Steam OpenID。玩家卡片中的段位图标使用 DOTA2 官方勋章与星级素材。
+- Captain drafting or hand-picked teams (balancing is algorithmic; admins only nudge)
+- Multi-community / multi-tenant, multiple game modes (DOTA2 5v5 only)
+- KDA and per-match detail stats (the winner is entered by an admin); no OpenDota match import
+- Lobby creation, voice chat, a chat client, other games
+- Redis, message queues, microservices or any extra infrastructure
+- Public sign-up (registration requires an invite code handed out in the group)
 
-社区入口：QQ 群 `826031703`（页脚可直接复制群号）。
+## Data sources & credits
 
-DOTA2 与 Steam 是 Valve Corporation 的商标。本项目为社区自用的非官方项目，与 Valve 无关。
+Medals, ladder MMR, personas and avatars come from the public [STRATZ](https://stratz.com) API, with [OpenDota](https://www.opendota.com) as a fallback when a medal is missing. Ownership verification uses Steam OpenID. Rank icons use the official DOTA2 medal and star assets.
 
-## 相关文档
+Community entry: QQ group `826031703` (the footer copies the number with one click).
 
-| 文档 | 内容 |
+DOTA2 and Steam are trademarks of Valve Corporation. This is an unofficial project for a private community and is not affiliated with Valve.
+
+## Contributing
+
+The community is invite-only and the repository is maintained by its organiser. Bug reports and suggestions are welcome through issues; please do not commit secrets, production dumps or personal data.
+
+## Documentation
+
+| Document | Contents |
 | --- | --- |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构决策、认证流程、评分与分队算法、异步任务、发布流程 |
-| [docs/DATABASE.md](docs/DATABASE.md) | 表结构说明、核心不变量、D1 约束与迁移规范 |
-| [docs/API.md](docs/API.md) | REST 接口契约、错误码、并发与快照语义 |
-| [docs/UI.md](docs/UI.md) | 页面与路由、组件清单、状态映射与设计约定 |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | 本地环境、脚本契约、编码规范 |
-| [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) | 安全控制清单、攻击用例结果与残余风险 |
-| [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md) | 上线前冒烟测试：迁移行为与 CPU 配额校准 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture decisions, auth flows, rating and balancing algorithms, jobs, release flow |
+| [docs/DATABASE.md](docs/DATABASE.md) | Tables, invariants, D1 constraints, migration conventions |
+| [docs/API.md](docs/API.md) | REST contracts, error codes, concurrency and snapshot semantics |
+| [docs/UI.md](docs/UI.md) | Pages and routes, component inventory, state mapping, design rules |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local environment, script contracts, coding conventions |
+| [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) | Security controls, attack-case results, residual risk |
+| [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md) | Pre-release smoke tests: migration behaviour and CPU budget |
 
-## 许可
+All documents above are written in Chinese.
 
-本仓库为社区内部项目，未附带开源许可，保留所有权利。如需复用其中的设计或代码，请先与维护者联系。
+## License
+
+Private community project. No open-source license is granted; all rights reserved. Contact the maintainer before reusing designs or code.
