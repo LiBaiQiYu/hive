@@ -357,7 +357,9 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
       - 反射里只要 `_medium.jpg`（64px / 2.6KB），把 `_full` 按正则换掉即可；显示用的那张照旧。
       - 降级是三层：**有图有头像 → 场景 + 肖像灯；只有图 → 干净的场景反射；连图都没有（或 WebGL2 不可用）→ `proceduralEnvironment()`**（一间程序化的黑房间，硬边地平线 + 两块灯窗 + 两道灯条 + 段位色副光）。
       - **参数表对齐参考组件**（`ReflectiveCard` 的 props）：常用 10 项 —— 金属度（`metalness`）、拉丝（`roughness`）、模糊（`blurStrength`）、去色（`grayscale`）、高光（`shine`）、柔光（`glare`）、倒角（`bevel`）、形变（`warp`）、形变尺度（`warpScale`）、倾斜强度（`tiltGain`）；其余 16 项折叠在「高级参数」里。**拉丝就是 roughness**，别再加一个 `brush` 参数——参考组件里它就是"金属丝纹"本身。
-      - **`blurStrength`（px）换算成取样 mip = log2(blur)**：参考组件是把 env 画小再模糊（env 宽度 ∝ 1/blur），取 mip 是等价的近似。blur 6 → 2.6 级（环境约 170px）。
+      - **高光是"灯箱"，不是点光源**（照参考组件的 PLATE 实现）：`softbox(qDir, sigma)` 用 erf 收边的解析式光带画出**一条斜扫光 + 顶光 + 侧光**，`qDir = R.xy / R.z` 是反射方向。光带乘上丝纹（`highlight *= 1 + (grain-0.5)*rough²*1.8`）——**这就是"高光把拉丝照出来"的那一步**，没有这个乘法，丝纹就只在暗部隐约可见。
+      - **柔光（glare）只在鼠标在卡上时出现**：`uMisc2.w` 是 0..1 的悬浮量，由 `PlayerCard` 的 `glow` 缓动后传进来（τ = 160ms）。之前写成常驻，静止时卡面中间永远挂着一团光（用户报过）。
+      - **模糊是 0–20px**（`blurStrength`），换算成取样 mip = `log2(blur)`；`sigma` 里再叠 `fwidth(qDir)` 让光带边缘随分辨率自然变软。
       - **拉丝的实现**：三档 valueNoise 沿 y 高频、x 低频叠起来（`p.x*0.008 / p.y*0.55` 等），做两件事——① 微扰反射的**纵向**取样（画面被拉成横丝，这就是金属感来源）；② 调制亮度（`col *= 1 + (grain-0.5)*rough²*0.35`）。系数都压得很小：丝是"质感"，不是"扭曲"。
       - **`warp` 是表面涟漪**（不是鱼眼）：低频噪声给取样坐标加一点偏移，`warpScale` 管涟漪尺度。0 = 完全平直。
       - **取样坐标是一条独立公式，和法线无关**：

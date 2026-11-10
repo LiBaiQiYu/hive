@@ -44,6 +44,8 @@ export interface MirrorOptions {
   rankTier?: number | null;
   /** 头像地址：会作为场景里的一盏"肖像灯"映进板面（拿不到就不映，不影响其它） */
   avatarUrl?: string | null;
+  /** 悬浮量 0..1：柔光只在鼠标在卡上时出现，PlayerCard 会把它缓动后再传进来 */
+  hover?: number;
 }
 
 export interface MirrorPalette {
@@ -168,7 +170,7 @@ export interface MirrorParams {
   curvY: number;
   /** 颗粒（最终抖动） */
   grain: number;
-  /** 高光指数 */
+  /** 高光指数（保留位；灯箱光照不用它了） */
   specPower: number;
   /** 曝光 */
   exposure: number;
@@ -231,7 +233,7 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   warpScale: [0.2, 4],
   metalness: [0, 1],
   roughness: [0, 1],
-  blurStrength: [0, 40],
+  blurStrength: [0, 20],
   grayscale: [0, 1],
   shine: [0, 3],
   bevel: [0, 16],
@@ -496,6 +498,41 @@ vec3 environment(vec3 R, vec2 uvScene) {
   return uEnvReady.x > 0.5 ? sceneEnvironment(uvScene) : proceduralEnvironment(R);
 }
 
+// 柔边条带 / 灯箱：从参考组件的 PLATE 那几支搬过来的（erf 收边的解析式光带）。
+// 比"hdv 高次幂"更像照片里的反光板：一条有宽度的斜光，扫过时能把丝纹照出来。
+float erfA(float x) {
+  float x2 = x * x;
+  return sign(x) * sqrt(1.0 - exp(-x2 * (1.2732395 + 0.147 * x2) / (1.0 + 0.147 * x2)));
+}
+
+float bandA(float x, float halfWidth, float sigma) {
+  float s = 1.4142136 * max(sigma, 0.0001);
+  return 0.5 * (erfA((x + halfWidth) / s) - erfA((x - halfWidth) / s));
+}
+
+float stripA(vec2 q, vec2 center, vec2 dir, float halfWidth, vec2 sigma) {
+  vec2 normal = vec2(-dir.y, dir.x);
+  return bandA(dot(q - center, normal), halfWidth, length(sigma * normal));
+}
+
+/**
+ * 灯箱：一条斜扫光 + 顶部一条 + 右侧一条。
+ * 方位照抄参考组件（SWEEP = (0.5, 0.86)），因为截图里那条光带就是这个走向。
+ */
+float softbox(vec2 q, vec2 sigma) {
+  float key = stripA(q, vec2(-0.1, -0.16), normalize(vec2(0.5, 0.86)), 0.022, sigma + 0.018);
+  float top = bandA(q.y + 0.6, 0.12, sigma.y + 0.05);
+  float side = bandA(q.x - 0.46, 0.05, sigma.x + 0.05);
+  return key + top * 0.8 + side * 0.35;
+}
+
+/** 没有场景图时的"房间"：参考组件 room() 的灰底版本 */
+float room(float y, vec2 q, vec2 sigma) {
+  float fall = smoothstep(-0.55, 0.5, y);
+  float flag = stripA(q, vec2(0.24, -0.02), normalize(vec2(0.5, 0.86)), 0.09, sigma + 0.08);
+  return mix(0.85, 0.12, fall) * (1.0 - 0.6 * flag);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   float aspect = uRes.x / max(uRes.y, 1.0);
@@ -547,11 +584,7 @@ void main() {
   uvScene += ripple * 0.02;
 
   // 丝：只沿纵向微扰 → 画面被拉成横丝（幅度很小，不会把竖线拧弯）
-  uvScene.y += (grain - 0.5) * brush * 0.03;
-
-  vec3 Nlit = N;
-  Nlit.x += (grain - 0.5) * brush * 0.4;
-  Nlit = normalize(Nlit);
+  uvScene.y += (grain - 0.5) * brush * 0.05;
 
   // Fresnel：正对时是金属本色，掠射趋近全反射
   vec3 F = uTint + (1.0 - uTint) * pow(1.0 - ndv, 5.0);
@@ -564,19 +597,36 @@ void main() {
   // 丝的亮度调制（参考组件：scene *= 1 + (grain-0.5)*brush*0.3）
   col *= 1.0 + (grain - 0.5) * brush * 0.35;
 
-  // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色；哑光时同步减弱
-  vec3 L = normalize(vec3(-0.28, -0.52, 0.81));
-  vec3 H = normalize(L + V);
-  col += uTint
-       * pow(clamp(dot(Nlit, H), 0.0, 1.0), uLightCfg.x)
-       * uLightCfg.y
-       * mix(0.4, 1.0, uMisc2.x);
+  /* ---------------------------------------------------------------- 灯箱光照
+     按参考组件实现：**不是点状高光，是一条有宽度的反光板**。
+     qDir = R.xy / R.z 是"反射方向"，灯箱在这张方向图上刻出斜光 / 顶光 / 侧光；
+     sigma 让光带边缘随模糊、丝纹扩散——所以光带扫过时能把丝纹照出来。
+     柔光（glare）**只在鼠标悬浮时出现**（uMisc2.w = 0..1 的悬浮量）。 */
+  vec2 qDir = R.xy / max(R.z, 0.2);
+  vec2 footprint = fwidth(qDir);
+  float blurNorm = uSurface.z / 900.0;
+  vec2 sigma = sqrt(
+    vec2(blurNorm) * vec2(blurNorm) + footprint * footprint * 0.5
+  ) + vec2(0.004, 0.05) * uMisc.w;
 
-  // 跟着指针走的一团柔光。uv 的 y 朝上，而 uTilt.y 是"指针越靠下越大"，
-  // 所以 y 要取反——否则指针在下半张卡、光斑跑到上半张（用户报过）。
-  vec2 glareAt = vec2(0.5 + uTilt.x * 0.26, 0.5 - uTilt.y * 0.26);
-  float glareDist = length((uv - glareAt) * vec2(aspect, 1.0));
-  col += vec3(1.0, 0.98, 0.95) * exp(-glareDist * glareDist * 16.0) * uLightCfg.z;
+  float soft = softbox(qDir, sigma);
+
+  vec2 toPointer = vec2(uTilt.x, -uTilt.y) * 1.6;
+  vec2 spread = toPointer * vec2(1.0, 1.0 / (1.0 + 2.5 * uMisc.w));
+  float reach = dot(spread, spread);
+  float glint = max(1.0 + 3.0 * dot(N.xy, toPointer), 0.0);
+  float glare =
+      (exp(-reach * 1.6) + exp(-reach * 0.35) * 0.15) * glint * uLightCfg.z * uMisc2.w;
+
+  // 高光乘上丝纹：这就是"高光把拉丝质感透露出来"的那一步
+  float highlight = (soft * uLightCfg.y + glare) * mix(0.4, 1.0, uMisc2.x);
+  highlight *= 1.0 + (grain - 0.5) * brush * 1.8;
+  col += uTint * highlight * 0.55;
+
+  // 没有场景图时，用参考组件的灰底房间兜底（叠在反射上面）
+  if (uEnvReady.x < 0.5) {
+    col = mix(col, uTint * room(qDir.y, qDir, sigma), 0.85);
+  }
 
   // 倒角：紧贴边内侧压一道，再在倒角面上按光来的方向补一记亮线。
   // 有方向的倒角才像压出来的钢板；四边等亮的圆环只会像描边。
@@ -937,6 +987,8 @@ export function renderMirrorFrame(
   if (!ctx) return;
 
   const palette = mirrorPalette(options.key ?? '', options.rankTier);
+  // 悬浮量：只在鼠标在卡上时才有柔光（参考组件也是 hover 才亮）
+  const hover = Math.min(1, Math.max(0, options.hover ?? 0));
   if (!state) state = createState();
 
   const glState = state;
@@ -981,8 +1033,8 @@ export function renderMirrorFrame(
       params.spotStrength,
     );
     gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.roughness);
-    gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, 0);
-    gl.uniform4f(glState.surface, params.curvX, params.curvY, 0, params.grain);
+    gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, hover);
+    gl.uniform4f(glState.surface, params.curvX, params.curvY, params.blurStrength, params.grain);
     gl.uniform4f(glState.lightCfg, params.specPower, params.shine, params.glare, params.exposure);
     gl.uniform4f(
       glState.rimCfg,

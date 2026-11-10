@@ -119,6 +119,8 @@ const aim = { mx: 50, my: 50 };
  * 所以卡片姿态和卡面内容永远同步；同时指针事件再密也只有 60fps 一次渲染。
  */
 const at = ref({ mx: 50, my: 50 });
+/** 悬浮量 0..1：镜面的柔光只在鼠标在卡上时出现，和倾斜一起缓动 */
+const glow = ref(0);
 
 /** 时间常数（ms）：越大越黏。进卡那一下的"过渡时间"就是它决定的 */
 const ENTER_TAU = 110;
@@ -138,8 +140,15 @@ function tiltStep(now: number) {
   const k = 1 - Math.exp(-dt / (hovered.value ? ENTER_TAU : LEAVE_TAU));
   const mx = at.value.mx + (aim.mx - at.value.mx) * k;
   const my = at.value.my + (aim.my - at.value.my) * k;
+  const target = hovered.value ? 1 : 0;
+  const glowNext = glow.value + (target - glow.value) * (1 - Math.exp(-dt / 160));
+  glow.value = Math.abs(target - glowNext) < 0.01 ? target : glowNext;
   // 足够接近就吸附并停掉循环，别让一张卡常驻 rAF
-  if (Math.abs(aim.mx - mx) < 0.12 && Math.abs(aim.my - my) < 0.12) {
+  if (
+    Math.abs(aim.mx - mx) < 0.12 &&
+    Math.abs(aim.my - my) < 0.12 &&
+    glow.value === target
+  ) {
     at.value = { mx: aim.mx, my: aim.my };
     tiltLast = 0;
     return;
@@ -171,6 +180,7 @@ function onPointerMove(event: PointerEvent) {
   hovered.value = true;
   if (reducedMotion()) {
     at.value = { mx: aim.mx, my: aim.my };
+    glow.value = 1;
     return;
   }
   runTilt();
@@ -182,6 +192,7 @@ function onPointerLeave() {
   hovered.value = false;
   if (reducedMotion()) {
     at.value = { mx: 50, my: 50 };
+    glow.value = 0;
     return;
   }
   runTilt();
@@ -229,6 +240,7 @@ function paintSurface() {
       key: props.player.userId,
       rankTier: props.player.rankTier,
       avatarUrl: avatarUrl.value,
+      hover: glow.value,
     });
   }
 }
@@ -244,7 +256,7 @@ function scheduleSurface() {
 watch(
   // revision 是给「调整参数」弹窗用的：材质自身的可调参数不在 props 里，
   // 改完只能靠外部顶一个计数让卡片重画一帧。
-  () => [skin.value.material, at.value.mx, at.value.my, props.revision],
+  () => [skin.value.material, at.value.mx, at.value.my, glow.value, props.revision],
   () => {
     // canvas 是 v-if 出来的：挂载后要重新 observe，才能拿到第一帧的尺寸
     const canvas = surfaceCanvas.value;
