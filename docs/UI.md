@@ -380,3 +380,6 @@ CSS 变量：--foil-light-x / --foil-light-y / --foil-angle / --foil-intensity /
    创始人专属材质还要在 `@hive/shared` 的 `FOUNDER_ONLY_MATERIALS` 里登记，`PUT /api/me/card-skin` 才对非创始人 403。
 8. **存储**：`users.card_material / card_frame / card_frame_color / card_frame_effect`，四个 `NOT NULL DEFAULT` 列；`PUT /api/me/card-skin` 只接受 `{ material, frame, frameColor, frameEffect }`，整份提交，不写审计、不重算评分、不冻快照。老客户端只传前两个字段时，服务端按 `auto` + `steady` 补齐。
    `users.is_founder`（迁移 0014）只用来解锁创始人专属材质，`/api/me` 的 `user.founder` 是它的布尔投影；换人直接改这一列，不进管理后台。
+9. **倾斜由 JS 逐帧插值，不走 CSS transition**。`PlayerCard` 把指针位置拆成两份：`aim`（目标，指针事件只改它）和 `at`（渲染值，rAF 指数逼近，时间常数 110ms 进卡 / 220ms 回中）。`--rx/--ry/--px/--py` 和卡面 canvas 的 `tiltX/tiltY` **都从 `at` 取值**——这是关键：两边各走各的（CSS 过渡管姿态、canvas 自己瞬变），鼠标进卡那一瞬间就是"卡片慢慢转、卡面画面瞬间跳"（用户报过）。
+   因此 `.pcard-inner` 上**不能有 `transform` 过渡**，`.pcard-depth::before/after` 的 `transform` 过渡也删掉了：它们会在逐帧变化的 `--rx` 上再叠一层延迟，卡片反而比内容慢半拍。循环在逼近目标后自己停掉，不会常驻 rAF；`prefers-reduced-motion` 下直接吸附到目标值。
+   调手感就改 `ENTER_TAU` / `LEAVE_TAU` 两个常数：调大更"黏"、进卡的过渡更长。

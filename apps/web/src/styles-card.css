@@ -53,11 +53,12 @@
   border: var(--skin-border-width) solid var(--skin-border);
   background: var(--skin-bg);
   color: var(--skin-text);
-  /* 倾斜由指针驱动，回中由 transition 完成；带一点回弹更有"卡片被放下"的手感 */
+  /* 倾斜和回中都由 JS 逐帧插值（PlayerCard 的 tiltStep）——**这里不能加
+     transform 过渡**。CSS 过渡管不到 var(--rx) 的逐帧变化，只会给每一帧再叠
+     一层延迟，结果是卡片比卡面内容慢半拍。 */
   transform: rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) translateZ(0);
   transform-style: preserve-3d;
   transition:
-    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
     box-shadow 300ms ease,
     border-color 300ms ease;
   overflow: hidden;
@@ -66,7 +67,6 @@
 
 .pcard.is-active .pcard-inner {
   transition:
-    transform 90ms linear,
     box-shadow 200ms ease,
     border-color 200ms ease;
   box-shadow: var(--skin-shadow);
@@ -159,7 +159,7 @@
   opacity: 0;
   background-repeat: no-repeat;
   background-size: cover;
-  transition: transform 140ms ease-out;
+  /* 位移由 JS 逐帧插值（同 .pcard-inner），这里再叠过渡只会让视差层慢半拍 */
 }
 
 /* 只在悬停时才提升合成层：名单页一屏十几张卡，常驻 will-change 会白占显存 */

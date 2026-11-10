@@ -105,11 +105,57 @@ const lineFx = computed<{
 /* ---------------------------------------------------------------- 3D 倾斜 */
 
 const board = ref<HTMLElement | null>(null);
-const tilt = ref({ rx: 0, ry: 0, mx: 50, my: 50, active: false });
+
+/** 指针是否在卡上：只决定 hover 态（光斑、阴影、描边），跟着事件同步切 */
+const hovered = ref(false);
+/** 指针的目标位置（0..100 的百分比）：事件只改这一个，不直接上屏 */
+const aim = { mx: 50, my: 50 };
+/**
+ * 实际渲染的位置：由 rAF 指数逼近 aim。
+ *
+ * 为什么不用 CSS transition：卡面 canvas 是另一套（自己逐帧重绘），CSS 过渡
+ * 管不到它。两边各走各的，鼠标进卡那一瞬间就是"卡片慢慢转、画面瞬间跳"。
+ * 这里统一由 JS 插值，`--rx/--ry` 和 canvas 的 tilt 用的是**同一份**值，
+ * 所以卡片姿态和卡面内容永远同步；同时指针事件再密也只有 60fps 一次渲染。
+ */
+const at = ref({ mx: 50, my: 50 });
+
+/** 时间常数（ms）：越大越黏。进卡那一下的"过渡时间"就是它决定的 */
+const ENTER_TAU = 110;
+const LEAVE_TAU = 220;
+
+let tiltRaf = 0;
+let tiltLast = 0;
+
+function reducedMotion(): boolean {
+  return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+function tiltStep(now: number) {
+  tiltRaf = 0;
+  const dt = tiltLast ? Math.min(48, now - tiltLast) : 16;
+  tiltLast = now;
+  const k = 1 - Math.exp(-dt / (hovered.value ? ENTER_TAU : LEAVE_TAU));
+  const mx = at.value.mx + (aim.mx - at.value.mx) * k;
+  const my = at.value.my + (aim.my - at.value.my) * k;
+  // 足够接近就吸附并停掉循环，别让一张卡常驻 rAF
+  if (Math.abs(aim.mx - mx) < 0.12 && Math.abs(aim.my - my) < 0.12) {
+    at.value = { mx: aim.mx, my: aim.my };
+    tiltLast = 0;
+    return;
+  }
+  at.value = { mx, my };
+  tiltRaf = requestAnimationFrame(tiltStep);
+}
+
+function runTilt() {
+  if (tiltRaf) return;
+  tiltRaf = requestAnimationFrame(tiltStep);
+}
 
 /**
  * 指针位置 → 卡片姿态。
- * 角度上限刻意压到 16°/20°：超过这个量文字就开始糊，卡片感会变成"晃动的图片"。
+ * 角度上限刻意压到 13°/11°：超过这个量文字就开始糊，卡片感会变成"晃动的图片"。
  */
 function onPointerMove(event: PointerEvent) {
   if (event.pointerType === 'touch') return;
@@ -120,27 +166,36 @@ function onPointerMove(event: PointerEvent) {
   const px = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
   const py = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
 
-  tilt.value = {
-    rx: (0.5 - py) * 22,
-    ry: (px - 0.5) * 26,
-    mx: px * 100,
-    my: py * 100,
-    active: true,
-  };
+  aim.mx = px * 100;
+  aim.my = py * 100;
+  hovered.value = true;
+  if (reducedMotion()) {
+    at.value = { mx: aim.mx, my: aim.my };
+    return;
+  }
+  runTilt();
 }
 
 function onPointerLeave() {
-  tilt.value = { rx: 0, ry: 0, mx: 50, my: 50, active: false };
+  aim.mx = 50;
+  aim.my = 50;
+  hovered.value = false;
+  if (reducedMotion()) {
+    at.value = { mx: 50, my: 50 };
+    return;
+  }
+  runTilt();
 }
 
 const cardStyle = computed(() => ({
-  '--rx': `${tilt.value.rx.toFixed(2)}deg`,
-  '--ry': `${tilt.value.ry.toFixed(2)}deg`,
-  '--mx': `${tilt.value.mx}%`,
-  '--my': `${tilt.value.my}%`,
+  // 倾斜角由"渲染值"算，和 canvas 用的是同一个数
+  '--rx': `${((0.5 - at.value.my / 100) * 22).toFixed(2)}deg`,
+  '--ry': `${((at.value.mx / 100 - 0.5) * 26).toFixed(2)}deg`,
+  '--mx': `${at.value.mx}%`,
+  '--my': `${at.value.my}%`,
   // 归一化到 -1..1：材质贴图用它做视差位移，指针在中心时正好是 0
-  '--px': `${((tilt.value.mx - 50) / 50).toFixed(3)}`,
-  '--py': `${((tilt.value.my - 50) / 50).toFixed(3)}`,
+  '--px': `${((at.value.mx - 50) / 50).toFixed(3)}`,
+  '--py': `${((at.value.my - 50) / 50).toFixed(3)}`,
   // 边框动画的起始相位：按 index 错开，一屏十几张卡才不会像同一个转盘
   '--fx-delay': `${-((props.index % 9) * 0.97).toFixed(2)}s`,
   '--fx-delay-2': `${-((props.index % 7) * 1.43).toFixed(2)}s`,
@@ -159,7 +214,7 @@ function paintSurface() {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
   if (!w || !h) return;
-  const opts = { tiltX: (tilt.value.mx - 50) / 50, tiltY: (tilt.value.my - 50) / 50 };
+  const opts = { tiltX: (at.value.mx - 50) / 50, tiltY: (at.value.my - 50) / 50 };
   if (skin.value.material === 'gold') renderMetalFrame(canvas, w, h, opts);
   else if (skin.value.material === 'pixel') renderPixelFrame(canvas, w, h, opts);
   else if (skin.value.material === 'psi') renderPsiFrame(canvas, w, h, opts);
@@ -189,7 +244,7 @@ function scheduleSurface() {
 watch(
   // revision 是给「调整参数」弹窗用的：材质自身的可调参数不在 props 里，
   // 改完只能靠外部顶一个计数让卡片重画一帧。
-  () => [skin.value.material, tilt.value.mx, tilt.value.my, props.revision],
+  () => [skin.value.material, at.value.mx, at.value.my, props.revision],
   () => {
     // canvas 是 v-if 出来的：挂载后要重新 observe，才能拿到第一帧的尺寸
     const canvas = surfaceCanvas.value;
@@ -208,6 +263,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (surfaceRaf) cancelAnimationFrame(surfaceRaf);
+  if (tiltRaf) cancelAnimationFrame(tiltRaf);
+  tiltRaf = 0;
   surfaceObserver?.disconnect();
   surfaceObserver = null;
 });
@@ -217,7 +274,7 @@ onBeforeUnmount(() => {
   <article
     ref="board"
     class="pcard"
-    :class="[`pcard-${verification.tone}`, { 'is-active': tilt.active }]"
+    :class="[`pcard-${verification.tone}`, { 'is-active': hovered }]"
     :style="cardStyle"
     :data-material="skin.material"
     :data-frame="skin.frame"
@@ -259,8 +316,8 @@ onBeforeUnmount(() => {
           :rim="false"
           :interactive="true"
           :intensity="0.95"
-          :tilt-x="(tilt.mx - 50) / 50"
-          :tilt-y="(tilt.my - 50) / 50"
+          :tilt-x="(at.mx - 50) / 50"
+          :tilt-y="(at.my - 50) / 50"
         />
         <template v-if="skin.material !== 'holo'">
           <!-- 材质纹理 + 边框/特效的公共图层；纯装饰，不参与布局 -->
