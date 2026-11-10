@@ -1213,18 +1213,27 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
-  max-height: min(66vh, 620px);
+  /* 参数列表是弹窗里唯一会滚的东西。460 是实测下来"能看六七行、又不把底栏顶出屏幕"的高度。 */
+  max-height: min(62vh, 460px);
   overflow-y: auto;
   overscroll-behavior: contain;
   padding-right: 4px;
 }
 
 /* 弹窗里的实时预览：调参时卡片必须一直在视野里。
-   它在滚动区域外面，往下翻参数也不会滚走。 */
+   它在滚动区域外面，往下翻参数也不会滚走。
+   300px 是折中——原来 330px 会把整窗顶出屏幕，再小文字就开始折行。 */
 .mirror-tuning-preview {
   width: 100%;
-  max-width: 330px;
-  margin: 0 auto 14px;
+  max-width: 240px;
+  margin: 0 auto 8px;
+}
+
+/* 预览卡去掉 232px 的最小高度：弹窗里要按宽度自适应，
+   否则卡片比容器高，顶部会被裁掉（踩过）。 */
+.mirror-tuning-preview .pcard,
+.mirror-tuning-preview .pcard-inner {
+  min-height: 0;
 }
 
 .mirror-tuning-group {

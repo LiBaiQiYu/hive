@@ -172,6 +172,10 @@ export interface MirrorParams {
   grain: number;
   /** 扫光：光带随卡片倾斜横扫的幅度（0 = 几乎不动） */
   sweep: number;
+  /** 高光粗细：那道斜光的半宽（越大越粗） */
+  bandWidth: number;
+  /** 柔光范围：光晕的大小（越大越散） */
+  glareSize: number;
   /** 高光指数（保留位；灯箱光照不用它了） */
   specPower: number;
   /** 曝光 */
@@ -195,6 +199,8 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
    * 再大就会在两端直接扫出卡外，卡面上反而看不到那条光了。
    */
   sweep: 0.45,
+  bandWidth: 0.075,
+  glareSize: 1,
   bevel: 8,
   glare: 0.25,
   /**
@@ -244,6 +250,8 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   grayscale: [0, 1],
   shine: [0, 3],
   sweep: [0, 1.5],
+  bandWidth: [0.02, 0.25],
+  glareSize: [0.3, 3],
   bevel: [0, 16],
   glare: [0, 1],
   specPower: [100, 2000],
@@ -416,6 +424,7 @@ uniform vec4 uMisc2;    // x 金属度 y 去色 z 涟漪尺度 w 保留
 uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 保留 w 颗粒
 uniform vec4 uLightCfg; // x 高光指数 y 高光强度(shine) z 指针柔光 w 曝光
 uniform vec4 uRimCfg;   // x 倒角宽度(px) y 倒角亮度 z 板内压暗 w 倾斜增益
+uniform vec4 uLight2;   // x 高光粗细(w) y 柔光范围 z 保留 w 保留
 
 // 便宜的确定性噪声。镜面的细节频率不高，用不上贴图。
 float hash21(vec2 p) {
@@ -530,8 +539,8 @@ float stripA(vec2 q, vec2 center, vec2 dir, float halfWidth, vec2 sigma) {
  * 半宽 0.075（比参考组件的 0.022 粗三倍多），因为它是一条"有宽度的反光"，
  * 不是一道锐利的高光线。
  */
-float softbox(vec2 q, vec2 sigma) {
-  return stripA(q, vec2(-0.1, -0.16), normalize(vec2(0.5, 0.86)), 0.075, sigma + 0.03);
+float softbox(vec2 q, vec2 sigma, float halfWidth) {
+  return stripA(q, vec2(-0.1, -0.16), normalize(vec2(0.5, 0.86)), halfWidth, sigma + 0.03);
 }
 
 /** 没有场景图时的"房间"：参考组件 room() 的灰底版本 */
@@ -620,9 +629,9 @@ void main() {
   // 光带的位移：**单独给一个大增益**。反光板映在卡面上的像会随卡片角度大幅扫过，
   // 只靠法线曲面那点位移是不够的（那样几乎看不出在动）。方向与 V 一致（x 取反）。
   vec2 lightQ = qDir + vec2(-uTilt.x, uTilt.y) * uLightCfg.x;
-  float soft = softbox(lightQ, sigma);
+  float soft = softbox(lightQ, sigma, uLight2.x);
 
-  vec2 toPointer = vec2(uTilt.x, -uTilt.y) * 1.6;
+  vec2 toPointer = vec2(uTilt.x, -uTilt.y) * 1.6 / max(uLight2.y, 0.05);
   vec2 spread = toPointer * vec2(1.0, 1.0 / (1.0 + 2.5 * uMisc.w));
   float reach = dot(spread, spread);
   float glint = max(1.0 + 3.0 * dot(N.xy, toPointer), 0.0);
@@ -681,6 +690,7 @@ interface GlState {
   spotCfg: WebGLUniformLocation | null;
   misc: WebGLUniformLocation | null;
   misc2: WebGLUniformLocation | null;
+  light2: WebGLUniformLocation | null;
   surface: WebGLUniformLocation | null;
   lightCfg: WebGLUniformLocation | null;
   rimCfg: WebGLUniformLocation | null;
@@ -811,6 +821,7 @@ function createState(): GlState | null {
     spotCfg: gl.getUniformLocation(program, 'uSpotCfg'),
     misc: gl.getUniformLocation(program, 'uMisc'),
     misc2: gl.getUniformLocation(program, 'uMisc2'),
+    light2: gl.getUniformLocation(program, 'uLight2'),
     surface: gl.getUniformLocation(program, 'uSurface'),
     lightCfg: gl.getUniformLocation(program, 'uLightCfg'),
     rimCfg: gl.getUniformLocation(program, 'uRimCfg'),
@@ -1047,6 +1058,7 @@ export function renderMirrorFrame(
     gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, hover);
     gl.uniform4f(glState.surface, params.curvX, params.curvY, params.blurStrength, params.grain);
     gl.uniform4f(glState.lightCfg, params.sweep, params.shine, params.glare, params.exposure);
+    gl.uniform4f(glState.light2, params.bandWidth, params.glareSize, 0, 0);
     gl.uniform4f(
       glState.rimCfg,
       params.bevel * ratio,

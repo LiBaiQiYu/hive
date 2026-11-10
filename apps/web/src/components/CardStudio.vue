@@ -153,7 +153,24 @@ const MIRROR_TUNING_MAIN: { title: string; note: string; items: TuningItem[] }[]
         hint: '光带随卡片角度横扫的幅度；0 = 几乎不动',
         step: 0.01,
       },
-      { key: 'glare', label: '柔光', hint: '跟着鼠标走的那团光，只在悬停时出现（对应 glare）', step: 0.01 },
+      {
+        key: 'bandWidth',
+        label: '高光粗细',
+        hint: '那道斜光的半宽，越大越粗（0.02 是一条细线）',
+        step: 0.005,
+      },
+      {
+        key: 'glare',
+        label: '柔光',
+        hint: '跟着鼠标走的那团光，只在悬停时出现（对应 glare）',
+        step: 0.01,
+      },
+      {
+        key: 'glareSize',
+        label: '柔光范围',
+        hint: '光晕大小；越大越散，越小越像一个小亮点',
+        step: 0.05,
+      },
       { key: 'bevel', label: '倒角', hint: '边缘亮边的宽度，px（对应 bevel）', step: 0.5 },
     ],
   },
@@ -475,14 +492,10 @@ async function copyTuning() {
       preset="card"
       title="镜面 · 调整参数"
       :bordered="false"
-      style="width: 600px; max-width: calc(100vw - 32px)"
+      style="width: 600px; max-width: calc(100vw - 32px); max-height: calc(100vh - 48px)"
     >
-      <!-- 弹窗盖住了页面左边那张预览卡，所以这里再放一张：调参时必须能同时
-           看到卡片。它留在滚动区域**外面**，往下翻参数时也不会滚走。 -->
-      <div class="mirror-tuning-preview">
-        <PlayerCard :player="previewPlayer" :revision="tuningRevision" />
-      </div>
-
+      <!-- 不在弹窗里再放一张预览卡：它和参数列表一起会把整窗顶出屏幕，
+           而页面左边本来就有实时预览（弹窗只占 600px，不会盖住它）。 -->
       <div class="mirror-tuning">
         <!-- 高级参数默认折叠：常用那十几项就够调效果了，剩下的都是诊断/微调 -->
         <div class="mirror-tuning-more">
