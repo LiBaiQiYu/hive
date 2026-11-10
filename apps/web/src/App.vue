@@ -14,6 +14,7 @@ import {
 import BrandLogo from './components/BrandLogo.vue';
 import ChangelogDialog from './components/ChangelogDialog.vue';
 import EmailReminder from './components/EmailReminder.vue';
+import qqGroupCard from './assets/qq-group.png';
 import { APP_VERSION } from './lib/changelog';
 import { logout, session } from './lib/session';
 import { theme, toggleTheme } from './lib/theme';
@@ -54,6 +55,52 @@ onMounted(() => {
 
 const naiveTheme = computed(() => (theme.value === 'dark' ? darkTheme : null));
 const overrides = computed(() => (theme.value === 'dark' ? darkOverrides : lightOverrides));
+
+/* ------------------------------------------------------------------ QQ 群 */
+
+/**
+ * 群号写死在代码里（和二维码图片一起）：这个群是"邀请制社区"的入口，
+ * 不跟着部署配置走。换群的时候两处一起改：常量 + assets/qq-group.png。
+ */
+const QQ_GROUP = '826031703';
+/** idle = 没点过；copied = 复制成功；failed = 剪贴板不可用，让人手动抄 */
+const qqState = ref<'idle' | 'copied' | 'failed'>('idle');
+/** 点一下也把二维码亮出来：手机上 hover 不存在，复制完顺手能扫 */
+const qqOpen = ref(false);
+let qqTimer: number | undefined;
+
+async function copyQqGroup() {
+  let ok = false;
+  try {
+    await navigator.clipboard.writeText(QQ_GROUP);
+    ok = true;
+  } catch {
+    // 局域网 IP / 老浏览器下没有 clipboard API：退回 textarea + execCommand
+    try {
+      const area = document.createElement('textarea');
+      area.value = QQ_GROUP;
+      area.setAttribute('readonly', '');
+      area.style.position = 'fixed';
+      area.style.top = '-1000px';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.select();
+      ok = document.execCommand('copy');
+      document.body.removeChild(area);
+    } catch {
+      ok = false;
+    }
+  }
+
+  qqState.value = ok ? 'copied' : 'failed';
+  qqOpen.value = true;
+  window.clearTimeout(qqTimer);
+  qqTimer = window.setTimeout(() => {
+    qqState.value = 'idle';
+    qqOpen.value = false;
+  }, ok ? 1800 : 3200);
+}
+
 
 /**
  * 右上角用户菜单：这里是"和账号有关"的入口，顶栏不放的东西都在这儿。
@@ -287,6 +334,38 @@ async function onMenuSelect(key: string) {
                 <span>© {{ year }} HIVE</span>
                 <span class="footer-dot" aria-hidden="true">·</span>
                 <span>群内自用，非官方项目，与 Valve 无关</span>
+
+                <!-- QQ 群：悬浮看二维码，点一下复制群号 -->
+                <button
+                  type="button"
+                  class="footer-qq"
+                  :class="{ 'is-open': qqOpen, 'is-copied': qqState === 'copied' }"
+                  :title="
+                    qqState === 'copied'
+                      ? '群号已复制'
+                      : `点击复制 QQ 群号 ${QQ_GROUP}；悬停查看二维码`
+                  "
+                  @click="copyQqGroup"
+                >
+                  <span class="footer-qq-tag">QQ 群</span>
+                  <span class="footer-qq-no mono">{{ QQ_GROUP }}</span>
+                  <span class="footer-qq-action">{{
+                    qqState === 'copied' ? '已复制' : qqState === 'failed' ? '请手动复制' : '复制'
+                  }}</span>
+
+                  <span class="footer-qq-pop" aria-hidden="true">
+                    <img
+                      :src="qqGroupCard"
+                      alt="QQ 群二维码：DOTA2 技术休闲交流群"
+                      width="230"
+                      height="319"
+                      loading="lazy"
+                      decoding="async"
+                    />
+                    <span class="footer-qq-pop-hint">扫码加群 · 或点上面的群号复制</span>
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   class="footer-ver mono"
