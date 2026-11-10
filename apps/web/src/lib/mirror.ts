@@ -150,10 +150,16 @@ export interface MirrorParams {
   /** 指针倾斜对反射的增益 */
   tiltGain: number;
   /**
-   * 画面形变（0..1）：0 = 完全平直（平面镜映远处一面墙），1 = 完全按曲面反射。
-   * 拉到 1 就是"鼓形"，场景里的直线会跟着弯——这不是 bug，是曲面镜的几何。
+   * 画面形变（0..1）：0 = 完全平直（平面镜映远处一面墙），1 = 边缘明显内收。
+   * 这是**唯一**会让场景里直线变弯的参数。
    */
   warp: number;
+  /** 形变尺度：形变作用的半径平方系数，越大越早开始弯 */
+  warpScale: number;
+  /** 金属度：0 = 哑光（反射几乎没了），1 = 纯金属 */
+  metalness: number;
+  /** 去色：把反射画面压成灰的 */
+  grayscale: number;
   /** 抛光起伏：只影响高光，不参与反射取样 */
   polish: number;
   /** 主光高光指数 / 强度 */
@@ -182,7 +188,7 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   lampWarm: 0.11,
   curvX: 0.4,
   curvY: 0.18,
-  brush: 0.01,
+  brush: 0.025,
   grain: 0.012,
   /**
    * 0.13 而不是 0.55：整条取样跨度是 ±1，0.55 意味着指针扫一遍反射能扫过
@@ -190,6 +196,9 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
    */
   tiltGain: 0.13,
   warp: 0.45,
+  warpScale: 0.28,
+  metalness: 1,
+  grayscale: 0,
   polish: 0.055,
   specPower: 700,
   specGain: 2,
@@ -218,6 +227,9 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   grain: [0, 0.05],
   tiltGain: [0, 1.5],
   warp: [0, 1],
+  warpScale: [0.05, 0.8],
+  metalness: [0, 1],
+  grayscale: [0, 1],
   polish: [0, 0.12],
   specPower: [100, 2000],
   specGain: [0, 4],
@@ -388,6 +400,7 @@ uniform vec2 uEnvReady;    // x: 场景图就绪, y: 头像就绪
 uniform vec4 uEnvCfg;   // x 横向跨度 y 纵向跨度 z 场景 mip w 场景亮度
 uniform vec4 uSpotCfg;  // xy 灯中心(uv) z 半径 w 强度
 uniform vec4 uMisc;     // x 头像提亮 y 暖光强度 z 画面形变 w 抛光起伏
+uniform vec4 uMisc2;    // x 金属度 y 去色 z 形变尺度 w 保留
 uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 拉丝 w 颗粒
 uniform vec4 uLightCfg; // x 高光指数 y 高光强度 z 指针柔光 w 曝光
 uniform vec4 uRimCfg;   // x 倒角起始 y 倒角亮度 z 板内压暗 w 倾斜增益
@@ -490,30 +503,32 @@ void main() {
   vec2 p = (uv * 2.0 - 1.0) * halfSize;
   vec2 radial = p / halfSize; // -1..1，用来算"离边缘多远"
 
-  // 法线：一块微微弯起来的金属板。**纵向曲率要小**——纵向一弯，
-  // 场景里的竖线（立柱、平台边）就会被拧成波浪，看着像贴图被揉皱了。
-  // 注意这里只是**几何**法线；拉丝/抛光那两层纹理扰动另算（见下面 Nlit），
-  // 它们不该参与反射取样——参与的话无论把参数调到多小，画面都还是会被揉皱。
+  // 法线：一块微微弯起来的金属板。注意这里只是**几何**法线，
+  // 拉丝/抛光那两层纹理扰动另算（见下面 Nlit）——它们不该参与反射取样。
   vec3 N = normalize(vec3(p.x * uSurface.x, p.y * uSurface.y, 1.0));
 
   // 视线方向：**x 要取反**。V 是"从板面指向观察者"的方向，而卡片向右倾时
   // 板面法线是朝右的，反射应该映到场景的右侧。直接用 +uTilt.x 会让整张反射
-  // 往反方向跑（用户报的就是这个：指针往右，画面却往右滑）。
-  // y 保持原样——竖直方向用户的观感是对的，别顺手改。
+  // 往反方向跑（用户报过）。这里的 V 只给高光和 Fresnel 用，取样坐标见下。
   vec3 V = normalize(vec3(-uTilt.x * uRimCfg.w, uTilt.y * uRimCfg.w, 1.0));
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
-  /* 取样坐标 = 线性窗口 ⊕ 弯曲，按「画面形变」混合：
-     · 线性窗口：屏幕位置 × 缩放 + 指针平移。物理上对应"平面镜 + 远处一面墙"，
-       画面**零形变**；
-     · 弯曲：曲面法线给出的方向，就是之前那个鼓形效果。
-     uMisc.z = 0 → 完全平直；= 1 → 完全按曲面反射。 */
-  vec2 slide = vec2(-uTilt.x, uTilt.y) * uRimCfg.w;
-  // 0.85 让平直映射的可视范围与曲面那份大致相同，拖「画面形变」不会顺带缩放
-  vec2 uvFlat = 0.5 + (radial * 0.85 + slide) * uEnvCfg.xy;
-  vec2 uvCurved = 0.5 + R.xy * uEnvCfg.xy;
-  vec2 uvScene = mix(uvFlat, uvCurved, clamp(uMisc.z, 0.0, 1.0));
+  /* ---------------------------------------------------------------- 取样坐标
+     一条公式，全部可调，**和法线无关**——之前把取样挂在曲面法线上，结果
+     曲率既是"画面有内容"的唯一来源、又是"画面扭曲"的唯一来源，两个诉求打架，
+     怎么调都调不到不扭曲。
+
+     q     板面坐标，y 翻成"图像向下"（纹理 v 朝下：card top ↔ image top）
+     warp  0 = 线性窗口；越大边缘越往中心收（曲面镜的鱼眼）
+     slide 窗口跟着指针平移 → 画面反向移动。x、y 同号：指针往右，画面往左；
+           指针往下，画面往上。这和卡片视差层（--px * -18px）是同一套约定。 */
+  vec2 q = vec2(radial.x, -radial.y);
+  float r2 = dot(q, q);
+  q *= 1.0 - uMisc.z * uMisc2.z * r2;
+  vec2 slide = vec2(uTilt.x, uTilt.y) * uRimCfg.w;
+  // 0.85：让可视范围不随 warp 变化，拖「画面形变」不会顺带缩放
+  vec2 uvScene = 0.5 + (q * 0.85 + slide) * uEnvCfg.xy;
 
   // 纹理扰动只进光照法线：拉丝、抛光起伏都只该改高光，不该改画面
   vec3 Nlit = N;
@@ -524,6 +539,14 @@ void main() {
   // Fresnel：正对时是金属本色，掠射趋近全反射
   vec3 F = uTint + (1.0 - uTint) * pow(1.0 - ndv, 5.0);
   vec3 col = environment(R, uvScene) * F;
+
+  // 金属度：0 = 哑光（反射几乎没了，只剩底色），1 = 纯金属
+  col = mix(vec3(0.02) + uTint * 0.10, col, uMisc2.x);
+  // 去色：原版那样把反射画面压成灰的
+  col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
+  // 拉丝：高频横纹的**亮度调制**。不碰取样坐标，所以拉丝再强也不会把直线拧弯——
+  // 这才是"金属拉丝质感"该待的地方（之前它混在法线里，一动就扭曲画面）。
+  col *= 1.0 + (vnoise(vec2(p.x * 0.6, p.y * 26.0)) - 0.5) * uSurface.z * 12.0;
 
   // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色
   vec3 L = normalize(vec3(-0.28, -0.52, 0.81));
@@ -576,6 +599,7 @@ interface GlState {
   envCfg: WebGLUniformLocation | null;
   spotCfg: WebGLUniformLocation | null;
   misc: WebGLUniformLocation | null;
+  misc2: WebGLUniformLocation | null;
   surface: WebGLUniformLocation | null;
   lightCfg: WebGLUniformLocation | null;
   rimCfg: WebGLUniformLocation | null;
@@ -705,6 +729,7 @@ function createState(): GlState | null {
     envCfg: gl.getUniformLocation(program, 'uEnvCfg'),
     spotCfg: gl.getUniformLocation(program, 'uSpotCfg'),
     misc: gl.getUniformLocation(program, 'uMisc'),
+    misc2: gl.getUniformLocation(program, 'uMisc2'),
     surface: gl.getUniformLocation(program, 'uSurface'),
     lightCfg: gl.getUniformLocation(program, 'uLightCfg'),
     rimCfg: gl.getUniformLocation(program, 'uRimCfg'),
@@ -933,6 +958,7 @@ export function renderMirrorFrame(
       params.spotStrength,
     );
     gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.polish);
+    gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, 0);
     gl.uniform4f(glState.surface, params.curvX, params.curvY, params.brush, params.grain);
     gl.uniform4f(glState.lightCfg, params.specPower, params.specGain, params.glare, params.exposure);
     gl.uniform4f(

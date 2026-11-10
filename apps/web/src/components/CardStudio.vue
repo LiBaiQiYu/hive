@@ -120,27 +120,48 @@ interface TuningItem {
   step: number;
 }
 
-/** 顺序 = 弹窗里的顺序；区间统一从 MIRROR_PARAM_RANGES 取，别两处各写一份 */
-const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
+/** 常用：对齐参考组件的旋钮密度，一屏看得完，调效果只需要动这几项 */
+const MIRROR_TUNING_MAIN: { title: string; note: string; items: TuningItem[] }[] = [
   {
-    title: '场景',
-    note: '反射取样哪一块、糊到什么程度',
+    title: '外观',
+    note: '金属度 / 模糊 / 去色 / 高光 / 柔光',
+    items: [
+      { key: 'metalness', label: '金属度', hint: '0 = 哑光，反射几乎消失；1 = 纯金属', step: 0.01 },
+      { key: 'sceneLod', label: '模糊', hint: '清晰的原图会像贴纸；2 以上才像"远处的屋子"', step: 0.1 },
+      { key: 'grayscale', label: '去色', hint: '把反射画面压成灰的', step: 0.01 },
+      { key: 'specGain', label: '高光', hint: '0 就是完全没有点状高光', step: 0.05 },
+      { key: 'glare', label: '柔光', hint: '跟着鼠标走的那团光', step: 0.01 },
+    ],
+  },
+  {
+    title: '形变',
+    note: '场景里直线会不会弯，只由这两项决定',
+    items: [
+      { key: 'warp', label: '形变', hint: '0 = 画面完全平直（直线还是直线）；越大边缘越往中心收', step: 0.01 },
+      { key: 'warpScale', label: '形变尺度', hint: '越大，越早开始弯', step: 0.01 },
+      { key: 'tiltGain', label: '倾斜强度', hint: '指针带动画面平移的幅度；0.2 以上会像在拖动画面', step: 0.01 },
+      { key: 'rimStart', label: '倒角', hint: '0.98 只留最外圈；0.7 是宽宽一圈', step: 0.01 },
+    ],
+  },
+  {
+    title: '表面',
+    note: '只改质感，不会让画面变形',
+    items: [
+      { key: 'brush', label: '拉丝', hint: '横向细纹的亮度调制——金属拉丝感来自这里', step: 0.001 },
+      { key: 'polish', label: '抛光起伏', hint: '只进高光，不进反射取样', step: 0.001 },
+      { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
+    ],
+  },
+];
+
+/** 高级：诊断与微调用。默认折叠，平时不用动 */
+const MIRROR_TUNING_ADVANCED: { title: string; note: string; items: TuningItem[] }[] = [
+  {
+    title: '取样范围',
+    note: '看得见场景的多大一块',
     items: [
       { key: 'spanX', label: '横向跨度', hint: '越小越"放大"；太大会把左右立柱挤出画面', step: 0.01 },
       { key: 'spanY', label: '纵向跨度', hint: '越大映到的地面越多', step: 0.01 },
-      {
-        key: 'sceneLod',
-        label: '模糊（mip）',
-        hint: '清晰的原图会像贴纸；2 以上才像"远处的屋子"',
-        step: 0.1,
-      },
-      { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
-      {
-        key: 'warp',
-        label: '画面形变',
-        hint: '0 = 画面完全平直（直线还是直线）；1 = 完全按曲面反射，场景里的直线会跟着弯',
-        step: 0.01,
-      },
     ],
   },
   {
@@ -171,39 +192,29 @@ const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
     ],
   },
   {
-    title: '板面',
-    note: '曲率与纹理——决定"像不像一块金属"',
+    title: '光影',
+    note: '板面弧度只影响折射出来的亮暗，不影响取样',
     items: [
-      { key: 'curvX', label: '横向曲率', hint: '曲面镜的横向弧度，配合「画面形变」用', step: 0.01 },
-      { key: 'curvY', label: '纵向曲率', hint: '给大了竖线会拧成波浪，0.2 附近是安全区', step: 0.01 },
-      { key: 'brush', label: '拉丝', hint: '横向细纹的强度；只影响高光，不会让画面变形', step: 0.001 },
-      { key: 'polish', label: '抛光起伏', hint: '表面细微起伏；同样只进高光，不进反射取样', step: 0.001 },
-      { key: 'grain', label: '颗粒', hint: '完全没有会像塑料', step: 0.001 },
-      { key: 'tiltGain', label: '倾斜增益', hint: '指针带动反射的幅度；0.2 以上会像在拖动画面', step: 0.01 },
-    ],
-  },
-  {
-    title: '光照',
-    note: '高光、柔光与最终曝光',
-    items: [
+      { key: 'curvX', label: '横向弧度', hint: '只进光照法线，不影响画面', step: 0.01 },
+      { key: 'curvY', label: '纵向弧度', hint: '同上；给大了高光会拧成波浪', step: 0.01 },
       { key: 'specPower', label: '高光锐度', hint: '指数越大，亮点越小越硬', step: 10 },
-      { key: 'specGain', label: '高光强度', hint: '0 就是完全没有点状高光', step: 0.05 },
-      { key: 'glare', label: '指针柔光', hint: '跟着鼠标走的那团光', step: 0.01 },
       { key: 'exposure', label: '曝光', hint: '色调映射强度，1.0 以上开始发白', step: 0.01 },
-    ],
-  },
-  {
-    title: '倒角',
-    note: '边缘那道亮线——板子的"厚度"来自它',
-    items: [
-      { key: 'rimStart', label: '起始位置', hint: '0.98 只留最外圈；0.7 是宽宽一圈', step: 0.01 },
-      { key: 'rimGain', label: '亮度', hint: '按光来的方向加权，左上亮右下暗', step: 0.01 },
+      { key: 'grain', label: '颗粒', hint: '完全没有会像塑料', step: 0.001 },
+      { key: 'rimGain', label: '倒角亮度', hint: '按光来的方向加权，左上亮右下暗', step: 0.01 },
       { key: 'bevelShade', label: '板内压暗', hint: '紧贴边内侧压一道，制造倒角面', step: 0.01 },
     ],
   },
 ];
 
 const showMirrorTuning = ref(false);
+/** 高级参数默认折叠：常用那十几项就够调效果了 */
+const showAdvancedTuning = ref(false);
+const advancedCount = MIRROR_TUNING_ADVANCED.reduce((total, group) => total + group.items.length, 0);
+const visibleGroups = computed(() =>
+  showAdvancedTuning.value
+    ? [...MIRROR_TUNING_MAIN, ...MIRROR_TUNING_ADVANCED]
+    : MIRROR_TUNING_MAIN,
+);
 const tuning = ref<MirrorParams>(getMirrorParams());
 /** 参数变了之后顶一下这个计数，预览卡才会重画 */
 const tuningRevision = ref(0);
@@ -345,7 +356,7 @@ async function copyTuning() {
           <span class="skin-frame-style-copy">
             <span class="skin-frame-style-title">调整参数</span>
             <span class="skin-frame-style-hint">
-              取样范围、模糊、肖像灯、曲率、高光、倒角…（22 项）
+              金属度、模糊、去色、高光、柔光、形变、拉丝…（12 项常用，高级另 15 项）
             </span>
           </span>
           <span class="skin-frame-style-open">调整</span>
@@ -454,7 +465,14 @@ async function copyTuning() {
       </div>
 
       <div class="mirror-tuning">
-        <section v-for="group in MIRROR_TUNING" :key="group.title" class="mirror-tuning-group">
+        <!-- 高级参数默认折叠：常用那十几项就够调效果了，剩下的都是诊断/微调 -->
+        <div class="mirror-tuning-more">
+          <NButton size="tiny" quaternary @click="showAdvancedTuning = !showAdvancedTuning">
+            {{ showAdvancedTuning ? '收起高级参数' : `展开高级参数（${advancedCount} 项）` }}
+          </NButton>
+        </div>
+
+        <section v-for="group in visibleGroups" :key="group.title" class="mirror-tuning-group">
           <div class="frame-style-head">
             <span class="frame-style-heading">{{ group.title }}</span>
             <span class="frame-style-note">{{ group.note }}</span>
