@@ -31,6 +31,7 @@ interface PlayerProfile {
   verification: string;
   personaName: string | null;
   dotaAccountId: number | null;
+  avatarUrl: string | null;
   skin: PlayerCardData['skin'];
 }
 
@@ -136,6 +137,7 @@ const cardPlayer = computed<PlayerCardData>(() => {
     verification: p?.verification ?? 'SELF_REPORTED',
     personaName: p?.personaName ?? null,
     dotaAccountId: p?.dotaAccountId ?? null,
+    avatarUrl: p?.avatarUrl ?? null,
     skin: p?.skin ?? null,
   };
 });

@@ -43,6 +43,8 @@ interface ProfileRow {
   accountVerification: string | null;
   personaName: string | null;
   dotaAccountId: number | null;
+  /** 公开头像：报名名单里本来就是公开的，档案页也要给（卡片左上角要显示它） */
+  avatarUrl: string | null;
 }
 
 playerRoutes.get('/:id', async (c) => {
@@ -59,7 +61,7 @@ playerRoutes.get('/:id', async (c) => {
             ps.rank_tier AS rankTier, ps.declared_mmr AS declaredMmr, ps.rank_source AS rankSource,
             pr.effective_rating AS rating,
             ga.verification AS accountVerification, ga.persona_name AS personaName,
-            ga.dota_account_id AS dotaAccountId
+            ga.dota_account_id AS dotaAccountId, ga.avatar_url AS avatarUrl
        FROM users u
        LEFT JOIN player_stats ps ON ps.user_id = u.id
        LEFT JOIN player_ratings pr ON pr.user_id = u.id
@@ -153,6 +155,7 @@ playerRoutes.get('/:id', async (c) => {
         verification,
         personaName: row.personaName,
         dotaAccountId: row.dotaAccountId,
+        avatarUrl: row.avatarUrl,
         skin: {
           material: row.cardMaterial,
           frame: row.cardFrame,

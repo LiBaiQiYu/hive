@@ -1,3 +1,5 @@
+import envStageUrl from '../assets/env-stage.webp';
+
 /**
  * 镜面卡面（WebGL2）。
  *
@@ -40,6 +42,8 @@ export interface MirrorOptions {
   key?: string;
   /** rank_tier：决定环境副光的颜色 */
   rankTier?: number | null;
+  /** 头像地址：会作为场景里的一盏"肖像灯"映进板面（拿不到就不映，不影响其它） */
+  avatarUrl?: string | null;
 }
 
 export interface MirrorPalette {
@@ -110,6 +114,93 @@ export function mirrorPalette(key: string, rankTier?: number | null): MirrorPale
 }
 
 /* ==========================================================================
+ * 素材：场景图 + 头像
+ *
+ * 两张都是异步就绪：没就绪就继续用程序化环境，绝不阻塞首帧。
+ *  · 场景图是本地打包的 webp（1024×576，16KB），同源，不需要 CORS。
+ *  · 头像来自 Steam CDN，**另开一个 Image 并设 crossOrigin='anonymous'**：
+ *    avatars.steamstatic.com 带 `Access-Control-Allow-Origin: *`（实测过），
+ *    所以能直接当纹理；万一某个主机不带头，onerror 静默失败，只是少了那盏灯。
+ *    **绝不能给卡片上显示用的 <img> 加 crossorigin**——那会让整张头像消失。
+ * ========================================================================== */
+
+/** 反射里只要 64px 的 _medium 版本（2.6KB）；卡面上显示的那张照旧用 _full */
+function mediumAvatarUrl(url: string): string {
+  return url.replace(/_full\.(jpe?g|png)$/i, '_medium.$1');
+}
+
+let sceneImage: HTMLImageElement | null = null;
+let sceneState: 'idle' | 'loading' | 'ready' | 'failed' = 'idle';
+let sceneWait: Promise<void> | null = null;
+
+/** 已经有结果的头像地址（成功或失败）：用来判断还要不要等 */
+const avatarSettled = new Set<string>();
+const avatarImages = new Map<string, HTMLImageElement>();
+const avatarWaiting = new Map<string, Promise<void>>();
+
+function startScene(): void {
+  if (sceneState !== 'idle') return;
+  sceneState = 'loading';
+  const image = new Image();
+  sceneWait = new Promise<void>((resolve) => {
+    image.onload = () => {
+      sceneImage = image;
+      sceneState = 'ready';
+      resolve();
+    };
+    image.onerror = () => {
+      sceneState = 'failed';
+      resolve();
+    };
+  });
+  image.src = envStageUrl;
+}
+
+function startAvatar(url: string): void {
+  if (avatarSettled.has(url) || avatarWaiting.has(url)) return;
+  const image = new Image();
+  image.crossOrigin = 'anonymous';
+  const wait = new Promise<void>((resolve) => {
+    const settle = (loaded: boolean) => {
+      if (loaded) avatarImages.set(url, image);
+      avatarSettled.add(url);
+      avatarWaiting.delete(url);
+      resolve();
+    };
+    image.onload = () => settle(true);
+    image.onerror = () => settle(false);
+  });
+  avatarWaiting.set(url, wait);
+  image.src = mediumAvatarUrl(url);
+}
+
+/**
+ * 预热素材。已经就绪（或已经失败过）时返回 null ——
+ * 调用方只在这上面做一件事：拿到 Promise 就在它 resolve 之后重画一帧。
+ */
+export function ensureMirrorAssets(avatarUrl?: string | null): Promise<void> | null {
+  startScene();
+  if (avatarUrl) startAvatar(avatarUrl);
+
+  const waits: Promise<void>[] = [];
+  if (sceneState === 'loading' && sceneWait) waits.push(sceneWait);
+  if (avatarUrl && !avatarSettled.has(avatarUrl)) {
+    const wait = avatarWaiting.get(avatarUrl);
+    if (wait) waits.push(wait);
+  }
+  if (!waits.length) return null;
+  return Promise.all(waits).then(() => undefined);
+}
+
+/**
+ * 肖像灯在场景图里的位置（uv）、半径、亮度。
+ * 场景图的地平线在 uv.y ≈ 0.47，往上是墙、往下是抛光地面，
+ * 所以灯必须挂在 0.5 以上——否则就成了"地上摊着一张会发光的画"。
+ * 横向放在偏右：卡面左半边是名字和头像，灯放那里会把大标题压糊。
+ */
+const AVATAR_SPOT = { x: 0.7, y: 0.62, radius: 0.11, strength: 0.95 } as const;
+
+/* ==========================================================================
  * 着色器
  * ========================================================================== */
 
@@ -127,7 +218,11 @@ out vec4 fragColor;
 uniform vec2 uRes;    // 画布像素尺寸
 uniform vec2 uTilt;   // -1..1，指针位置
 uniform vec3 uTint;   // 金属本色（F0）
-uniform vec3 uAccent; // 段位色：环境里左下角那块副光
+uniform vec3 uAccent; // 段位色：程序化环境里左下角那块副光
+uniform sampler2D uScene;  // 场景图（sRGB，硬件转线性）
+uniform sampler2D uAvatar; // 本人头像（sRGB）
+uniform vec2 uEnvReady;    // x: 场景图就绪, y: 头像就绪
+uniform vec4 uSpot;        // xy 中心(uv) / z 半径 / w 强度
 
 // 便宜的确定性噪声。镜面的细节频率不高，用不上贴图。
 float hash21(vec2 p) {
@@ -147,11 +242,11 @@ float vnoise(vec2 p) {
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-// 程序化环境：一间只有灯的黑屋子。金属反射什么，看到的就是什么。
+// 程序化环境（无图时的兜底）：一间只有灯的黑屋子。金属反射什么，看到的就是什么。
 // 关键不是"灯有多亮"，而是**边界有多硬**——软光斑反射上去就成了雾气。
 // 镜面感的核心就是那条"地平线"：亮天花板与暗地面之间一道几乎不模糊的分界，
 // 它在板面上斜着穿过去，一眼就能认出是金属。
-vec3 environment(vec3 R) {
+vec3 proceduralEnvironment(vec3 R) {
   // 整体转 30°：正的横纹像百叶窗，斜着穿过去才像摄影棚里的灯箱
   vec2 q = mat2(0.87, 0.50, -0.50, 0.87) * R.xy;
 
@@ -182,6 +277,36 @@ vec3 environment(vec3 R) {
   return col;
 }
 
+// 真实场景反射：把板面当成一面曲面镜，按反射方向去"看"场景图。
+// 场景图是一张平面幕布（不是等距柱状全景），所以直接拿方向的 xy 当 uv 偏移——
+// 几何上相当于"远处的一面墙"，视觉上够用，而且指针一动整张图就在板面上滑。
+vec3 sceneEnvironment(vec3 R) {
+  vec2 uv = clamp(0.5 + R.xy * vec2(0.62, 0.95), 0.002, 0.998);
+  // 取高 mip：金属映出来的是"远处的屋子"，本来就该是虚的。
+  // 清晰的原图反而像贴纸，而且和卡片上的文字抢对比度（踩过）。
+  vec3 col = textureLod(uScene, uv, 2.4).rgb * 0.94;
+
+  // 房间里的那盏"肖像灯"：把本人头像当成一块发光的画挂进场景。
+  if (uEnvReady.y > 0.5) {
+    vec2 local = (uv - uSpot.xy) / uSpot.z;
+    float d = length(local);
+    float mask = 1.0 - smoothstep(0.62, 1.0, d);
+    vec3 av = textureLod(uAvatar, clamp(local * 0.5 + 0.5, 0.002, 0.998), 1.6).rgb;
+    // 用 max 而不是直接替换：头像大多偏暗，直接盖上去会在板面上砸出一个黑洞。
+    // 只允许它"提亮"，这样它才像一盏灯，而不是一张贴上去的图。
+    vec3 lamp = max(col, av * av * 2.6 + av * 0.55 + vec3(0.02, 0.04, 0.09));
+    col = mix(col, lamp, mask * uSpot.w);
+    // 暖色灯罩：整间屋子都是冷蓝的，唯一一处暖光就是"你"——这也是全局里
+    // 唯一能让人一眼找到头像的线索，别改成冷色。
+    col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * 0.11;
+  }
+  return col;
+}
+
+vec3 environment(vec3 R) {
+  return uEnvReady.x > 0.5 ? sceneEnvironment(R) : proceduralEnvironment(R);
+}
+
 void main() {
   vec2 uv = gl_FragCoord.xy / uRes;
   float aspect = uRes.x / max(uRes.y, 1.0);
@@ -191,9 +316,9 @@ void main() {
   vec2 p = (uv * 2.0 - 1.0) * halfSize;
   vec2 radial = p / halfSize; // -1..1，用来算"离边缘多远"
 
-  // 法线：一块微微弯起来的金属板（横向曲率略大于纵向），
-  // 曲率要够大，倾斜时反射才会整片扫过去，而不是只在原地闪一下。
-  vec3 N = normalize(vec3(p.x * 0.44, p.y * 0.34, 1.0));
+  // 法线：一块微微弯起来的金属板。**纵向曲率要小**——纵向一弯，
+  // 场景里的竖线（立柱、平台边）就会被拧成波浪，看着像贴图被揉皱了。
+  vec3 N = normalize(vec3(p.x * 0.40, p.y * 0.18, 1.0));
   // 拉丝：低频横纹，只给一点点扰动（高频噪声在 1x 下就是砂纸）
   N.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * 0.010, 0.0);
   // 曲面上的细微不均匀：抛光留下的起伏。没有这一层，反射会像 CAD 渲染一样干净得假
@@ -253,11 +378,60 @@ interface GlState {
   tilt: WebGLUniformLocation | null;
   tint: WebGLUniformLocation | null;
   accent: WebGLUniformLocation | null;
+  scene: WebGLUniformLocation | null;
+  avatar: WebGLUniformLocation | null;
+  envReady: WebGLUniformLocation | null;
+  spot: WebGLUniformLocation | null;
+  /** 没图时占位用的 1×1 黑纹理，免得采样到"不完整纹理" */
+  blank: WebGLTexture | null;
 }
 
 let state: GlState | null = null;
 /** WebGL2 这条路彻底不可用（创建失败 / 上下文丢失）：本页后续一律走 2D 回退 */
 let unusable = false;
+
+/** 纹理：场景图一张 + 头像按 URL 缓存（上限 6，够一屏卡片来回悬停用） */
+let sceneTexture: WebGLTexture | null = null;
+const avatarTextures = new Map<string, WebGLTexture>();
+const AVATAR_TEXTURE_LIMIT = 6;
+
+/**
+ * 上传一张图当纹理。
+ * 用 SRGB8_ALPHA8 内部格式：采样时硬件转成线性，和 main() 末尾的
+ * tonemap + gamma 正好对上——不转的话整张场景会发灰发白。
+ */
+function uploadTexture(gl: WebGL2RenderingContext, image: TexImageSource): WebGLTexture | null {
+  const texture = gl.createTexture();
+  if (!texture) return null;
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, gl.RGBA, gl.UNSIGNED_BYTE, image);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return texture;
+}
+
+/** 取出（必要时上传）某个玩家的头像纹理；LRU 超限时删掉最早的那张 */
+function avatarTextureFor(gl: WebGL2RenderingContext, url: string): WebGLTexture | null {
+  const cached = avatarTextures.get(url);
+  if (cached) return cached;
+  const image = avatarImages.get(url);
+  if (!image) return null;
+  const texture = uploadTexture(gl, image);
+  if (!texture) return null;
+  avatarTextures.set(url, texture);
+  if (avatarTextures.size > AVATAR_TEXTURE_LIMIT) {
+    const oldest = avatarTextures.keys().next();
+    if (!oldest.done) {
+      const evicted = avatarTextures.get(oldest.value);
+      if (evicted) gl.deleteTexture(evicted);
+      avatarTextures.delete(oldest.value);
+    }
+  }
+  return texture;
+}
 
 function compile(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader | null {
   const shader = gl.createShader(type);
@@ -328,20 +502,83 @@ function createState(): GlState | null {
     tilt: gl.getUniformLocation(program, 'uTilt'),
     tint: gl.getUniformLocation(program, 'uTint'),
     accent: gl.getUniformLocation(program, 'uAccent'),
+    scene: gl.getUniformLocation(program, 'uScene'),
+    avatar: gl.getUniformLocation(program, 'uAvatar'),
+    envReady: gl.getUniformLocation(program, 'uEnvReady'),
+    spot: gl.getUniformLocation(program, 'uSpot'),
+    blank: (() => {
+      const texture = gl.createTexture();
+      if (!texture) return null;
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        1,
+        1,
+        0,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        new Uint8Array([0, 0, 0, 255]),
+      );
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return texture;
+    })(),
   };
 }
 
 /**
- * 2D 回退：没有 WebGL2 时给一块"像金属"的底，别留白。
- * 只用渐变，不做逐像素光照——这一类设备本来也吃不动。
+ * 2D 回退：没有 WebGL2 时也得是"同一间屋子"，别留一块空白。
+ * 有场景图就铺图 + 画肖像灯；没有才退回渐变（比逐像素光照便宜得多，
+ * 这一类设备本来也吃不动）。
  */
 function paintFallback(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  { tiltX, tiltY }: MirrorOptions,
+  { tiltX, tiltY, avatarUrl }: MirrorOptions,
   { tint, accent }: MirrorPalette,
 ): void {
+  if (sceneImage) {
+    const sw = sceneImage.naturalWidth || 1;
+    const sh = sceneImage.naturalHeight || 1;
+    const imageRatio = sh / sw;
+    let dw = w;
+    let dh = w * imageRatio;
+    if (dh < h) {
+      dh = h;
+      dw = h / imageRatio;
+    }
+    // 按倾斜平移一点：方向和 shader 里一致（指针往右，画面往左）
+    const ox = (w - dw) * 0.5 - tiltX * (dw - w) * 0.22;
+    const oy = (h - dh) * 0.5 - tiltY * (dh - h) * 0.22;
+    ctx.drawImage(sceneImage, ox, oy, dw, dh);
+
+    // 肖像灯：位置是卡面坐标，不追求和 shader 完全一致，够像就行
+    const avatar = avatarUrl ? avatarImages.get(avatarUrl) : undefined;
+    const x = w * 0.3 - tiltX * w * 0.05;
+    const y = h * 0.36 - tiltY * h * 0.05;
+    const radius = h * 0.17;
+    const halo = ctx.createRadialGradient(x, y, radius * 0.5, x, y, radius * 2.4);
+    halo.addColorStop(0, 'rgba(120, 170, 255, 0.26)');
+    halo.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(0, 0, w, h);
+    if (avatar) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.filter = 'blur(2px)';
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(avatar, x - radius, y - radius, radius * 2, radius * 2);
+      ctx.restore();
+    }
+    return;
+  }
+
   const toRgb = (color: readonly [number, number, number], alpha = 1): string =>
     `rgba(${Math.round(color[0] * 255)}, ${Math.round(color[1] * 255)}, ${Math.round(
       color[2] * 255,
@@ -398,7 +635,7 @@ function paintFallback(
  */
 function paintScrims(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   // 整体只压一档：压太狠金属就没反差了，文字的保底交给下面两条渐变和描边
-  ctx.fillStyle = 'rgba(6, 10, 16, 0.08)';
+  ctx.fillStyle = 'rgba(6, 10, 16, 0.14)';
   ctx.fillRect(0, 0, w, h);
 
   const vignette = ctx.createRadialGradient(
@@ -468,6 +705,29 @@ export function renderMirrorFrame(
     gl.uniform2f(glState.tilt, options.tiltX, options.tiltY);
     gl.uniform3f(glState.tint, palette.tint[0], palette.tint[1], palette.tint[2]);
     gl.uniform3f(glState.accent, palette.accent[0], palette.accent[1], palette.accent[2]);
+
+    // 素材纹理：挂载后第一次渲染时上传，之后复用；没就绪就绑占位纹理
+    if (!sceneTexture && sceneState === 'ready' && sceneImage) {
+      sceneTexture = uploadTexture(gl, sceneImage);
+    }
+    const avatarUrl = options.avatarUrl;
+    const avatarTexture = avatarUrl ? avatarTextureFor(gl, avatarUrl) : null;
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, sceneTexture ?? glState.blank);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, avatarTexture ?? glState.blank);
+    gl.uniform1i(glState.scene, 0);
+    gl.uniform1i(glState.avatar, 1);
+    gl.uniform2f(glState.envReady, sceneTexture ? 1 : 0, avatarTexture ? 1 : 0);
+    gl.uniform4f(
+      glState.spot,
+      AVATAR_SPOT.x,
+      AVATAR_SPOT.y,
+      AVATAR_SPOT.radius,
+      AVATAR_SPOT.strength,
+    );
+
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // 同一帧内贴回去：preserveDrawingBuffer 保证这里读得到刚画的内容
     ctx.drawImage(glState.canvas, 0, 0, w, h);

@@ -7,7 +7,7 @@ import RankIcon from './RankIcon.vue';
 import { normalizeCardSkin, type CardSkin } from '../lib/cards';
 import { renderInfinityFrame } from '../lib/infinity';
 import { renderMetalFrame } from '../lib/metal';
-import { renderMirrorFrame } from '../lib/mirror';
+import { renderMirrorFrame, ensureMirrorAssets } from '../lib/mirror';
 import { renderPixelFrame } from '../lib/pixel';
 import { renderPsiFrame } from '../lib/psi';
 import { rankLabel, rankParts } from '../lib/rank';
@@ -164,11 +164,15 @@ function paintSurface() {
   else if (skin.value.material === 'psi') renderPsiFrame(canvas, w, h, opts);
   else if (skin.value.material === 'infinity') renderInfinityFrame(canvas, w, h, opts);
   else if (skin.value.material === 'mirror') {
-    // 镜面的环境色由"这是谁的卡"决定（身份色相 + 段位副光），所以要带上 userId
+    // 镜面反射的是"谁的卡"：身份色相 + 段位副光 + 本人头像那盏肖像灯。
+    // 场景图和头像是异步加载的，拿到之后再补一帧，别让第一帧是空板。
+    const pending = ensureMirrorAssets(avatarUrl.value);
+    if (pending) void pending.then(() => scheduleSurface());
     renderMirrorFrame(canvas, w, h, {
       ...opts,
       key: props.player.userId,
       rankTier: props.player.rankTier,
+      avatarUrl: avatarUrl.value,
     });
   }
 }
