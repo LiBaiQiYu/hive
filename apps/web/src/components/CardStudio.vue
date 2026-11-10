@@ -135,6 +135,12 @@ const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
         step: 0.1,
       },
       { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
+      {
+        key: 'warp',
+        label: '画面形变',
+        hint: '0 = 画面完全平直（直线还是直线）；1 = 完全按曲面反射，场景里的直线会跟着弯',
+        step: 0.01,
+      },
     ],
   },
   {
@@ -168,9 +174,10 @@ const MIRROR_TUNING: { title: string; note: string; items: TuningItem[] }[] = [
     title: '板面',
     note: '曲率与纹理——决定"像不像一块金属"',
     items: [
-      { key: 'curvX', label: '横向曲率', hint: '越大反射扫得越开', step: 0.01 },
+      { key: 'curvX', label: '横向曲率', hint: '曲面镜的横向弧度，配合「画面形变」用', step: 0.01 },
       { key: 'curvY', label: '纵向曲率', hint: '给大了竖线会拧成波浪，0.2 附近是安全区', step: 0.01 },
-      { key: 'brush', label: '拉丝', hint: '横向细纹的强度', step: 0.001 },
+      { key: 'brush', label: '拉丝', hint: '横向细纹的强度；只影响高光，不会让画面变形', step: 0.001 },
+      { key: 'polish', label: '抛光起伏', hint: '表面细微起伏；同样只进高光，不进反射取样', step: 0.001 },
       { key: 'grain', label: '颗粒', hint: '完全没有会像塑料', step: 0.001 },
       { key: 'tiltGain', label: '倾斜增益', hint: '指针带动反射的幅度；0.2 以上会像在拖动画面', step: 0.01 },
     ],

@@ -149,6 +149,13 @@ export interface MirrorParams {
   grain: number;
   /** 指针倾斜对反射的增益 */
   tiltGain: number;
+  /**
+   * 画面形变（0..1）：0 = 完全平直（平面镜映远处一面墙），1 = 完全按曲面反射。
+   * 拉到 1 就是"鼓形"，场景里的直线会跟着弯——这不是 bug，是曲面镜的几何。
+   */
+  warp: number;
+  /** 抛光起伏：只影响高光，不参与反射取样 */
+  polish: number;
   /** 主光高光指数 / 强度 */
   specPower: number;
   specGain: number;
@@ -182,6 +189,8 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
    * 场景宽度的 68%——看着像在拖动一张图，不像"板子在晃"。
    */
   tiltGain: 0.13,
+  warp: 0.45,
+  polish: 0.055,
   specPower: 700,
   specGain: 2,
   glare: 0.1,
@@ -208,6 +217,8 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   brush: [0, 0.05],
   grain: [0, 0.05],
   tiltGain: [0, 1.5],
+  warp: [0, 1],
+  polish: [0, 0.12],
   specPower: [100, 2000],
   specGain: [0, 4],
   glare: [0, 0.5],
@@ -376,7 +387,7 @@ uniform vec2 uEnvReady;    // x: 场景图就绪, y: 头像就绪
 // 每一项对应 MirrorParams 里的一个字段，注释写清了顺序。
 uniform vec4 uEnvCfg;   // x 横向跨度 y 纵向跨度 z 场景 mip w 场景亮度
 uniform vec4 uSpotCfg;  // xy 灯中心(uv) z 半径 w 强度
-uniform vec4 uLampCfg;  // x 头像提亮 y 暖光强度
+uniform vec4 uMisc;     // x 头像提亮 y 暖光强度 z 画面形变 w 抛光起伏
 uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 拉丝 w 颗粒
 uniform vec4 uLightCfg; // x 高光指数 y 高光强度 z 指针柔光 w 曝光
 uniform vec4 uRimCfg;   // x 倒角起始 y 倒角亮度 z 板内压暗 w 倾斜增益
@@ -434,11 +445,16 @@ vec3 proceduralEnvironment(vec3 R) {
   return col;
 }
 
-// 真实场景反射：把板面当成一面曲面镜，按反射方向去"看"场景图。
-// 场景图是一张平面幕布（不是等距柱状全景），所以直接拿方向的 xy 当 uv 偏移——
-// 几何上相当于"远处的一面墙"，视觉上够用，而且指针一动整张图就在板面上滑。
-vec3 sceneEnvironment(vec3 R) {
-  vec2 uv = clamp(0.5 + R.xy * uEnvCfg.xy, 0.002, 0.998);
+// 真实场景反射：取样坐标由 main() 算好传进来。
+//
+// 为什么角度不能直接从法线来：一张**平面**镜按方向取样，整块板映到的是同一个
+// 方向 → 一片纯色。想看见画面就必须让方向随位置变，也就是让板面"弯"——而这
+// 正是画面扭曲的来源。所以这里把取样拆成两截：
+//   线性窗口（屏幕位置 × 缩放 + 指针平移）= 平面镜 + 远处一面墙，**零形变**；
+//   弯曲项（曲面法线给出的方向）= 现在的鼓形效果。
+// 两者按 uMisc.z（画面形变）混合，拉到 0 就是完全平直的画面。
+vec3 sceneEnvironment(vec2 uvScene) {
+  vec2 uv = clamp(uvScene, 0.002, 0.998);
   // 取高 mip：金属映出来的是"远处的屋子"，本来就该是虚的。
   // 清晰的原图反而像贴纸，而且和卡片上的文字抢对比度（踩过）。
   vec3 col = textureLod(uScene, uv, uEnvCfg.z).rgb * uEnvCfg.w;
@@ -452,17 +468,17 @@ vec3 sceneEnvironment(vec3 R) {
     vec3 av = textureLod(uAvatar, clamp(local * 0.5 + 0.5, 0.002, 0.998), 1.6).rgb;
     // 用 max 而不是直接替换：头像大多偏暗，直接盖上去会在板面上砸出一个黑洞。
     // 只允许它"提亮"，这样它才像一盏灯，而不是一张贴上去的图。
-    vec3 lamp = max(col, av * av * uLampCfg.x + av * 0.55 + vec3(0.02, 0.04, 0.09));
+    vec3 lamp = max(col, av * av * uMisc.x + av * 0.55 + vec3(0.02, 0.04, 0.09));
     col = mix(col, lamp, mask * uSpotCfg.w);
     // 暖色灯罩：整间屋子都是冷蓝的，唯一一处暖光就是"你"——这也是全局里
     // 唯一能让人一眼找到头像的线索，别改成冷色。
-    col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * uLampCfg.y;
+    col += vec3(1.0, 0.72, 0.36) * exp(-d * d * 2.2) * uMisc.y;
   }
   return col;
 }
 
-vec3 environment(vec3 R) {
-  return uEnvReady.x > 0.5 ? sceneEnvironment(R) : proceduralEnvironment(R);
+vec3 environment(vec3 R, vec2 uvScene) {
+  return uEnvReady.x > 0.5 ? sceneEnvironment(uvScene) : proceduralEnvironment(R);
 }
 
 void main() {
@@ -476,12 +492,9 @@ void main() {
 
   // 法线：一块微微弯起来的金属板。**纵向曲率要小**——纵向一弯，
   // 场景里的竖线（立柱、平台边）就会被拧成波浪，看着像贴图被揉皱了。
+  // 注意这里只是**几何**法线；拉丝/抛光那两层纹理扰动另算（见下面 Nlit），
+  // 它们不该参与反射取样——参与的话无论把参数调到多小，画面都还是会被揉皱。
   vec3 N = normalize(vec3(p.x * uSurface.x, p.y * uSurface.y, 1.0));
-  // 拉丝：低频横纹，只给一点点扰动（高频噪声在 1x 下就是砂纸）
-  N.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * uSurface.z, 0.0);
-  // 曲面上的细微不均匀：抛光留下的起伏。没有这一层，反射会像 CAD 渲染一样干净得假
-  N.xy += (vec2(vnoise(p * 2.6), vnoise(p * 2.6 + 11.3)) - 0.5) * 0.055;
-  N = normalize(N);
 
   // 视线方向：**x 要取反**。V 是"从板面指向观察者"的方向，而卡片向右倾时
   // 板面法线是朝右的，反射应该映到场景的右侧。直接用 +uTilt.x 会让整张反射
@@ -491,17 +504,35 @@ void main() {
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
+  /* 取样坐标 = 线性窗口 ⊕ 弯曲，按「画面形变」混合：
+     · 线性窗口：屏幕位置 × 缩放 + 指针平移。物理上对应"平面镜 + 远处一面墙"，
+       画面**零形变**；
+     · 弯曲：曲面法线给出的方向，就是之前那个鼓形效果。
+     uMisc.z = 0 → 完全平直；= 1 → 完全按曲面反射。 */
+  vec2 slide = vec2(-uTilt.x, uTilt.y) * uRimCfg.w;
+  // 0.85 让平直映射的可视范围与曲面那份大致相同，拖「画面形变」不会顺带缩放
+  vec2 uvFlat = 0.5 + (radial * 0.85 + slide) * uEnvCfg.xy;
+  vec2 uvCurved = 0.5 + R.xy * uEnvCfg.xy;
+  vec2 uvScene = mix(uvFlat, uvCurved, clamp(uMisc.z, 0.0, 1.0));
+
+  // 纹理扰动只进光照法线：拉丝、抛光起伏都只该改高光，不该改画面
+  vec3 Nlit = N;
+  Nlit.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * uSurface.z, 0.0);
+  Nlit.xy += (vec2(vnoise(p * 2.6), vnoise(p * 2.6 + 11.3)) - 0.5) * uMisc.w;
+  Nlit = normalize(Nlit);
+
   // Fresnel：正对时是金属本色，掠射趋近全反射
   vec3 F = uTint + (1.0 - uTint) * pow(1.0 - ndv, 5.0);
-  vec3 col = environment(R) * F;
+  vec3 col = environment(R, uvScene) * F;
 
   // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色
   vec3 L = normalize(vec3(-0.28, -0.52, 0.81));
   vec3 H = normalize(L + V);
-  col += uTint * pow(clamp(dot(N, H), 0.0, 1.0), uLightCfg.x) * uLightCfg.y;
+  col += uTint * pow(clamp(dot(Nlit, H), 0.0, 1.0), uLightCfg.x) * uLightCfg.y;
 
-  // 跟着指针走的一团柔光（很轻：它只负责"手在动"的反馈，不该盖掉环境）
-  vec2 glareAt = 0.5 + uTilt * 0.26;
+  // 跟着指针走的一团柔光。uv 的 y 朝上，而 uTilt.y 是"指针越靠下越大"，
+  // 所以 y 要取反——否则指针在下半张卡、光斑跑到上半张（用户报过）。
+  vec2 glareAt = vec2(0.5 + uTilt.x * 0.26, 0.5 - uTilt.y * 0.26);
   float glareDist = length((uv - glareAt) * vec2(aspect, 1.0));
   col += vec3(1.0, 0.98, 0.95) * exp(-glareDist * glareDist * 16.0) * uLightCfg.z;
 
@@ -544,7 +575,7 @@ interface GlState {
   envReady: WebGLUniformLocation | null;
   envCfg: WebGLUniformLocation | null;
   spotCfg: WebGLUniformLocation | null;
-  lampCfg: WebGLUniformLocation | null;
+  misc: WebGLUniformLocation | null;
   surface: WebGLUniformLocation | null;
   lightCfg: WebGLUniformLocation | null;
   rimCfg: WebGLUniformLocation | null;
@@ -673,7 +704,7 @@ function createState(): GlState | null {
     envReady: gl.getUniformLocation(program, 'uEnvReady'),
     envCfg: gl.getUniformLocation(program, 'uEnvCfg'),
     spotCfg: gl.getUniformLocation(program, 'uSpotCfg'),
-    lampCfg: gl.getUniformLocation(program, 'uLampCfg'),
+    misc: gl.getUniformLocation(program, 'uMisc'),
     surface: gl.getUniformLocation(program, 'uSurface'),
     lightCfg: gl.getUniformLocation(program, 'uLightCfg'),
     rimCfg: gl.getUniformLocation(program, 'uRimCfg'),
@@ -901,7 +932,7 @@ export function renderMirrorFrame(
       params.spotRadius,
       params.spotStrength,
     );
-    gl.uniform4f(glState.lampCfg, params.avatarGain, params.lampWarm, 0, 0);
+    gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.polish);
     gl.uniform4f(glState.surface, params.curvX, params.curvY, params.brush, params.grain);
     gl.uniform4f(glState.lightCfg, params.specPower, params.specGain, params.glare, params.exposure);
     gl.uniform4f(
