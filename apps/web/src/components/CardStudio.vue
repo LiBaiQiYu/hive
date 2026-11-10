@@ -120,36 +120,49 @@ interface TuningItem {
   step: number;
 }
 
-/** 常用：对齐参考组件的旋钮密度，一屏看得完，调效果只需要动这几项 */
+/** 常用：对齐参考组件那套旋钮（名称/语义一一对应），一屏看得完 */
 const MIRROR_TUNING_MAIN: { title: string; note: string; items: TuningItem[] }[] = [
   {
     title: '外观',
-    note: '金属度 / 模糊 / 去色 / 高光 / 柔光',
+    note: '金属度 / 拉丝 / 模糊 / 去色',
     items: [
       { key: 'metalness', label: '金属度', hint: '0 = 哑光，反射几乎消失；1 = 纯金属', step: 0.01 },
-      { key: 'sceneLod', label: '模糊', hint: '清晰的原图会像贴纸；2 以上才像"远处的屋子"', step: 0.1 },
-      { key: 'grayscale', label: '去色', hint: '把反射画面压成灰的', step: 0.01 },
-      { key: 'specGain', label: '高光', hint: '0 就是完全没有点状高光', step: 0.05 },
-      { key: 'glare', label: '柔光', hint: '跟着鼠标走的那团光', step: 0.01 },
+      {
+        key: 'roughness',
+        label: '拉丝',
+        hint: '越大，反射沿丝纹拉得越明显（对应 roughness）',
+        step: 0.01,
+      },
+      {
+        key: 'blurStrength',
+        label: '模糊',
+        hint: '反射的模糊程度，px（对应 blurStrength）；太小会像贴纸',
+        step: 0.5,
+      },
+      { key: 'grayscale', label: '去色', hint: '把反射画面压成灰的（对应 grayscale）', step: 0.01 },
+    ],
+  },
+  {
+    title: '光',
+    note: '扫过去的高光与跟随鼠标的柔光',
+    items: [
+      { key: 'shine', label: '高光', hint: '点状高光与扫光的强度（对应 shine）', step: 0.01 },
+      { key: 'glare', label: '柔光', hint: '跟着鼠标走的那团光（对应 glare）', step: 0.01 },
+      { key: 'bevel', label: '倒角', hint: '边缘亮边的宽度，px（对应 bevel）', step: 0.5 },
     ],
   },
   {
     title: '形变',
-    note: '场景里直线会不会弯，只由这两项决定',
+    note: '表面涟漪——唯一会让画面变形的两项',
     items: [
-      { key: 'warp', label: '形变', hint: '0 = 画面完全平直（直线还是直线）；越大边缘越往中心收', step: 0.01 },
-      { key: 'warpScale', label: '形变尺度', hint: '越大，越早开始弯', step: 0.01 },
-      { key: 'tiltGain', label: '倾斜强度', hint: '指针带动画面平移的幅度；0.2 以上会像在拖动画面', step: 0.01 },
-      { key: 'rimStart', label: '倒角', hint: '0.98 只留最外圈；0.7 是宽宽一圈', step: 0.01 },
-    ],
-  },
-  {
-    title: '表面',
-    note: '只改质感，不会让画面变形',
-    items: [
-      { key: 'brush', label: '拉丝', hint: '横向细纹的亮度调制——金属拉丝感来自这里', step: 0.001 },
-      { key: 'polish', label: '抛光起伏', hint: '只进高光，不进反射取样', step: 0.001 },
-      { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
+      { key: 'warp', label: '形变', hint: '0 = 画面完全平直；越大表面涟漪越明显（对应 warp）', step: 0.01 },
+      { key: 'warpScale', label: '形变尺度', hint: '越大涟漪越粗（对应 warpScale）', step: 0.01 },
+      {
+        key: 'tiltGain',
+        label: '倾斜强度',
+        hint: '指针带动画面平移的幅度；0.2 以上会像在拖动画面',
+        step: 0.01,
+      },
     ],
   },
 ];
@@ -195,6 +208,7 @@ const MIRROR_TUNING_ADVANCED: { title: string; note: string; items: TuningItem[]
     title: '光影',
     note: '板面弧度只影响折射出来的亮暗，不影响取样',
     items: [
+      { key: 'sceneGain', label: '场景亮度', hint: '整体曝光，压暗会让画面更沉', step: 0.01 },
       { key: 'curvX', label: '横向弧度', hint: '只进光照法线，不影响画面', step: 0.01 },
       { key: 'curvY', label: '纵向弧度', hint: '同上；给大了高光会拧成波浪', step: 0.01 },
       { key: 'specPower', label: '高光锐度', hint: '指数越大，亮点越小越硬', step: 10 },
@@ -356,7 +370,7 @@ async function copyTuning() {
           <span class="skin-frame-style-copy">
             <span class="skin-frame-style-title">调整参数</span>
             <span class="skin-frame-style-hint">
-              金属度、模糊、去色、高光、柔光、形变、拉丝…（12 项常用，高级另 15 项）
+              金属度、拉丝、模糊、去色、高光、柔光、倒角、形变…（10 项常用，高级另 16 项）
             </span>
           </span>
           <span class="skin-frame-style-open">调整</span>

@@ -122,11 +122,34 @@ export function mirrorPalette(key: string, rankTier?: number | null): MirrorPale
  * ========================================================================== */
 
 export interface MirrorParams {
+  /** 金属度：0 = 哑光（反射几乎没了），1 = 纯金属 */
+  metalness: number;
+  /**
+   * 粗糙度 = **拉丝**（对应参考组件的 roughness）：越大，反射沿"丝"的纹理越明显。
+   * 它同时做两件事：微扰反射的纵向取样（把画面拉成横丝）+ 调制亮度。
+   */
+  roughness: number;
+  /** 反射模糊，px（对应 blurStrength）。换算成取样 mip = log2(blur) + 1 */
+  blurStrength: number;
+  /** 去色：把反射画面压成灰的 */
+  grayscale: number;
+  /** 表面涟漪（对应 warp）：0 = 完全平直，越大画面被揉得越明显 */
+  warp: number;
+  /** 涟漪尺度（对应 warpScale）：越大涟漪越粗 */
+  warpScale: number;
+  /** 扫过去的光带 / 点状高光强度（对应 shine） */
+  shine: number;
+  /** 倒角宽度，px（对应 bevel） */
+  bevel: number;
+  /** 跟随指针的柔光（对应 glare） */
+  glare: number;
+  /** 指针倾斜对反射的增益（参考组件的 tiltStrength 管的是卡片角度，这里管画面位移） */
+  tiltGain: number;
+
+  /* ---- 高级：以下都是我们自己加的，默认不用动 ---- */
   /** 场景取样跨度（横向 / 纵向）：越小越"放大" */
   spanX: number;
   spanY: number;
-  /** 场景模糊（mip 级）：越大越像"远处的屋子" */
-  sceneLod: number;
   /** 场景亮度 */
   sceneGain: number;
   /** 肖像灯中心（场景图 uv） */
@@ -140,45 +163,39 @@ export interface MirrorParams {
   avatarGain: number;
   /** 暖色灯罩强度 */
   lampWarm: number;
-  /** 板面曲率（横向 / 纵向）：纵向给大了竖线会拧成波浪 */
+  /** 板面曲率（只进光照法线，不影响取样） */
   curvX: number;
   curvY: number;
-  /** 拉丝强度 */
-  brush: number;
-  /** 颗粒强度 */
+  /** 颗粒（最终抖动） */
   grain: number;
-  /** 指针倾斜对反射的增益 */
-  tiltGain: number;
-  /**
-   * 画面形变（0..1）：0 = 完全平直（平面镜映远处一面墙），1 = 边缘明显内收。
-   * 这是**唯一**会让场景里直线变弯的参数。
-   */
-  warp: number;
-  /** 形变尺度：形变作用的半径平方系数，越大越早开始弯 */
-  warpScale: number;
-  /** 金属度：0 = 哑光（反射几乎没了），1 = 纯金属 */
-  metalness: number;
-  /** 去色：把反射画面压成灰的 */
-  grayscale: number;
-  /** 抛光起伏：只影响高光，不参与反射取样 */
-  polish: number;
-  /** 主光高光指数 / 强度 */
+  /** 高光指数 */
   specPower: number;
-  specGain: number;
-  /** 跟随指针的柔光 */
-  glare: number;
   /** 曝光 */
   exposure: number;
-  /** 倒角：起始位置 / 亮度 / 板内压暗 */
-  rimStart: number;
+  /** 倒角亮度 / 板内压暗 */
   rimGain: number;
   bevelShade: number;
 }
 
 export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
+  // 对齐参考组件的用法示例：金属、有丝、微弯、带柔光
+  metalness: 1,
+  roughness: 0.35,
+  blurStrength: 6,
+  grayscale: 0.35,
+  warp: 0.15,
+  warpScale: 1,
+  shine: 1,
+  bevel: 8,
+  glare: 0.25,
+  /**
+   * 0.13：整条取样跨度是 ±1，再大就像在拖动一张图而不是"板子在晃"
+   * （这一项是上一轮和用户一起定下来的，别动）。
+   */
+  tiltGain: 0.13,
+
   spanX: 0.62,
   spanY: 0.95,
-  sceneLod: 2.4,
   sceneGain: 0.94,
   spotX: 0.7,
   spotY: 0.62,
@@ -188,23 +205,9 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   lampWarm: 0.11,
   curvX: 0.4,
   curvY: 0.18,
-  brush: 0.025,
   grain: 0.012,
-  /**
-   * 0.13 而不是 0.55：整条取样跨度是 ±1，0.55 意味着指针扫一遍反射能扫过
-   * 场景宽度的 68%——看着像在拖动一张图，不像"板子在晃"。
-   */
-  tiltGain: 0.13,
-  warp: 0.45,
-  warpScale: 0.28,
-  metalness: 1,
-  grayscale: 0,
-  polish: 0.055,
   specPower: 700,
-  specGain: 2,
-  glare: 0.1,
   exposure: 0.95,
-  rimStart: 0.9,
   rimGain: 0.62,
   bevelShade: 0.14,
 };
@@ -213,7 +216,6 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
 export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, number]> = {
   spanX: [0.2, 1],
   spanY: [0.3, 1.3],
-  sceneLod: [0, 5],
   sceneGain: [0.3, 1.6],
   spotX: [0, 1],
   spotY: [0, 1],
@@ -223,19 +225,19 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   lampWarm: [0, 0.5],
   curvX: [0.1, 0.8],
   curvY: [0, 0.5],
-  brush: [0, 0.05],
   grain: [0, 0.05],
   tiltGain: [0, 1.5],
-  warp: [0, 1],
-  warpScale: [0.05, 0.8],
+  warp: [0, 2],
+  warpScale: [0.2, 4],
   metalness: [0, 1],
+  roughness: [0, 1],
+  blurStrength: [0, 40],
   grayscale: [0, 1],
-  polish: [0, 0.12],
+  shine: [0, 3],
+  bevel: [0, 16],
+  glare: [0, 1],
   specPower: [100, 2000],
-  specGain: [0, 4],
-  glare: [0, 0.5],
   exposure: [0.4, 2],
-  rimStart: [0.6, 0.98],
   rimGain: [0, 2],
   bevelShade: [0, 0.4],
 };
@@ -397,13 +399,13 @@ uniform sampler2D uAvatar; // 本人头像（sRGB）
 uniform vec2 uEnvReady;    // x: 场景图就绪, y: 头像就绪
 // 可调参数（「调整参数」弹窗）。打包成 vec4 是为了少传几次 uniform，
 // 每一项对应 MirrorParams 里的一个字段，注释写清了顺序。
-uniform vec4 uEnvCfg;   // x 横向跨度 y 纵向跨度 z 场景 mip w 场景亮度
+uniform vec4 uEnvCfg;   // x 横向跨度 y 纵向跨度 z 取样 mip（由 blurStrength 折算） w 场景亮度
 uniform vec4 uSpotCfg;  // xy 灯中心(uv) z 半径 w 强度
-uniform vec4 uMisc;     // x 头像提亮 y 暖光强度 z 画面形变 w 抛光起伏
-uniform vec4 uMisc2;    // x 金属度 y 去色 z 形变尺度 w 保留
-uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 拉丝 w 颗粒
-uniform vec4 uLightCfg; // x 高光指数 y 高光强度 z 指针柔光 w 曝光
-uniform vec4 uRimCfg;   // x 倒角起始 y 倒角亮度 z 板内压暗 w 倾斜增益
+uniform vec4 uMisc;     // x 头像提亮 y 暖光强度 z 涟漪(warp) w 粗糙度(拉丝)
+uniform vec4 uMisc2;    // x 金属度 y 去色 z 涟漪尺度 w 保留
+uniform vec4 uSurface;  // x 横向曲率 y 纵向曲率 z 保留 w 颗粒
+uniform vec4 uLightCfg; // x 高光指数 y 高光强度(shine) z 指针柔光 w 曝光
+uniform vec4 uRimCfg;   // x 倒角宽度(px) y 倒角亮度 z 板内压暗 w 倾斜增益
 
 // 便宜的确定性噪声。镜面的细节频率不高，用不上贴图。
 float hash21(vec2 p) {
@@ -514,26 +516,41 @@ void main() {
   float ndv = clamp(dot(N, V), 0.0, 1.0);
   vec3 R = reflect(-V, N);
 
+  /* ---------------------------------------------------------------- 金属丝
+     参考组件里"拉丝"= roughness：三档 valueNoise 沿 **y 高频、x 低频** 叠起来，
+     在板面上就是极细的横丝。它做两件事：
+       ① 微扰反射的纵向取样 → 画面被拉成横丝（这就是"金属拉丝"的观感来源）；
+       ② 调制亮度。
+     系数都压得很小：丝是"质感"，不是"扭曲"。 */
+  float grain = vnoise(vec2(gl_FragCoord.x * 0.008, gl_FragCoord.y * 0.55)) * 0.45
+              + vnoise(vec2(gl_FragCoord.x * 0.019 + 3.7, gl_FragCoord.y * 0.23)) * 0.35
+              + vnoise(vec2(gl_FragCoord.x * 0.004 + 9.2, gl_FragCoord.y * 0.09)) * 0.2;
+  float brush = uMisc.w * uMisc.w;
+
   /* ---------------------------------------------------------------- 取样坐标
      一条公式，全部可调，**和法线无关**——之前把取样挂在曲面法线上，结果
      曲率既是"画面有内容"的唯一来源、又是"画面扭曲"的唯一来源，两个诉求打架，
      怎么调都调不到不扭曲。
 
      q     板面坐标，y 翻成"图像向下"（纹理 v 朝下：card top ↔ image top）
-     warp  0 = 线性窗口；越大边缘越往中心收（曲面镜的鱼眼）
+     warp  表面涟漪（对应参考组件的 warp）：0 = 完全平直
      slide 窗口跟着指针平移 → 画面反向移动。x、y 同号：指针往右，画面往左；
-           指针往下，画面往上。这和卡片视差层（--px * -18px）是同一套约定。 */
+           指针往下，画面往上。这和卡片视差层（--px * -18px）是同一套约定。
+           **这套方向是上一轮和用户一起定下来的，别动。** */
   vec2 q = vec2(radial.x, -radial.y);
-  float r2 = dot(q, q);
-  q *= 1.0 - uMisc.z * uMisc2.z * r2;
   vec2 slide = vec2(uTilt.x, uTilt.y) * uRimCfg.w;
-  // 0.85：让可视范围不随 warp 变化，拖「画面形变」不会顺带缩放
   vec2 uvScene = 0.5 + (q * 0.85 + slide) * uEnvCfg.xy;
 
-  // 纹理扰动只进光照法线：拉丝、抛光起伏都只该改高光，不该改画面
+  // 表面涟漪：低频噪声，越大画面被揉得越明显
+  vec2 wp = gl_FragCoord.xy / (220.0 * uMisc2.z);
+  vec2 ripple = (vec2(vnoise(wp), vnoise(wp + 37.0)) - 0.5) * uMisc.z;
+  uvScene += ripple * 0.02;
+
+  // 丝：只沿纵向微扰 → 画面被拉成横丝（幅度很小，不会把竖线拧弯）
+  uvScene.y += (grain - 0.5) * brush * 0.03;
+
   vec3 Nlit = N;
-  Nlit.xy += vec2(sin(p.y * 24.0 + p.x * 1.4) * uSurface.z, 0.0);
-  Nlit.xy += (vec2(vnoise(p * 2.6), vnoise(p * 2.6 + 11.3)) - 0.5) * uMisc.w;
+  Nlit.x += (grain - 0.5) * brush * 0.4;
   Nlit = normalize(Nlit);
 
   // Fresnel：正对时是金属本色，掠射趋近全反射
@@ -544,14 +561,16 @@ void main() {
   col = mix(vec3(0.02) + uTint * 0.10, col, uMisc2.x);
   // 去色：原版那样把反射画面压成灰的
   col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
-  // 拉丝：高频横纹的**亮度调制**。不碰取样坐标，所以拉丝再强也不会把直线拧弯——
-  // 这才是"金属拉丝质感"该待的地方（之前它混在法线里，一动就扭曲画面）。
-  col *= 1.0 + (vnoise(vec2(p.x * 0.6, p.y * 26.0)) - 0.5) * uSurface.z * 12.0;
+  // 丝的亮度调制（参考组件：scene *= 1 + (grain-0.5)*brush*0.3）
+  col *= 1.0 + (grain - 0.5) * brush * 0.35;
 
-  // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色
+  // 顶光高光（Blinn-Phong 高次幂近似 GGX），被金属本色染色；哑光时同步减弱
   vec3 L = normalize(vec3(-0.28, -0.52, 0.81));
   vec3 H = normalize(L + V);
-  col += uTint * pow(clamp(dot(Nlit, H), 0.0, 1.0), uLightCfg.x) * uLightCfg.y;
+  col += uTint
+       * pow(clamp(dot(Nlit, H), 0.0, 1.0), uLightCfg.x)
+       * uLightCfg.y
+       * mix(0.4, 1.0, uMisc2.x);
 
   // 跟着指针走的一团柔光。uv 的 y 朝上，而 uTilt.y 是"指针越靠下越大"，
   // 所以 y 要取反——否则指针在下半张卡、光斑跑到上半张（用户报过）。
@@ -561,9 +580,10 @@ void main() {
 
   // 倒角：紧贴边内侧压一道，再在倒角面上按光来的方向补一记亮线。
   // 有方向的倒角才像压出来的钢板；四边等亮的圆环只会像描边。
-  // 法线里不做这件事：径向扰动会把环境里的灯带拧成弧形，看着像脏污。
+  // uRimCfg.x 现在是**倒角宽度（px）**，换算成"离边缘多近"的阈值。
   float edgeDist = max(abs(radial.x), abs(radial.y));
-  float rimMask = smoothstep(uRimCfg.x, 1.0, edgeDist);
+  float bevelT = clamp(uRimCfg.x / (0.5 * min(uRes.x, uRes.y)), 0.0, 1.0);
+  float rimMask = bevelT > 0.002 ? smoothstep(1.0 - bevelT, 1.0, edgeDist) : 0.0;
   vec2 outward = normalize(p + vec2(1e-4));
   float rimLight = clamp(dot(outward, normalize(vec2(-0.55, 0.84))), 0.0, 1.0);
   col *= mix(1.0 - uRimCfg.z, 1.0, smoothstep(0.0, 0.20, edgeDist));
@@ -949,7 +969,10 @@ export function renderMirrorFrame(
     gl.uniform2f(glState.envReady, sceneTexture ? 1 : 0, avatarTexture ? 1 : 0);
 
     // 可调参数（「调整参数」弹窗改的就是这一组）
-    gl.uniform4f(glState.envCfg, params.spanX, params.spanY, params.sceneLod, params.sceneGain);
+    // blurStrength(px) → 取样 mip。参考组件是把 env 画小再模糊（env 宽度 ∝ 1/blur），
+    // 这里等价地取 mip = log2(blur)：blur 6 → 2.6 级（环境约 170px），够软但不糊。
+    const lod = Math.min(6, Math.max(0, Math.log2(Math.max(1, params.blurStrength))));
+    gl.uniform4f(glState.envCfg, params.spanX, params.spanY, lod, params.sceneGain);
     gl.uniform4f(
       glState.spotCfg,
       params.spotX,
@@ -957,13 +980,13 @@ export function renderMirrorFrame(
       params.spotRadius,
       params.spotStrength,
     );
-    gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.polish);
+    gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.roughness);
     gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, 0);
-    gl.uniform4f(glState.surface, params.curvX, params.curvY, params.brush, params.grain);
-    gl.uniform4f(glState.lightCfg, params.specPower, params.specGain, params.glare, params.exposure);
+    gl.uniform4f(glState.surface, params.curvX, params.curvY, 0, params.grain);
+    gl.uniform4f(glState.lightCfg, params.specPower, params.shine, params.glare, params.exposure);
     gl.uniform4f(
       glState.rimCfg,
-      params.rimStart,
+      params.bevel * ratio,
       params.rimGain,
       params.bevelShade,
       params.tiltGain,
