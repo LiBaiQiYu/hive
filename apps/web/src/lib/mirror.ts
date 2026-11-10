@@ -170,6 +170,8 @@ export interface MirrorParams {
   curvY: number;
   /** 颗粒（最终抖动） */
   grain: number;
+  /** 扫光：光带随卡片倾斜横扫的幅度（0 = 几乎不动） */
+  sweep: number;
   /** 高光指数（保留位；灯箱光照不用它了） */
   specPower: number;
   /** 曝光 */
@@ -188,6 +190,11 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   warp: 0.15,
   warpScale: 1,
   shine: 1,
+  /**
+   * 0.45：指针扫一遍，光带横穿大半个卡面，两端都还留得住。
+   * 再大就会在两端直接扫出卡外，卡面上反而看不到那条光了。
+   */
+  sweep: 0.45,
   bevel: 8,
   glare: 0.25,
   /**
@@ -236,6 +243,7 @@ export const MIRROR_PARAM_RANGES: Record<keyof MirrorParams, readonly [number, n
   blurStrength: [0, 20],
   grayscale: [0, 1],
   shine: [0, 3],
+  sweep: [0, 1.5],
   bevel: [0, 16],
   glare: [0, 1],
   specPower: [100, 2000],
@@ -516,14 +524,14 @@ float stripA(vec2 q, vec2 center, vec2 dir, float halfWidth, vec2 sigma) {
 }
 
 /**
- * 灯箱：一条斜扫光 + 顶部一条 + 右侧一条。
- * 方位照抄参考组件（SWEEP = (0.5, 0.86)），因为截图里那条光带就是这个走向。
+ * 灯箱：**只有一道斜光**。
+ * 卡面上看到的那条亮带，就是一块反光板映在金属表面上的像——
+ * 不需要顶光 / 侧光，多一条就会变成"好几个光源"，不像真实的一间屋子。
+ * 半宽 0.075（比参考组件的 0.022 粗三倍多），因为它是一条"有宽度的反光"，
+ * 不是一道锐利的高光线。
  */
 float softbox(vec2 q, vec2 sigma) {
-  float key = stripA(q, vec2(-0.1, -0.16), normalize(vec2(0.5, 0.86)), 0.022, sigma + 0.018);
-  float top = bandA(q.y + 0.6, 0.12, sigma.y + 0.05);
-  float side = bandA(q.x - 0.46, 0.05, sigma.x + 0.05);
-  return key + top * 0.8 + side * 0.35;
+  return stripA(q, vec2(-0.1, -0.16), normalize(vec2(0.5, 0.86)), 0.075, sigma + 0.03);
 }
 
 /** 没有场景图时的"房间"：参考组件 room() 的灰底版本 */
@@ -609,7 +617,10 @@ void main() {
     vec2(blurNorm) * vec2(blurNorm) + footprint * footprint * 0.5
   ) + vec2(0.004, 0.05) * uMisc.w;
 
-  float soft = softbox(qDir, sigma);
+  // 光带的位移：**单独给一个大增益**。反光板映在卡面上的像会随卡片角度大幅扫过，
+  // 只靠法线曲面那点位移是不够的（那样几乎看不出在动）。方向与 V 一致（x 取反）。
+  vec2 lightQ = qDir + vec2(-uTilt.x, uTilt.y) * uLightCfg.x;
+  float soft = softbox(lightQ, sigma);
 
   vec2 toPointer = vec2(uTilt.x, -uTilt.y) * 1.6;
   vec2 spread = toPointer * vec2(1.0, 1.0 / (1.0 + 2.5 * uMisc.w));
@@ -1035,7 +1046,7 @@ export function renderMirrorFrame(
     gl.uniform4f(glState.misc, params.avatarGain, params.lampWarm, params.warp, params.roughness);
     gl.uniform4f(glState.misc2, params.metalness, params.grayscale, params.warpScale, hover);
     gl.uniform4f(glState.surface, params.curvX, params.curvY, params.blurStrength, params.grain);
-    gl.uniform4f(glState.lightCfg, params.specPower, params.shine, params.glare, params.exposure);
+    gl.uniform4f(glState.lightCfg, params.sweep, params.shine, params.glare, params.exposure);
     gl.uniform4f(
       glState.rimCfg,
       params.bevel * ratio,
