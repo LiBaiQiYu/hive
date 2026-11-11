@@ -189,7 +189,7 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   // 这一组是用户在调参弹窗里定稿的，别凭感觉改——改之前先看 docs/UI.md §10
   metalness: 1,
   roughness: 0.5,
-  blurStrength: 10,
+  blurStrength: 0,
   grayscale: 0.3,
   warp: 0.15,
   warpScale: 1,
@@ -206,10 +206,10 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
    */
   tiltGain: 0.13,
 
-  spanX: 0.62,
-  spanY: 0.55,
+  spanX: 0.5,
+  spanY: 0.5,
   sceneGain: 1,
-  spotX: 0.17,
+  spotX: 0.2,
   spotY: 0.25,
   spotRadius: 0.155,
   spotStrength: 0.24,

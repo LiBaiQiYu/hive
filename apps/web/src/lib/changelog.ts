@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.14.1';
+export const APP_VERSION = '1.14.2';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,11 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.14.2',
+    date: '2026-11-11',
+    items: ['镜面：默认参数再调（反射不糊、取样更集中）'],
+  },
   {
     version: '1.14.1',
     date: '2026-11-11',
