@@ -114,6 +114,8 @@
     "APP_ORIGIN": "https://hive.cwa1e.top",
     "SESSION_TTL_DAYS": 14,
     "SESSION_IDLE_TIMEOUT_HOURS": 72,
+    // 管理员评分修正的基数上限（实际上限 = 基数 + 350 × (1 − 置信度)）。
+    // 由 routes/admin-ratings.ts 读取；改这里不用改表（DB CHECK 已放宽到 ±500）。
     "ADMIN_ADJUSTMENT_LIMIT": 150,
     // 注意：评分算法版本是代码常量（packages/api/src/algorithms/rating.ts 的 ALGO_VERSION），
     // 不在这里配置——配置一份、代码一份，迟早对不上。
@@ -127,7 +129,6 @@
     // 人数卡在两档之间（如 16 人 / 目标 2 场）时，默认必须由管理员显式选择如何处理，
     // 服务端不静默生成"1 场 + 6 人轮空"
     "AUTO_FINALIZE_ODD": "false",
-    "INVITE_CODE_DEFAULT_MAX_USES": 10,
     "SYNC_JOB_BATCH_SIZE": 5,
     "SYNC_JOB_LEASE_SECONDS": 120,
     "AUDIT_RETENTION_DAYS": 365
@@ -183,7 +184,6 @@
         "PASSWORD_PBKDF2_ITERATIONS": 50000,
         "REGISTRATION_REQUIRE_INVITE": "true",
         "AUTO_FINALIZE_ODD": "false",
-        "INVITE_CODE_DEFAULT_MAX_USES": 5,
         "SYNC_JOB_BATCH_SIZE": 5,
         "SYNC_JOB_LEASE_SECONDS": 120,
         "AUDIT_RETENTION_DAYS": 30

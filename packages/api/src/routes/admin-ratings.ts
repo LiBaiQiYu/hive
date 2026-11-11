@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { ApiError, newId } from '@hive/shared';
-import type { AppEnv } from '../env';
+import { intVar } from '../env';
+import type { AppEnv, Env } from '../env';
 import { requireAdmin } from '../guard';
 import {
   ALGO_VERSION,
@@ -18,6 +19,16 @@ export const adminRatingRoutes = new Hono<AppEnv>();
 
 /** 天梯分的合理上限，与玩家手填接口共用同一口径 */
 const MAX_MMR = 20_000;
+
+/**
+ * 修正上限的基数：读 `env.ADMIN_ADJUSTMENT_LIMIT`（wrangler.jsonc 的 vars），缺省 150。
+ *
+ * 为什么放在这里而不是写成常量：数据库 CHECK 放宽到 ±500，业务上限本来就是
+ * "后台可调"的；之前这个 var 只写进配置、代码没读，改它等于没改——现在补上了。
+ */
+function adjustmentBase(env: Env): number {
+  return intVar(env.ADMIN_ADJUSTMENT_LIMIT, 150);
+}
 
 /**
  * GET /api/admin/ratings/players
@@ -58,7 +69,7 @@ adminRatingRoutes.get('/players', async (c) => {
   const players = (rows.results ?? []).map((row) => ({
     ...row,
     // 上限随置信度放宽，前端直接展示这个值，不要在页面里重算
-    limit: adjustmentLimit(row.confidenceBp ?? 0),
+    limit: adjustmentLimit(row.confidenceBp ?? 0, adjustmentBase(c.env)),
   }));
 
   return c.json({ data: { players } });
@@ -230,7 +241,7 @@ adminRatingRoutes.put('/players/:id/rating-adjustment', async (c) => {
     .first<{ system: number; adjustment: number; effective: number; confidenceBp: number }>();
   if (!row) throw new ApiError('NOT_FOUND', '该玩家还没有评分记录');
 
-  const limit = adjustmentLimit(row.confidenceBp);
+  const limit = adjustmentLimit(row.confidenceBp, adjustmentBase(env));
   if (Math.abs(parsed.data.adjustment) > limit) {
     throw new ApiError('VALIDATION_FAILED', `修正幅度需在 ±${limit} 之间（随数据置信度变化）`);
   }

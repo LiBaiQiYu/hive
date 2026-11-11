@@ -200,8 +200,8 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
      发件人是 `notify@cwa1e.top`（域名已在 Email Sending 开通）。
      想让全体玩家收到开赛提醒，得把每个人的邮箱加进 Destination addresses（免费、上限 200、各点一次确认信），
      或升级 Workers Paid。报名截止的 `event.finalized` 通知还没接发信（`services/notify.ts` 里留了 TODO）。
-2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」，再决定要不要给 `_headers` 补 HSTS
-   （现在刻意没写，本地 http 会被钉死）。
+2. 域名就位后的收尾：Cloudflare 开「Always Use HTTPS」（HSTS 已经写进 `_headers` 了，
+   本地 http 按 RFC 6797 会被浏览器忽略，不会钉死 127.0.0.1）。
 3. Cloudflare 会自动往 HTML 注入 Web Analytics 的 `beacon.min.js`，被我们的 `script-src 'self'` 挡掉。
    二选一：控制台关掉 Web Analytics（推荐，保持零第三方脚本），或放开 `script-src`/`connect-src`。
 4. 可选体验项：阵容页独立入口、公开档案页的分享卡、赛事详情页移动端布局。

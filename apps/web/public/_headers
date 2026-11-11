@@ -8,9 +8,10 @@
 # 由 Cloudflare 在边缘加头，不消耗 Worker 调用。
 #
 # 注意：
-#   · 这里**不写** Strict-Transport-Security。本地 pnpm dev 是 http，把 HSTS 发给
-#     127.0.0.1 有把浏览器钉死在 https 上的风险；等有真实域名后在 Cloudflare
-#     开「Always Use HTTPS」，或在下面单独加一条针对域名的 HSTS。
+#   · Strict-Transport-Security 现在写上了。本地 pnpm dev 走 http，浏览器**必须**
+#     忽略非安全传输上收到的 HSTS（RFC 6797 §8.1），所以不会把 127.0.0.1 钉死；
+#     线上由 Cloudflare 用 https 下发，才真正生效。控制台仍要开「Always Use HTTPS」
+#     ——HSTS 只告诉浏览器"以后用 https"，并不替你做 301 跳转。
 #   · Naive UI 用 css-render 在运行时注入 <style>，Vue 的 :style 也是内联属性，
 #     所以 style-src 必须留 'unsafe-inline'；script 侧不需要，保持 'self'。
 # =============================================================================
@@ -21,6 +22,10 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
   Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  X-Permitted-Cross-Domain-Policies: none
+  X-DNS-Prefetch-Control: off
+  Strict-Transport-Security: max-age=15552000; includeSubDomains
   Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'
 
 # Vite 产出的文件名带内容哈希，可以长缓存

@@ -15,6 +15,12 @@ export interface Env {
   PASSWORD_PBKDF2_ITERATIONS: string;
   SESSION_TTL_DAYS: string;
   SESSION_IDLE_TIMEOUT_HOURS: string;
+  /**
+   * 管理员评分修正的基数上限（默认 150，随置信度放宽到 150+350）。
+   * 由 `routes/admin-ratings.ts` 读取；数据库的 CHECK 放宽到 ±500，所以
+   * 调这个值不需要改表结构。
+   */
+  ADMIN_ADJUSTMENT_LIMIT?: string;
   /** 人数卡在两档之间时是否允许自动按部分人数开局；默认 false，必须由管理员显式选择 */
   AUTO_FINALIZE_ODD?: string;
   REGISTRATION_REQUIRE_INVITE?: string;
