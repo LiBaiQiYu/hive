@@ -188,9 +188,9 @@ export interface MirrorParams {
 export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   // 这一组是用户在调参弹窗里定稿的，别凭感觉改——改之前先看 docs/UI.md §10
   metalness: 1,
-  roughness: 0.5,
-  blurStrength: 0,
-  grayscale: 0.3,
+  roughness: 0.8,
+  blurStrength: 4,
+  grayscale: 0,
   warp: 0.15,
   warpScale: 1,
   shine: 0.73,
@@ -198,8 +198,8 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   sweep: 0.68,
   bandWidth: 0.19,
   glareSize: 1,
-  bevel: 8,
-  glare: 0.4,
+  bevel: 6,
+  glare: 0.36,
   /**
    * 0.13：整条取样跨度是 ±1，再大就像在拖动一张图而不是"板子在晃"
    * （这一项是上一轮和用户一起定下来的，别动）。
@@ -215,13 +215,13 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   spotStrength: 0.24,
   avatarGain: 3,
   lampWarm: 0.16,
-  curvX: 0.4,
+  curvX: 0.3,
   curvY: 0.18,
-  grain: 0.012,
+  grain: 0.02,
   specPower: 700,
-  exposure: 1.42,
+  exposure: 1.01,
   rimGain: 0.12,
-  bevelShade: 0.14,
+  bevelShade: 0,
 };
 
 /** 每个参数的合法区间：滑块范围与"从 localStorage 读回来时的夹取"共用这一份 */
