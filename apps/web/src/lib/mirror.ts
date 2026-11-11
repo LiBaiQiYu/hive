@@ -186,23 +186,20 @@ export interface MirrorParams {
 }
 
 export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
-  // 对齐参考组件的用法示例：金属、有丝、微弯、带柔光
+  // 这一组是用户在调参弹窗里定稿的，别凭感觉改——改之前先看 docs/UI.md §10
   metalness: 1,
-  roughness: 0.35,
-  blurStrength: 6,
-  grayscale: 0.2,
+  roughness: 0.5,
+  blurStrength: 10,
+  grayscale: 0.3,
   warp: 0.15,
   warpScale: 1,
-  shine: 1,
-  /**
-   * 0.45：指针扫一遍，光带横穿大半个卡面，两端都还留得住。
-   * 再大就会在两端直接扫出卡外，卡面上反而看不到那条光了。
-   */
-  sweep: 0.45,
-  bandWidth: 0.075,
+  shine: 0.73,
+  /** 0.68：光带横穿大半个卡面，两端还留得住 */
+  sweep: 0.68,
+  bandWidth: 0.19,
   glareSize: 1,
   bevel: 8,
-  glare: 0.25,
+  glare: 0.4,
   /**
    * 0.13：整条取样跨度是 ±1，再大就像在拖动一张图而不是"板子在晃"
    * （这一项是上一轮和用户一起定下来的，别动）。
@@ -210,20 +207,20 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   tiltGain: 0.13,
 
   spanX: 0.62,
-  spanY: 0.95,
-  sceneGain: 0.85,
-  spotX: 0.7,
-  spotY: 0.62,
-  spotRadius: 0.11,
-  spotStrength: 0.95,
+  spanY: 0.55,
+  sceneGain: 1,
+  spotX: 0.17,
+  spotY: 0.25,
+  spotRadius: 0.155,
+  spotStrength: 0.24,
   avatarGain: 3,
   lampWarm: 0.16,
   curvX: 0.4,
   curvY: 0.18,
   grain: 0.012,
   specPower: 700,
-  exposure: 0.95,
-  rimGain: 0.62,
+  exposure: 1.42,
+  rimGain: 0.12,
   bevelShade: 0.14,
 };
 
