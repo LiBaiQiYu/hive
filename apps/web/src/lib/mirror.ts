@@ -190,7 +190,7 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
   metalness: 1,
   roughness: 0.35,
   blurStrength: 6,
-  grayscale: 0.35,
+  grayscale: 0.2,
   warp: 0.15,
   warpScale: 1,
   shine: 1,
@@ -211,7 +211,7 @@ export const DEFAULT_MIRROR_PARAMS: MirrorParams = {
 
   spanX: 0.62,
   spanY: 0.95,
-  sceneGain: 0.94,
+  sceneGain: 0.85,
   spotX: 0.7,
   spotY: 0.62,
   spotRadius: 0.11,
@@ -497,7 +497,7 @@ vec3 sceneEnvironment(vec2 uvScene) {
   col = mix(col, vec3(dot(col, vec3(0.299, 0.587, 0.114))), uMisc2.y);
 
   // 房间里的那盏"肖像灯"：把本人头像当成一块发光的画挂进场景。
-  // 位置在场景图的地平线以上（uv.y > 0.47），否则就成了"地上摊着一张会发光的画"。
+  // 挂在场景图的一片树林里，和暖色天光混在一起——换背景图时要重新找 spot 位置。
   if (uEnvReady.y > 0.5) {
     vec2 local = (uv - uSpotCfg.xy) / uSpotCfg.z;
     float d = length(local);

@@ -213,7 +213,7 @@ const MIRROR_TUNING_ADVANCED: { title: string; note: string; items: TuningItem[]
       {
         key: 'spotY',
         label: '灯 · 纵向',
-        hint: '地平线在 0.47 附近，必须大于它，否则灯会落在地上',
+        hint: '场景图 uv 的纵坐标；场景图换过几次，这个值要跟着新图重新找位置',
         step: 0.01,
       },
       { key: 'spotRadius', label: '灯 · 半径', hint: '太小会变成一个小光点', step: 0.005 },
