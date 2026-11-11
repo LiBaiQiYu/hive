@@ -52,12 +52,14 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
         无限镜是真三维光廊（层间铺内壁、近层挡远层），相机角度严格跟卡片的 CSS 倾斜一致（±13°/±11°），
         越深越暗越模糊（canvas 逐帧重绘 + 三段离屏模糊）；
         镜面是全站唯一的 WebGL2 卡面（全站共用一个上下文，渲完 drawImage 贴回卡片的 2D canvas），
-        反射源是一张打包进前端的虚拟场景图（`assets/env-stage.webp`）+ 场景里一盏用本人头像做的
-        "肖像灯"——**不用视频也不用摄像头**（`_headers` 里 camera/microphone 是禁用的）。
+        反射源是一张打包进前端的照片（`assets/env-stage.webp`，768×576 逆光森林 127KB）+
+        场景里一盏用本人头像做的"肖像灯"——**不用视频也不用摄像头**（`_headers` 里 camera/microphone 是禁用的）。
         头像能当纹理是因为 Steam CDN 带 `Access-Control-Allow-Origin: *`（实测过），
         加载时另开一个 `crossOrigin='anonymous'` 的 Image；别给卡片上显示用的 <img> 加 crossorigin。
-        着色器里 22 个可变量在「卡片外观 → 调整参数」弹窗里能手调（存 localStorage，
-        不是用户数据；定稿后要改 DEFAULT_MIRROR_PARAMS 再发版）。
+        参数分两档：常用 10 项（金属度/拉丝=roughness/模糊/去色/高光/扫光位移/高光粗细/柔光/柔光范围/倒角）
+        + 折叠的 15 项高级，在「卡片外观 → 调整参数」弹窗里手调，存 localStorage。
+        **这组默认值（`DEFAULT_MIRROR_PARAMS`）是用户在弹窗里定稿的，别凭感觉改**：
+        改之前先看 docs/UI.md §10 里那三条"别动"（指针 XY 方向、tiltGain 0.13、去色不能洗灯）。
         两者的边界与坑都写在 docs/UI.md §10。
 Steam   OpenID 成功路径**已在生产实测跑通**（2026-10-31 byc1030 绑定为 VERIFIED，
         steam_id64 76561198659699463 / dota 699433735）。`STEAM_WEB_API_KEY` 生产与本地都已配置
@@ -117,6 +119,10 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | 发信接口返回 200 但 `sent: 0`，`error` 是 `E_RECIPIENT_NOT_ALLOWED: destination address is not a verified address` | 不是代码问题：免费版只放行**已验证目的地地址**。`wrangler email routing addresses create <email>` 先把确认信发出去，本人在收件箱点掉链接（`wrangler email routing addresses list` 里 `verified` 从 `pending` 变 `verified`），再调一次接口就发出去了。`send_email` 绑定已收窄成管理员那一个地址，别"顺手"放宽（放宽＝要 Workers Paid） |
 | 单测里 import 了带 `cloudflare:email` 的模块 → vitest 直接报 `Cannot find module 'cloudflare:email'` | 这个模块只在 Workers 运行时存在。`services/mailer.ts` 因此把 `import('cloudflare:email')` 放在函数内部（模块顶层不碰它），并先判断 `env.EMAIL` 是否存在（`mailConfigured()`）；写新的发信代码时照抄这个结构，别在顶层静态 import |
 | 有了"临时参赛"（`team_members.user_id` 可为 NULL）之后，录入赛果 / 赛事转 COMPLETED 直接 500：`D1_ERROR: NOT NULL constraint failed: player_ratings.user_id` | `recomputeEventRatings` 会把 team_members 里的 user_id 全部拿去重算，遇到 guest 的 NULL 行就炸。凡是"按 user 聚合 team_members"的查询都要显式 `AND user_id IS NOT NULL`（已修，见 `services/rating.ts`）；本次弃赛统计也照这个规矩写 |
+| 在 GLSL 模板字符串里写反引号（注释里引一段 GLSL 时会下意识写 \`code\`）→ esbuild 报 `Expected ";" but found "xxx"`，报错行号还落在着色器中间，完全看不出是它 | 着色器是 `const FRAGMENT_SHADER = \`…\`` 的一整个字符串，**注释里也不能出现反引号**——会提前把字符串闭合。用中文引号或直接去掉。改完先 `pnpm test`（它用 esbuild 转一遍，比 typecheck 更早炸） |
+| 卡面 canvas 和卡片的 CSS 倾斜各走一套 → 鼠标进卡那一瞬间"卡片慢慢转、卡面画面瞬间跳" | canvas 是逐帧重绘的，CSS transition 管不到它。统一由 JS 插值：`PlayerCard` 里 `aim`（目标）/`at`（渲染值，rAF 指数逼近）/`glow`（悬浮量），`--rx/--ry/--px/--py` 和 canvas 的 `tiltX/tiltY` **都从 `at` 取**。配套：`.pcard-inner` 与 `.pcard-depth::before/after` **不能加 transform 过渡**，否则会在逐帧值上再叠一层延迟 |
+| 调参弹窗（NModal）里再放一张预览卡 + 长参数列表 → 整窗比视口还高，顶部被裁、底栏点不到 | 弹窗里**不要放预览卡**（页面左边本来就有实时预览，600px 的弹窗不挡它），参数列表单独滚动并限制 `max-height: min(62vh, 460px)`。实测 1400px 视口下弹窗 400–1000、底栏 990 可见 |
+| 多个 `wrangler dev` 实例同时开着（或一边跑 dev 一边 `wrangler d1 execute`）→ workerd 直接崩：`SQLITE_BUSY (extended: SQLITE_BUSY_RECOVERY)`，本地站点 502 | 本地**只允许一个** wrangler 实例。崩了先 `Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 找 `hive.*wrangler` 的进程全杀，再重启 `pnpm dev:api`；`wrangler d1 execute --local` 查完就关，别和 dev 抢库 |
 
 ## 关键设计决策（改了会连累别处）
 
