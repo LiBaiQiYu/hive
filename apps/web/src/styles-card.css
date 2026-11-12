@@ -197,6 +197,10 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  /* 头像 40px 是这一行里最高的元素。没有头像的卡不预留这 40px 的话，
+     整张卡会比绑定了 Steam、有头像的卡矮 17px——同一排卡片的底边就对不齐。
+     这里预留的是行高，名字仍然从顶部开始，不影响左对齐。 */
+  min-height: 40px;
 }
 
 /* 头像 + 名字这一组：头像在左上角，名字和数字 ID 在右边 */
@@ -442,4 +446,15 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
   gap: 16px;
+}
+
+/* 网格项默认会被拉伸到行高，但 .pcard 自身高度由内容撑开（min-height 232px），
+   所以边框宽 1–2px、名字换行都会让同一排的卡底边差几个像素。
+   让卡片填满被拉伸的网格项后，整行永远等高、底边对齐。 */
+.card-grid > * {
+  height: 100%;
+}
+
+.card-grid .pcard {
+  height: 100%;
 }
