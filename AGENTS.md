@@ -13,14 +13,15 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
 ## 当前状态
 
 ```
-已完成  注册/登录（邀请码）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + STRATZ，无 token 时退回 OpenDota）
+已完成  注册/登录（默认开放注册，后台可切邀请制）/ 会话 / 资料编辑 / 位置偏好 / 段位（手填 + STRATZ，无 token 时退回 OpenDota）
         密码找回（注册邮箱发信 → Worker 回信带一次性链接；另有管理员重置与脚本兜底；未确认邮箱的账号登录后顶部常驻提醒）
-        赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归 / **到点自动截止 → 分队 → 发布**
+        赛事（建/开报名/关报名/封盘）/ 报名（含快照）/ 退赛回归 / **到点自动截止 → 分队 → 发布** / 赛事分享（列表卡与详情页，复制链接或文案）
+        赛事列表按状态筛选（含「已取消」）；首页只展示进行中的赛事（报名中 / 报名截止 / 阵容已发布），已结束与已取消不上首页
         自动分队（126 种枚举）/ 阵容发布 / 结果录入 / 流局
         评分算法 v3（实力分 = MMR ÷ 10；出勤独立，只影响候补优先级）/ 管理员设定（天梯分或段位 + 星级）+ 修正 + 历史
         排行榜（按评分 / 按胜场，胜场由 team_members + radiant_win 现算）
         战绩页（我的对局 + 全员胜场；胜负来自管理员赛后选的胜负方，不含 KDA）
-        后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）
+        后台：赛事、邀请码、评分管理、拖拽换人（PATCH lineup，乐观锁）、系统设置（注册方式开关）
               **阵容换人（替补 / 临时参赛）**：每个位置一个「换人」，可从本赛事没上场的报名者里挑，
               也可以让没报名的人临时参赛（只填名字，可选天梯分）；发布后仍可操作，写 `match_substitutions`
               流水与 `match.substitute` 审计。临时参赛者 `team_members.user_id` 为 NULL、只有 `guest_name/guest_mmr`，
@@ -79,7 +80,7 @@ pnpm dev            # http://127.0.0.1:8787，连本地 D1
 pnpm dev:remote     # 同上端口，但 Worker 跑在 Cloudflare 边缘、直连生产 D1（要先 wrangler login）
 pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
-pnpm sec:check      # 安全攻击用例 75 项（含授权矩阵/注入/越权/隐私泄露），必须先起 pnpm dev
+pnpm sec:check      # 安全攻击用例 ≈78 项（含授权矩阵/注入/越权/隐私泄露；按当前注册方式增减），必须先起 pnpm dev
 pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，抓语法错与未定义绑定
 ```
 
@@ -126,7 +127,15 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 
 ## 关键设计决策（改了会连累别处）
 
+- **注册方式是一个数据库开关，不是部署配置**：`app_settings`（迁移 0018）里的 `registration.require_invite`，
+  后台「系统设置」`/admin/settings` 写，`GET /api/config`（游客可读）与 `POST /api/auth/register` 读。
+  **默认 `'0'` = 开放注册**；开启后注册必须带有效邀请码（校验/消耗逻辑与以前一致）。
+  开放注册时请求里就算带了邀请码也整段忽略——不校验、不消耗、`users.invite_code_id` 记 NULL。
+  原来的 `wrangler.jsonc` 变量 `REGISTRATION_REQUIRE_INVITE` 已删除：两份配置一定会漂移。
+  注册页按 `/api/config` 决定显不显示邀请码输入框；配置取不到时按"需要邀请码"fail-closed。
+
 - **`capacity` 是目标人数**（20 = 2 场 × 10 人），不是座位数。报名期不生成比赛；封盘时按 `floor(confirmed/10)` 切场，余数进候补。人数卡在两档之间时**必须由管理员显式选** `START_PARTIAL / EXTEND / CANCEL`（`AUTO_FINALIZE_ODD=false`）。
+  **`CANCEL` / `EXTEND` 是显式动作，任何人数都生效**（不足 10 人、正好 10/20 人都一样）——别让"人数正好 → EXACT"的分支抢在它们前面；只有 `START_PARTIAL` 受"是否整数场"约束。取消必须二次确认。
 - **到点自动结算 = 管理员已经选了「按现有人数开局」**：每分钟 Cron 扫 `status='REGISTRATION_OPEN' AND registration_closes_at <= now`，
   一口气跑完「关闭报名 → 封盘 → 分队 → 发布」，全程记 `SYSTEM` 审计（`services/event-auto.ts`）。
   所以 `AUTO_FINALIZE_ODD=false` 只约束**手动**封盘那条路；自动路径固定走 `START_PARTIAL`

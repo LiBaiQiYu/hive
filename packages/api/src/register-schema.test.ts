@@ -9,7 +9,12 @@
  * 文案与前端 LoginPage 的 RULES 逐字一致——改一边就得改另一边。
  */
 import { describe, expect, it } from 'vitest';
-import { registerSchema, updateProfileSchema } from '@hive/shared';
+import {
+  inviteCodeSchema,
+  registerNoInviteSchema,
+  registerSchema,
+  updateProfileSchema,
+} from '@hive/shared';
 
 const BASE = {
   username: 'byc1030',
@@ -50,6 +55,12 @@ describe('注册校验', () => {
     expect(firstMessage('inviteCode', { inviteCode: '' })).toBe('请填写邀请码——由管理员在群里发放');
   });
 
+  it('邀请码字段整个缺失时也是中文提示，不是 zod 默认的 "Required"', () => {
+    expect(firstMessage('inviteCode', { inviteCode: undefined })).toBe(
+      '请填写邀请码——由管理员在群里发放',
+    );
+  });
+
   it('邀请码格式错时给出规则和例子，而不是「格式不正确」', () => {
     expect(firstMessage('inviteCode', { inviteCode: 'HIVE' })).toBe(
       '邀请码是 6–16 位字母、数字或短横线，例如 HIVE-DEV-01',
@@ -83,6 +94,43 @@ describe('注册校验', () => {
     expect(firstMessage('email', { email: 'not-an-email' })).toBe(
       '邮箱格式不正确，例如 name@example.com',
     );
+  });
+});
+
+describe('开放注册模式（registerNoInviteSchema）', () => {
+  it('不带邀请码也能通过：这是后台把开关关掉后的注册路径', () => {
+    const withoutInvite: Record<string, unknown> = { ...BASE };
+    delete withoutInvite.inviteCode;
+
+    const parsed = registerNoInviteSchema.safeParse(withoutInvite);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('带了邀请码也接受，但数据里不会留下它（服务端不校验、不消耗）', () => {
+    const parsed = registerNoInviteSchema.safeParse({ ...BASE, inviteCode: 'HIVE-DEV-01' });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect('inviteCode' in parsed.data).toBe(false);
+  });
+
+  it('基础字段仍然逐条校验，不会因为关掉邀请码就放松其它规则', () => {
+    const parsed = registerNoInviteSchema.safeParse({
+      username: 'a',
+      displayName: '',
+      email: 'not-an-email',
+      password: 'short',
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const fields = parsed.error.flatten().fieldErrors as Record<string, string[] | undefined>;
+    expect(fields['username']?.[0]).toContain('3-24 位');
+    expect(fields['displayName']?.[0]).toContain('显示名');
+    expect(fields['email']?.[0]).toContain('邮箱格式不正确');
+    expect(fields['password']?.[0]).toContain('密码至少 10 位');
+  });
+
+  it('inviteCodeSchema 负责 trim + 大写化，两种模式共用同一条规则', () => {
+    expect(inviteCodeSchema.parse('  hive-dev-01 ')).toBe('HIVE-DEV-01');
   });
 });
 

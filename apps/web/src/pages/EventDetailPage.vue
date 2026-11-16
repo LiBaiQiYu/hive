@@ -12,6 +12,7 @@ import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import PlayerAvatar from '../components/PlayerAvatar.vue';
 import RankIcon from '../components/RankIcon.vue';
 import VerificationTag from '../components/VerificationTag.vue';
+import EventShareButton from '../components/EventShareButton.vue';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
 
@@ -267,7 +268,7 @@ async function withdraw() {
 
     <template v-else>
       <section class="card">
-        <div class="event-head">
+        <div class="event-head event-head-detail">
           <div>
             <div class="event-title-row">
               <h1 class="event-name" style="font-size: 24px">{{ event.title }}</h1>
@@ -284,7 +285,11 @@ async function withdraw() {
               <span v-if="event.startsAt">开赛 {{ formatDate(event.startsAt) }}</span>
             </div>
           </div>
-          <span class="pill pill-idle">{{ STATUS_LABEL[event.status] ?? event.status }}</span>
+          <div class="event-head-side">
+            <span class="pill pill-idle">{{ STATUS_LABEL[event.status] ?? event.status }}</span>
+            <!-- 详情页和列表共用同一个分享组件与文案格式 -->
+            <EventShareButton :event="event" />
+          </div>
         </div>
 
         <div class="progress" style="margin: 20px 0 10px">

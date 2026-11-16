@@ -13,6 +13,7 @@ const FILTERS = [
   { key: 'REGISTRATION_CLOSED', label: STATUS_LABEL.REGISTRATION_CLOSED ?? '报名截止' },
   { key: 'PUBLISHED', label: STATUS_LABEL.PUBLISHED ?? '阵容已发布' },
   { key: 'COMPLETED', label: STATUS_LABEL.COMPLETED ?? '已结束' },
+  { key: 'CANCELLED', label: STATUS_LABEL.CANCELLED ?? '已取消' },
 ];
 
 onMounted(async () => {

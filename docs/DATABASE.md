@@ -6,15 +6,16 @@
 
 ## 1. 总览
 
-19 张表、237 个列、44 个索引。相比 PRD 的 14 张，多出 5 张：
+25 张表、292 个列、55 个索引（以 `check_schema.py` 的输出为准）。下面 6 张是 PRD 之外加的，各有明确理由：
 
 | 表 | 为什么必须存在 |
 | --- | --- |
 | `sessions` | 用不透明 token 换取"可撤销会话"。若把会话塞进 JWT，退出登录/踢人/改密码后旧 token 仍然有效，测试与线上都会踩坑 |
 | `player_ratings` | PRD 已追加。把"当前评分"从 `users` 拆出，读写路径与档案解耦，且可整表重建 |
-| `invite_codes` | V1.0 采用邀请制注册，且需要"谁邀请进来的"可溯源（`users.invite_code_id`） |
+| `invite_codes` | 邀请制开启时用于注册校验与"谁邀请进来的"溯源（`users.invite_code_id`）；开放注册时仍保留发码能力，切回来立即生效 |
 | `sync_jobs` | 免费版没有 Queues，异步任务需要一张 outbox 表承接（租约抢占 + 退避重试），详见 ARCHITECTURE §8 |
 | `party_members` | `parties` 是多对多关系，缺它无法表达成员；P2 只建表不启用 |
+| `app_settings` | 运行期开关（目前只有注册方式）：运营改一次不该发一次版。写在 wrangler 的 `vars` 里会变成"本地开了、线上还关着"，且每次都要重新部署 |
 
 ```mermaid
 erDiagram
@@ -150,7 +151,7 @@ rating_adjustments                ← 每次修改一行，append-only
 
 - 文件名：`NNNN_<verb>_<subject>.sql`，如 `0002_add_match_remake_flag.sql`。**只增不改**，已发布的迁移文件禁止编辑。
 - 每个迁移必须能在空库上从头执行成功，也必须能在"已有生产数据"上执行成功；涉及列删除时先加废弃标记，两个版本后再物理删除。
-- 不得在迁移里写业务数据（首个管理员由 `seed` 脚本创建）。
+- 不得在迁移里写业务数据（首个管理员由 `seed` 脚本创建）。**配置型默认值可以播种**（例如 `0018` 往 `app_settings` 插一行注册方式），但要写成幂等的 `ON CONFLICT DO NOTHING`，免得重放时覆盖线上已经改过的值。
 - 执行顺序固定：`local` → `staging` → 备份生产 → `production`。
 - 生产迁移前：`wrangler d1 export hive --output backups/$(日期).sql -c packages/database/wrangler.d1.jsonc`。
 

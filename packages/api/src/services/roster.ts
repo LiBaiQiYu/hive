@@ -50,6 +50,10 @@ export function canFormMatches(confirmed: number): number {
  * 人数卡在两档之间时（如 16 人 / 目标 2 场）**不允许服务端静默选一个**：
  * "按 16 人开 1 场、6 人轮空"和"延期凑第 2 场"对社群的影响完全不同，
  * 必须由管理员显式选择。只有 AUTO_FINALIZE_ODD=true 时才允许自动走 START_PARTIAL。
+ *
+ * CANCEL / EXTEND 是**管理员显式动作**，优先级高于人数分支：
+ * 10 人正好一场时选「取消赛事」也必须真的取消，8 人时选「延长报名」也必须真的延期。
+ * 以前这两个策略只在"人数不是 10 的整数倍"时才被读取，导致按钮点了没反应。
  */
 export function planFinalize(
   confirmed: number,
@@ -58,6 +62,16 @@ export function planFinalize(
   autoFinalizeOdd: boolean,
 ): FinalizeDecision {
   const matches = canFormMatches(confirmed);
+
+  // 显式取消：任何人数都生效（含 0 人、整数场、不足 10 人）
+  if (policy === 'CANCEL') {
+    return { outcome: 'CANCEL', playCount: confirmed, benchCount: 0, matches: 0 };
+  }
+
+  // 显式延期：任何人数都生效。只有"按现有人数开局"才受人数分支约束
+  if (policy === 'EXTEND') {
+    return { outcome: 'EXTEND', playCount: confirmed, benchCount: 0, matches };
+  }
 
   if (confirmed < MATCH_SIZE) {
     return { outcome: 'INSUFFICIENT', playCount: 0, benchCount: 0, matches: 0 };
@@ -70,14 +84,6 @@ export function planFinalize(
   const effectivePolicy = policy ?? (autoFinalizeOdd ? 'START_PARTIAL' : null);
   if (effectivePolicy === null) {
     return { outcome: 'POLICY_REQUIRED', playCount: 0, benchCount: 0, matches };
-  }
-
-  if (effectivePolicy === 'CANCEL') {
-    return { outcome: 'CANCEL', playCount: confirmed, benchCount: 0, matches: 0 };
-  }
-
-  if (effectivePolicy === 'EXTEND') {
-    return { outcome: 'EXTEND', playCount: confirmed, benchCount: 0, matches };
   }
 
   const playCount = matches * MATCH_SIZE;

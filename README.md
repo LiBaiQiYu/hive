@@ -59,11 +59,11 @@ The system is built for a **single fixed community**, not as a multi-tenant tour
 | **Lineup page** | Besides the two teams, it lists **everyone who did not make the lineup** — waitlisted (with position), not selected (confirmed but only 10 slots), forfeited, manually swapped out, withdrawn — each with a plain-language reason |
 | **WARROOM rating** | Skill score derived from MMR; attendance tracked separately. Score composition, adjustment history and reasons are visible; admins can set an MMR target or a medal + stars, and the source is labelled |
 | **Identity** | Steam OpenID (ownership verified) > numeric DOTA ID claim (data checked, ownership unverified) > self-reported, exposed as three honest badges |
-| **Accounts & security** | Invite-code registration, sessions, failed-login lockout, CSRF and same-origin checks, audit log; **self-service password reset by email** (one-time link via a reply email) plus admin reset |
+| **Accounts & security** | Open registration or invite-code registration (one switch in the admin console), sessions, failed-login lockout, CSRF and same-origin checks, audit log; **self-service password reset by email** (one-time link via a reply email) plus admin reset |
 | **Player profiles** | Player card (8 materials, frame colours and effects, including the founder-only *Infinity Mirror*), match history, win/loss stats, position preferences, public profile, reactions and a comment board |
 | **Leaderboards & history** | Rank by rating or wins; filter by verification level, sort by medal / MMR; community-wide win counts and per-player match history; forfeits are counted and listed |
 | **Notifications** | Start-time reminder email, triggered manually by an admin (test mode sends only to the admin). On the free plan only verified destination addresses are allowed |
-| **Admin console** | Events, invite codes, ratings, members, job queue and audit log; all actions are traceable, filterable and read-only |
+| **Admin console** | Events, invite codes, registration mode, ratings, members, job queue and audit log; all actions are traceable, filterable and read-only |
 
 ## Screenshots
 
@@ -190,7 +190,6 @@ Deliberately out of scope, to keep the system small:
 - KDA and per-match detail stats (the winner is entered by an admin); no OpenDota match import
 - Lobby creation, voice chat, a chat client, other games
 - Redis, message queues, microservices or any extra infrastructure
-- Public sign-up (registration requires an invite code handed out in the group)
 
 ## Data sources & credits
 
@@ -202,7 +201,7 @@ DOTA2 and Steam are trademarks of Valve Corporation. This is an unofficial proje
 
 ## Contributing
 
-The community is invite-only and the repository is maintained by its organiser. Bug reports and suggestions are welcome through issues; please do not commit secrets, production dumps or personal data.
+The community is a fixed DOTA2 group and the repository is maintained by its organiser. Bug reports and suggestions are welcome through issues; please do not commit secrets, production dumps or personal data.
 
 ## Documentation
 

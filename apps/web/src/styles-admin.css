@@ -1008,3 +1008,74 @@
 .sub-bench-name {
   flex: 1;
 }
+
+/* ---------------------------------------------------------------- 系统设置 */
+
+.setting-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 4px 0 2px;
+}
+
+.setting-text {
+  min-width: 0;
+}
+
+.setting-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--display);
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+/* 开关拨了但还没按保存：必须说出来，不然离开页面就悄悄丢了 */
+.setting-dirty {
+  font-family: var(--body, inherit);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+
+.setting-desc {
+  margin: 6px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  max-width: 62ch;
+}
+
+.setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+
+.setting-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* 邀请码页顶部的「当前注册方式」提示条 */
+.mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  font-size: 12px;
+}
+
+.mode-banner .btn {
+  margin-left: auto;
+}

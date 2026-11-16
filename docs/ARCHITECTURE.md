@@ -87,8 +87,8 @@ packages/database ──► (无业务依赖)
 
 ### 5.1 平台账号
 
-- 注册：**邀请制**。`REGISTRATION_REQUIRE_INVITE=true` 时 `inviteCode` 为必填，校验「存在 / 未撤销 / 未过期 / 未用尽」四项后原子消耗一次；失败统一返回 `INVITE_INVALID`，不区分具体原因（避免枚举有效码）。注册成功后 `users.invite_code_id` 记录来源，便于"谁邀请进来的"溯源与拉新统计。
-- 消耗邀请码与建号必须成对：先 `UPDATE invite_codes SET used_count = used_count + 1 WHERE ... AND (max_uses = 0 OR used_count < max_uses) RETURNING used_count`，无返回行即拒绝；随后 `db.batch([insert users, insert player_ratings, insert player_positions])`。若 batch 因唯一冲突失败，补偿一次 `used_count - 1`。
+- 注册：**两种模式**，由数据库开关 `app_settings.registration.require_invite` 决定（后台「系统设置」切换，**默认开放注册**；原来放在 `wrangler.jsonc` 的 `REGISTRATION_REQUIRE_INVITE` 已废弃）。**邀请制**开启时 `inviteCode` 必填，校验「存在 / 未撤销 / 未过期 / 未用尽」四项后原子消耗一次；失败统一返回 `INVITE_INVALID`，不区分具体原因（避免枚举有效码）。注册成功后 `users.invite_code_id` 记录来源，便于"谁邀请进来的"溯源与拉新统计。**开放注册**时整段邀请码逻辑跳过：不校验、不消耗，请求里带了码也当作没带（否则会把已经发出的码莫名用光）。
+- 消耗邀请码与建号必须成对（仅邀请制）：先 `UPDATE invite_codes SET used_count = used_count + 1 WHERE ... AND (max_uses = 0 OR used_count < max_uses) RETURNING used_count`，无返回行即拒绝；随后 `db.batch([insert users, insert player_ratings, insert player_positions])`。若 batch 因唯一冲突失败，补偿一次 `used_count - 1`。开放注册没有可补偿的码，跳过这段。
 - 密码：`username`（小写、3-24、`[a-z0-9_]`）+ `password`。用 **PBKDF2-HMAC-SHA256**（WebCrypto 原生，无额外依赖），并对密码先做一层 `HMAC-SHA256(PASSWORD_PEPPER, password)` 再入 PBKDF2——pepper 只存在于 secret，**不落库**，因此拿到 D1 备份也无法离线爆破。存储格式 `pbkdf2_sha256$p1$<iterations>$<salt_b64>$<hash_b64>`，四个字段都可随记录升级。
 - 免费版每请求 CPU 上限 10ms。**2026-10-30 在真实免费版实测**：单次 PBKDF2 的 10ms 边界大约等于 **100,000 次迭代**（100k 通过 3/3，105k 全部撞 1102），折合约 95ns/次。据此取 **50,000 次（≈4.8ms）**，把剩下的 5ms 留给路由、校验与响应序列化。这仍低于 OWASP 对 PBKDF2-SHA256 的建议值，补偿靠 pepper + 账号锁定 + 边缘限流，而不是假装它很安全。升级付费版后调到 310,000，并在下次登录时静默重算 hash。
 - 防爆破：账号级锁定（连续失败 5 次锁 15 分钟，字段在 `users` 表），不做 IP 维度自建限流；需要时直接上 Cloudflare Rate Limiting Rules，零代码。

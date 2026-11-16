@@ -28,11 +28,13 @@
 
 写操作要求请求头 `X-HIVE-CSRF: 1`。分页参数 `page`（默认 1）、`pageSize`（默认 20，上限 100）。
 
+游客可读的公开配置只有一处：`GET /api/config` → `{ registrationRequireInvite }`。注册页据此决定显不显示邀请码输入框，注册接口读同一个开关，两边不会各说各话。
+
 ## 2. 认证
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/auth/register` | `{username, displayName, email, password, inviteCode}`。邀请制开启时 `inviteCode` 必填，校验失败返回 `INVITE_INVALID`；成功即登录 |
+| POST | `/api/auth/register` | `{username, displayName, email, password}`，邀请制开启时另需 `inviteCode`。开放注册（默认）时传了邀请码也会被忽略；邀请制下未填/格式错返回 400（`details.inviteCode`），码无效/过期/用尽返回 `INVITE_INVALID` 403。成功即登录 |
 | POST | `/api/auth/login` | `{identifier, password}`，`identifier` 可为用户名或邮箱 |
 | POST | `/api/auth/logout` | 撤销当前会话 |
 | GET | `/api/auth/session` | 当前会话 + 用户 + 评分摘要 |
@@ -114,7 +116,7 @@
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| POST | `/api/admin/events/:id/finalize` | `{policy?: "START_PARTIAL" \| "EXTEND" \| "CANCEL", extendHours?}`。人数卡在两档之间时（如 12 人 / 目标 2 场）必须显式选择，不允许服务端静默决定；Cron 自动结算那条路径视为已经选了 `START_PARTIAL` |
+| POST | `/api/admin/events/:id/finalize` | `{policy?: "START_PARTIAL" \| "EXTEND" \| "CANCEL", extendHours?}`。`CANCEL` / `EXTEND` 是管理员显式动作，**任何人数都生效**（不足 10 人、正好 10/20 人也一样）；`START_PARTIAL` 只在人数不是 10 的整数倍时需要显式选择，不允许服务端静默决定；Cron 自动结算那条路径视为已经选了 `START_PARTIAL`。报名不足 10 人且要求开局时返回 200 + `outcome:"INSUFFICIENT"`（不改任何数据），前端必须按"未执行"提示 |
 
 退赛或取消时：候补顺序自动前移；已 `PUBLISHED` 阵容中的玩家不允许退赛，需管理员先 `VOID` 该场次。
 
@@ -192,6 +194,8 @@
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/admin/dashboard` | `{members:{active,admins,newThisMonth}, events:{ongoing,total,openNow}, registrations:{thisMonth}, pendingPublish, jobs:{pending,running,dead,failed}, recentEvents}` |
+| GET | `/api/admin/settings` | 运行期设置：`{registrationRequireInvite}`。`true` = 邀请制，`false` = 开放注册 |
+| PUT | `/api/admin/settings` | `{registrationRequireInvite: boolean}`；值没变时不写库也不记审计。改动写 `audit_logs`（`settings.update`，`entity_type=app_setting`，`after_json={key,before,after}`） |
 | POST | `/api/admin/events` | 创建赛事（`title, capacity, registrationOpensAt, startsAt, serverRegion?`）；`serverRegion` 缺省为 `GLOBAL` |
 | PATCH | `/api/admin/events/:id` | 编辑 `{title?, summary?, capacity?, registrationOpensAt?, registrationClosesAt?, startsAt?, serverRegion?}`，至少一个字段；时间字段传 `null` 表示清空。容量须为 10 的整数倍且不低于已确认人数；**报名关闭后容量与赛程不可改**（`CONFLICT`），标题/简介/服务器仍可改 |
 | POST | `/api/admin/events/:id/transition` | `{to: "REGISTRATION_OPEN" \| "REGISTRATION_CLOSED" \| "COMPLETED" \| "ARCHIVED" \| "CANCELLED"}` |
@@ -204,6 +208,8 @@
 状态流转是白名单表，非法流转返回 `CONFLICT`，且每次流转写 `audit_logs`（`event.transition`，前后状态）。
 转到 `COMPLETED` 时会自动重算该赛事所有报名者与上场者的评分（"报名且赛事已结束"才计入出勤）。
 编辑赛事与候补转正同样落审计：`event.update`（改前/改后全字段）、`registration.promote`（候补位次 → 正选）。
+
+**注册方式开关**是运行期设置里目前唯一的一项（迁移 0018 的 `app_settings`，默认 `registration.require_invite='0'`）。它不再是 wrangler 的 `vars`：后台点一下即时生效，`GET /api/config` 与 `POST /api/auth/register` 都读同一行记录。
 
 ## 9. 聚合与列表接口（首页 / 战绩 / 排行榜）
 

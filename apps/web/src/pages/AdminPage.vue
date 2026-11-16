@@ -104,6 +104,7 @@ async function create() {
         <NButton size="small" @click="router.push('/admin/audit')">审计</NButton>
         <NButton size="small" @click="router.push('/admin/ratings')">评分</NButton>
         <NButton size="small" @click="router.push('/admin/invites')">邀请码</NButton>
+        <NButton size="small" @click="router.push('/admin/settings')">设置</NButton>
       </div>
     </div>
 

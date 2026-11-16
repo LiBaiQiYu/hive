@@ -124,8 +124,8 @@
     // 实测方法与数据见 docs/SMOKE-TEST.md「实测记录」。
     // 补偿措施：密码 pepper（不进数据库）+ 账号锁定 + 边缘限流，详见 ARCHITECTURE.md §5.1
     "PASSWORD_PBKDF2_ITERATIONS": 50000,
-    // 封闭社区：注册必须携带有效邀请码
-    "REGISTRATION_REQUIRE_INVITE": "true",
+    // 注册方式不再是部署配置：后台「系统设置」写 app_settings，改完即时生效。
+    // （原来这里是 REGISTRATION_REQUIRE_INVITE，2026-11 搬到数据库，见迁移 0018）
     // 人数卡在两档之间（如 16 人 / 目标 2 场）时，默认必须由管理员显式选择如何处理，
     // 服务端不静默生成"1 场 + 6 人轮空"
     "AUTO_FINALIZE_ODD": "false",
@@ -182,7 +182,6 @@
         "SESSION_IDLE_TIMEOUT_HOURS": 12,
         "ADMIN_ADJUSTMENT_LIMIT": 150,
         "PASSWORD_PBKDF2_ITERATIONS": 50000,
-        "REGISTRATION_REQUIRE_INVITE": "true",
         "AUTO_FINALIZE_ODD": "false",
         "SYNC_JOB_BATCH_SIZE": 5,
         "SYNC_JOB_LEASE_SECONDS": 120,

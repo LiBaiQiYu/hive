@@ -89,6 +89,36 @@ describe('planFinalize', () => {
     expect(decision.playCount).toBe(16);
   });
 
+  it('正好 10 人时选 CANCEL 也真的取消（显式策略优先于 EXACT）', () => {
+    expect(planFinalize(10, 10, 'CANCEL', false)).toEqual({
+      outcome: 'CANCEL',
+      playCount: 10,
+      benchCount: 0,
+      matches: 0,
+    });
+  });
+
+  it('不足 10 人时选 CANCEL 也能取消', () => {
+    expect(planFinalize(8, 20, 'CANCEL', false).outcome).toBe('CANCEL');
+  });
+
+  it('不足 10 人时选 EXTEND 也能延期，而不是被 INSUFFICIENT 挡掉', () => {
+    expect(planFinalize(8, 20, 'EXTEND', false)).toEqual({
+      outcome: 'EXTEND',
+      playCount: 8,
+      benchCount: 0,
+      matches: 0,
+    });
+  });
+
+  it('正好满场时选 EXTEND 也生效（显式策略优先于 EXACT）', () => {
+    expect(planFinalize(20, 20, 'EXTEND', false).outcome).toBe('EXTEND');
+  });
+
+  it('不足 10 人时选 START_PARTIAL 仍然开不了赛', () => {
+    expect(planFinalize(8, 20, 'START_PARTIAL', false).outcome).toBe('INSUFFICIENT');
+  });
+
   it('AUTO_FINALIZE_ODD 打开时允许自动按部分人数开局', () => {
     expect(planFinalize(16, 20, null, true)).toEqual({
       outcome: 'START_PARTIAL',

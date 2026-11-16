@@ -114,17 +114,51 @@ const stamp = Date.now().toString(36).slice(-5)
 const newUser = `sec${stamp}`
 let newPass = 'Sec-Check-Pass-1'
 
+/**
+ * 注册方式由后台开关决定（见迁移 0018，`GET /api/config` 对游客公开）。
+ * 自检必须在两种模式下都能跑：邀请制时注册要带码，开放注册时不能要求码。
+ */
+const config = await call('GET', '/api/config')
+const requireInvite = config.json?.data?.registrationRequireInvite
+check(
+  '0 前置',
+  '公开配置能读到注册方式',
+  config.status === 200 && typeof requireInvite === 'boolean',
+  `HTTP ${config.status} requireInvite=${requireInvite}`,
+)
+if (typeof requireInvite !== 'boolean') {
+  console.error('\n读不到 /api/config 的 registrationRequireInvite，注册用例无法判断模式。')
+  console.error('先确认迁移 0018（app_settings）已应用：pnpm db:migrate:local。')
+  process.exit(2)
+}
+
 // 自检要改资料、改密码，都落在自己新建的一次性账号上，别去动真实玩家的档案。
-const setupCode = await newCode(admin.cookie, 'sec-self')
-const seeded = await call('POST', '/api/auth/register', {
-  body: { username: newUser, displayName: '安检号', email: `${newUser}@t.local`, password: newPass, inviteCode: setupCode },
-})
+const setupCode = requireInvite ? await newCode(admin.cookie, 'sec-self') : null
+const seededBody = {
+  username: newUser,
+  displayName: '安检号',
+  email: `${newUser}@t.local`,
+  password: newPass,
+}
+if (setupCode) seededBody.inviteCode = setupCode
+const seeded = await call('POST', '/api/auth/register', { body: seededBody })
 check('0 前置', '一次性测试账号注册成功', seeded.status === 201, `HTTP ${seeded.status} ${seeded.json?.error?.code ?? ''}`)
 if (seeded.status !== 201) {
-  console.error('\n注册测试账号失败，后面的用例会互相牵连。检查邀请码配置（REGISTRATION_REQUIRE_INVITE）与本地库。')
+  console.error('\n注册测试账号失败，后面的用例会互相牵连。检查本地库是否已迁移（0018 app_settings）与后台注册方式。')
   process.exit(2)
 }
 const tester = await login(newUser, newPass)
+
+// 管理员视图按设计能看到 QQ 号（隐私断言的后半条）。全新本地库可能一个 QQ 都没填过，
+// 那样这条断言必然失败——先在自检账号上补一个，脚本才是自洽的（2026-11-12 实测踩过）。
+const seededQq = await call('PATCH', '/api/me', {
+  cookie: tester.cookie,
+  body: { qqNumber: `10${String(Date.now()).slice(-9)}` },
+})
+if (seededQq.status !== 200) {
+  console.error(`\n写入自检 QQ 号失败（HTTP ${seededQq.status}），后面的隐私断言会失真。`)
+  process.exit(2)
+}
 
 /* --------------------------- 1. 认证 / 会话 --------------------------- */
 {
@@ -155,9 +189,11 @@ const tester = await login(newUser, newPass)
     ['GET', '/api/admin/users'],
     ['GET', '/api/admin/audit-logs'],
     ['GET', '/api/admin/invite-codes'],
+    ['GET', '/api/admin/settings'],
     ['GET', '/api/admin/ratings/players'],
     ['GET', '/api/admin/jobs'],
     ['POST', '/api/admin/invite-codes', { label: 'x' }],
+    ['PUT', '/api/admin/settings', { registrationRequireInvite: false }],
     ['POST', '/api/admin/jobs/00000000-0000-0000-0000-000000000000/retry'],
     ['PATCH', '/api/admin/users/00000000-0000-0000-0000-000000000000/role', { role: 'ADMIN' }],
     ['POST', '/api/admin/users/00000000-0000-0000-0000-000000000000/reset-password', {}],
@@ -267,34 +303,58 @@ const tester = await login(newUser, newPass)
 
 /* ----------------------- 5. 邀请码 / 注册 / 提权 ----------------------- */
 {
-  const bad = await call('POST', '/api/auth/register', {
-    body: { username: `bad${stamp}`, displayName: 'x', email: `bad${stamp}@t.local`, password: newPass, inviteCode: 'HIVE-0000-0000' },
-  })
-  check('注册', '无效邀请码被拒（契约 403）', bad.status === 403 && bad.json?.error?.code === 'INVITE_INVALID')
+  check('提权', '注册时附带 role:ADMIN 被忽略', seeded.json?.data?.user?.role === 'PLAYER', `role=${seeded.json?.data?.user?.role}`)
 
-  const nocode = await call('POST', '/api/auth/register', {
-    body: { username: `noc${stamp}`, displayName: 'x', email: `noc${stamp}@t.local`, password: newPass },
-  })
-  check('注册', '缺邀请码被拒', nocode.status === 400)
-
+  // 与注册方式无关的用例：发码通道本身必须一直可用
   const freshCode = await newCode(admin.cookie, 'sec-weak')
   check('邀请码', '管理员能签发一次性邀请码', Boolean(freshCode), freshCode ?? '失败')
 
+  if (requireInvite) {
+    const bad = await call('POST', '/api/auth/register', {
+      body: { username: `bad${stamp}`, displayName: 'x', email: `bad${stamp}@t.local`, password: newPass, inviteCode: 'HIVE-0000-0000' },
+    })
+    check('注册', '无效邀请码被拒（契约 403）', bad.status === 403 && bad.json?.error?.code === 'INVITE_INVALID')
+
+    const nocode = await call('POST', '/api/auth/register', {
+      body: { username: `noc${stamp}`, displayName: 'x', email: `noc${stamp}@t.local`, password: newPass },
+    })
+    check('注册', '缺邀请码被拒', nocode.status === 400)
+  } else {
+    // 开放注册：请求里带一个根本不存在的码也必须建号成功。
+    // 如果这里被拒，"关闭邀请制"就只是前端的假象。
+    const open = await call('POST', '/api/auth/register', {
+      body: { username: `op${stamp}`, displayName: 'x', email: `op${stamp}@t.local`, password: newPass, inviteCode: 'HIVE-0000-0000' },
+    })
+    check('注册', '开放注册时假邀请码不影响注册', open.status === 201, `HTTP ${open.status} ${open.json?.error?.code ?? ''}`)
+  }
+
   const weak = await call('POST', '/api/auth/register', {
-    body: { username: `wk${stamp}`, displayName: 'x', email: `wk${stamp}@t.local`, password: '123', inviteCode: freshCode },
+    body: {
+      username: `wk${stamp}`,
+      displayName: 'x',
+      email: `wk${stamp}@t.local`,
+      password: '123',
+      ...(requireInvite ? { inviteCode: freshCode } : {}),
+    },
   })
   check('注册', '弱口令被拒', weak.status === 400)
 
-  check('提权', '注册时附带 role:ADMIN 被忽略', seeded.json?.data?.user?.role === 'PLAYER', `role=${seeded.json?.data?.user?.role}`)
+  if (requireInvite) {
+    const reuse = await call('POST', '/api/auth/register', {
+      body: { username: `re${stamp}`, displayName: 'x', email: `re${stamp}@t.local`, password: newPass, inviteCode: setupCode },
+    })
+    check('邀请码', '一次性邀请码不可复用', reuse.status === 403 && reuse.json?.error?.code === 'INVITE_INVALID')
+  }
 
-  const reuse = await call('POST', '/api/auth/register', {
-    body: { username: `re${stamp}`, displayName: 'x', email: `re${stamp}@t.local`, password: newPass, inviteCode: setupCode },
-  })
-  check('邀请码', '一次性邀请码不可复用', reuse.status === 403 && reuse.json?.error?.code === 'INVITE_INVALID')
-
-  const dupCode = await newCode(admin.cookie, 'sec-dup')
+  const dupCode = requireInvite ? await newCode(admin.cookie, 'sec-dup') : null
   const dup = await call('POST', '/api/auth/register', {
-    body: { username: ADMIN_USER, displayName: 'x', email: `dup${stamp}@t.local`, password: newPass, inviteCode: dupCode },
+    body: {
+      username: ADMIN_USER,
+      displayName: 'x',
+      email: `dup${stamp}@t.local`,
+      password: newPass,
+      ...(dupCode ? { inviteCode: dupCode } : {}),
+    },
   })
   check('注册', '重复用户名被拒（契约 409）', dup.status === 409 && dup.json?.error?.code === 'CONFLICT')
 }

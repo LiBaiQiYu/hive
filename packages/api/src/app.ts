@@ -17,6 +17,8 @@ import { adminDashboardRoutes } from './routes/admin-dashboard';
 import { adminUserRoutes } from './routes/admin-users';
 import { adminJobRoutes } from './routes/admin-jobs';
 import { adminAuditRoutes } from './routes/admin-audit';
+import { adminSettingsRoutes } from './routes/admin-settings';
+import { configRoutes } from './routes/config';
 import { readSession } from './session';
 
 const app = new Hono<AppEnv>();
@@ -69,10 +71,12 @@ app.use('/api/*', async (c, next) => {
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth/steam', steamRoutes);
+app.route('/api/config', configRoutes);
 app.route('/api/events', eventRoutes);
 app.route('/api/admin/events', adminEventRoutes);
 app.route('/api/me', meRoutes);
 app.route('/api/admin/invite-codes', adminInviteRoutes);
+app.route('/api/admin/settings', adminSettingsRoutes);
 app.route('/api/admin/ratings', adminRatingRoutes);
 app.route('/api/admin/matches', adminMatchRoutes);
 app.route('/api/matches', publicMatchRoutes);

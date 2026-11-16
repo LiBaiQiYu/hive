@@ -23,7 +23,6 @@ export interface Env {
   ADMIN_ADJUSTMENT_LIMIT?: string;
   /** 人数卡在两档之间时是否允许自动按部分人数开局；默认 false，必须由管理员显式选择 */
   AUTO_FINALIZE_ODD?: string;
-  REGISTRATION_REQUIRE_INVITE?: string;
   /** 可选：只用于取 Steam 昵称与头像，不参与身份校验；缺失时绑定仍应成功 */
   STEAM_WEB_API_KEY?: string;
   /**

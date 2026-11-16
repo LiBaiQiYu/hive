@@ -127,6 +127,21 @@ const policyOptions = [
   { label: '取消赛事', value: 'CANCEL' },
 ];
 
+/** 按钮文案跟着策略走：选着「取消赛事」却按「封盘结算」太容易点错 */
+const finalizeLabel = computed(() =>
+  policy.value === 'CANCEL' ? '取消赛事' : policy.value === 'EXTEND' ? '延长报名' : '封盘结算',
+);
+
+/** 封盘接口的返回。INSUFFICIENT 也是 200（只是没改动），要把服务端说明原样给管理员看 */
+interface FinalizeResult {
+  outcome: 'EXACT' | 'START_PARTIAL' | 'EXTEND' | 'CANCEL' | 'INSUFFICIENT';
+  playCount?: number;
+  benchCount?: number;
+  matches?: number;
+  confirmed?: number;
+  message?: string;
+}
+
 /* ---- 编辑赛事：只有草稿/报名中能改容量与赛程，标题随时可改 ---- */
 const editing = ref(false);
 /** 时间用毫秒时间戳（NDatePicker 的原生值），null = 未设置 */
@@ -316,11 +331,66 @@ const transition = (to: string) =>
     `状态已切换为 ${STATUS_LABEL[to] ?? to}`,
   );
 
-const finalize = () =>
-  run(
-    () => api(`/admin/events/${eventId}/finalize`, { method: 'POST', body: { policy: policy.value } }),
-    '封盘完成',
-  );
+const finalize = () => {
+  // 取消是不可撤销的：先问一句。之前它被静默忽略，反而没造成误操作；
+  // 现在真的会取消，就必须有确认这一步
+  if (policy.value === 'CANCEL') {
+    dialog.warning({
+      title: '取消这场赛事？',
+      content: '取消后状态变为「已取消」，不会生成阵容，也不能恢复。已报名的玩家会看到该赛事已取消。',
+      positiveText: '确认取消',
+      negativeText: '再想想',
+      onPositiveClick: () => doFinalize(),
+    });
+    return;
+  }
+  void doFinalize();
+};
+
+function finalizeText(result: FinalizeResult): string {
+  switch (result.outcome) {
+    case 'CANCEL':
+      return '赛事已取消';
+    case 'EXTEND':
+      return '已延长报名 2 小时';
+    case 'EXACT':
+      return '人数正好，可以生成阵容了';
+    case 'START_PARTIAL':
+      return `封盘完成：${result.playCount ?? 0} 人上场，${result.benchCount ?? 0} 人进候补`;
+    default:
+      return '封盘完成';
+  }
+}
+
+async function doFinalize() {
+  busy.value = true;
+  error.value = '';
+  message.value = '';
+  try {
+    const result = await api<FinalizeResult>(`/admin/events/${eventId}/finalize`, {
+      method: 'POST',
+      body: { policy: policy.value },
+    });
+
+    // 不足 10 人时返回 200 但什么都没改：用警告而不是成功语气，否则又会出现
+    // "提示封盘完成、实际状态没变"的错觉
+    if (result.outcome === 'INSUFFICIENT') {
+      error.value = result.message ?? '报名人数不足 10 人，未做改动';
+      toast.warning(error.value);
+    } else {
+      message.value = finalizeText(result);
+      toast.success(message.value);
+    }
+
+    await refresh();
+    await reloadOpenLineup();
+  } catch (err) {
+    error.value = err instanceof ApiError ? err.message : '操作失败';
+    toast.error(error.value);
+  } finally {
+    busy.value = false;
+  }
+}
 
 /** 只提交真正改过的字段：没动的时间不会被"清空"，后端也不用猜 */
 async function saveEdit() {
@@ -838,7 +908,7 @@ const statusPill = (status: string) => {
               style="width: 190px"
               size="medium"
             />
-            <NButton type="primary" :disabled="busy" @click="finalize">封盘结算</NButton>
+            <NButton type="primary" :disabled="busy" @click="finalize">{{ finalizeLabel }}</NButton>
           </template>
 
           <template v-if="event.status === 'REGISTRATION_CLOSED' || event.status === 'PUBLISHED'">

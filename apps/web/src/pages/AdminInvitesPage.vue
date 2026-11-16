@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { RouterLink } from 'vue-router';
 import { NButton, NDatePicker, NInput, NInputNumber, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
@@ -26,6 +27,22 @@ const toast = useMessage();
 
 const form = ref({ label: '', maxUses: 1, expiresAt: null as number | null });
 
+/**
+ * 当前注册方式（只读）。
+ * 开关放在「系统设置」页：两个地方都能改的话，谁都说不清最后是谁改的。
+ * 取不到就不显示提示条——这里只是提示，不该因为它报错。
+ */
+const registrationRequireInvite = ref<boolean | null>(null);
+
+async function loadRegistrationMode() {
+  try {
+    const settings = await api<{ registrationRequireInvite: boolean }>('/admin/settings');
+    registrationRequireInvite.value = settings.registrationRequireInvite;
+  } catch {
+    registrationRequireInvite.value = null;
+  }
+}
+
 async function refresh() {
   loading.value = true;
   try {
@@ -41,7 +58,10 @@ async function refresh() {
   }
 }
 
-onMounted(refresh);
+onMounted(() => {
+  void refresh();
+  void loadRegistrationMode();
+});
 
 /** 毫秒时间戳 → ISO；null 表示不设过期 */
 function toIso(ms: number | null): string | undefined {
@@ -119,6 +139,20 @@ function statusOf(code: InviteCode): { text: string; tag: string } {
 
     <p v-if="error" class="alert">{{ error }}</p>
     <p v-if="message" class="muted" style="margin: 0 0 14px">{{ message }}</p>
+
+    <div v-if="registrationRequireInvite !== null" class="card mode-banner">
+      <span class="tag" :class="registrationRequireInvite ? 'tag-waitlist' : 'tag-confirmed'">
+        {{ registrationRequireInvite ? '邀请制' : '开放注册' }}
+      </span>
+      <span class="muted">
+        {{
+          registrationRequireInvite
+            ? '注册时必须填邀请码，下面这些码就是发放入口。'
+            : '当前开放注册，邀请码不是必填项；已发出的码不会被消耗，切回邀请制后仍可用。'
+        }}
+      </span>
+      <RouterLink to="/admin/settings" class="btn btn-ghost">去设置</RouterLink>
+    </div>
 
     <section class="card">
       <h2 class="card-title">

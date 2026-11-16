@@ -12,3 +12,4 @@ export * from './competition';
 export * from './social';
 export * from './jobs';
 export * from './audit';
+export * from './settings';

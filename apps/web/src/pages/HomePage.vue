@@ -19,10 +19,21 @@ onMounted(async () => {
   }
 });
 
+/**
+ * 首页只展示“还在进行”的赛事：报名中 / 报名截止待分组 / 阵容已发布。
+ * 已结束、已取消、已归档一律不进首页（历史记录去赛事页看）。
+ */
+const ACTIVE_STATUSES = new Set(['REGISTRATION_OPEN', 'REGISTRATION_CLOSED', 'PUBLISHED']);
+const activeEvents = computed(() => events.value.filter((e) => ACTIVE_STATUSES.has(e.status)));
+
 const openEvent = computed(
-  () => events.value.find((e) => e.status === 'REGISTRATION_OPEN') ?? events.value[0] ?? null,
+  () =>
+    activeEvents.value.find((e) => e.status === 'REGISTRATION_OPEN') ??
+    activeEvents.value.find((e) => e.status === 'PUBLISHED') ??
+    activeEvents.value[0] ??
+    null,
 );
-const recent = computed(() => events.value.slice(0, 3));
+
 const totalConfirmed = computed(() =>
   events.value.reduce((sum, event) => sum + event.confirmed, 0),
 );
@@ -91,9 +102,7 @@ const boardBanner = computed(() => {
         </div>
         <div class="stat">
           <div class="stat-label">进行中</div>
-          <div class="stat-value">
-            {{ events.filter((e) => e.status === 'REGISTRATION_OPEN').length }}
-          </div>
+          <div class="stat-value">{{ activeEvents.length }}</div>
         </div>
         <div class="stat">
           <div class="stat-label">目标场次</div>
@@ -111,7 +120,7 @@ const boardBanner = computed(() => {
           <HelpTip
             title="怎么参加"
             :steps="[
-              '① 用社区邀请码注册账号',
+              '① 注册账号：开放注册直接填资料，邀请制则需要社区发放的邀请码',
               '② 在赛事页报名，顺手选一个主位置',
               '③ 满 10 人成一场，系统自动分队；管理员发布后即可查看阵容',
             ]"
@@ -122,19 +131,10 @@ const boardBanner = computed(() => {
       </div>
 
       <div v-if="loading" class="empty">加载中…</div>
-      <div v-else-if="openEvent" class="grid grid-3">
-        <EventCard :event="openEvent" />
+      <div v-else-if="activeEvents.length > 0" class="grid grid-3">
+        <EventCard v-for="event in activeEvents" :key="event.id" :event="event" />
       </div>
-      <div v-else class="empty">还没有赛事。管理员创建后，这里会显示正在报名的那一场。</div>
-    </section>
-
-    <section v-if="recent.length > 1" class="section">
-      <div class="section-head">
-        <h2 class="section-title">近期赛事</h2>
-      </div>
-      <div class="grid grid-3">
-        <EventCard v-for="event in recent" :key="event.id" :event="event" />
-      </div>
+      <div v-else class="empty">还没有进行中的赛事。管理员创建后，这里会显示正在报名或进行中的赛事。</div>
     </section>
   </div>
 </template>

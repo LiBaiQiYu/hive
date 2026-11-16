@@ -329,7 +329,7 @@ adminEventRoutes.post('/:id/finalize', async (c) => {
         data: {
           outcome: decision.outcome,
           confirmed: counts.confirmed,
-          message: '报名不足 10 人，无法开赛。请延期或取消赛事。',
+          message: '报名不足 10 人，无法开赛。请把策略改成「延长报名 2 小时」或「取消赛事」后再执行。',
         },
         meta: { requestId: c.get('requestId') },
       },

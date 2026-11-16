@@ -83,6 +83,23 @@ export const usernameSchema = z
   .min(1, '请填写用户名')
   .regex(/^[a-z0-9_]{3,24}$/, '用户名需 3-24 位，仅限小写字母、数字与下划线');
 
+/**
+ * 邀请码：先 trim + 大写化，再按 6–16 位字母/数字/短横线校验。
+ * 这些文案与前端 LoginPage 的 RULES 逐字一致——同一个规则别在两处说两种话。
+ *
+ * `required_error` 是有意的：缺字段时 zod 默认给英文 "Required"，
+ * 而这条错误会原样出现在注册页的邀请码框下面。
+ */
+export const inviteCodeSchema = z
+  .string({
+    required_error: '请填写邀请码——由管理员在群里发放',
+    invalid_type_error: '请填写邀请码——由管理员在群里发放',
+  })
+  .trim()
+  .toUpperCase()
+  .min(1, '请填写邀请码——由管理员在群里发放')
+  .regex(/^[A-Z0-9-]{6,16}$/, '邀请码是 6–16 位字母、数字或短横线，例如 HIVE-DEV-01');
+
 export const registerSchema = z.object({
   username: usernameSchema,
   displayName: z.string().trim().min(1, '请填写显示名——群里怎么称呼你').max(32, '显示名最多 32 个字'),
@@ -95,15 +112,17 @@ export const registerSchema = z.object({
     .email('邮箱格式不正确，例如 name@example.com'),
   // 空值同样取第一条「请设置密码」，短于 10 位才说长度
   password: z.string().min(1, '请设置密码').min(10, '密码至少 10 位').max(72, '密码最多 72 位'),
-  // 邀请码必填：先 trim + 大写化，再按 6–16 位字母/数字/短横线校验。
-  // 这些文案与前端 LoginPage 的 RULES 逐字一致——同一个规则别在两处说两种话
-  inviteCode: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .min(1, '请填写邀请码——由管理员在群里发放')
-    .regex(/^[A-Z0-9-]{6,16}$/, '邀请码是 6–16 位字母、数字或短横线，例如 HIVE-DEV-01'),
+  inviteCode: inviteCodeSchema,
 });
+
+/**
+ * 开放注册模式下的注册表单：字段与 registerSchema 完全相同，只是不要求邀请码。
+ *
+ * 两种模式由数据库开关 `app_settings.registration.require_invite` 决定
+ * （后台「系统设置」切换，默认关闭 = 开放注册）。路由二选一解析，
+ * 前端也读同一个开关决定要不要显示邀请码输入框——规则只有一份，不会两边说两种话。
+ */
+export const registerNoInviteSchema = registerSchema.omit({ inviteCode: true });
 
 export const loginSchema = z.object({
   identifier: z.string().trim().min(1),
@@ -120,6 +139,7 @@ export const changePasswordSchema = z.object({
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type RegisterNoInviteInput = z.infer<typeof registerNoInviteSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 

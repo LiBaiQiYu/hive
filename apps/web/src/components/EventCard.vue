@@ -11,6 +11,7 @@
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import EventShareButton from './EventShareButton.vue';
 import HelpTip from './HelpTip.vue';
 import { formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { SERVER_HELP, serverLabel } from '../lib/server';
@@ -186,7 +187,11 @@ const whenCells = computed<WhenCell[]>(() => {
         </span>
         <span v-else class="muted" style="margin-left: 10px">已满员</span>
       </div>
-      <RouterLink :to="`/events/${props.event.id}`" class="btn">查看详情</RouterLink>
+      <div class="event-actions">
+        <!-- 分享放在「查看详情」左边：复制链接 / 复制文案是列表里最常做的事 -->
+        <EventShareButton :event="props.event" />
+        <RouterLink :to="`/events/${props.event.id}`" class="btn">查看详情</RouterLink>
+      </div>
     </div>
   </article>
 </template>

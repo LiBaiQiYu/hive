@@ -33,8 +33,8 @@
 
 | 路由 | 页面 | 权限 | 主要接口 |
 | --- | --- | --- | --- |
-| `/` | 首页 | 公开 | `GET /api/stats/summary`、`GET /api/events?status=REGISTRATION_OPEN&limit=1`、`GET /api/matches?limit=5`、`GET /api/leaderboard?limit=8` |
-| `/events` | 赛事列表 | 公开 | `GET /api/events?status=&page=` |
+| `/` | 首页 | 公开 | `GET /api/events`（只用 `REGISTRATION_OPEN / REGISTRATION_CLOSED / PUBLISHED` 三种进行中的状态；已结束、已取消、已归档不在首页出现） |
+| `/events` | 赛事列表（筛选：全部 / 报名中 / 报名截止 / 阵容已发布 / 已结束 / 已取消） | 公开 | `GET /api/events` |
 | `/events/:id` | 赛事详情（4 Tab：信息 / 名单 / 分组 / 结果） | 公开 | `GET /api/events/:id`、`/registrations`、`/matches` |
 | `/leaderboard` | 排行榜（评分 / 胜场；每行附带段位与 MMR） | 公开 | `GET /api/leaderboard?sort=rating\|wins` |
 | `/matches/:id` | 比赛详情（含双方阵容） | 公开 | `GET /api/matches/:id` |
@@ -43,12 +43,12 @@
 | `/players/:id` | 玩家档案 | 公开 | `GET /api/players/:id` |
 | `/me` | 我的主页（评分 / 游戏身份 / 卡片外观 / 位置偏好） | 登录（页面自己提示） | `GET /api/me`、`GET /api/me/rating-history`、`PUT /api/me/positions`、`PUT /api/me/card-skin`、`PUT /api/me/rank`、`POST /api/me/game-account/claim` |
 | `/settings` | 账号设置（个人资料 / 账号安全，`#profile` `#security`） | 登录（未登录跳 `/login?redirect=`） | `PATCH /api/me`、`POST /api/auth/password` |
-| `/login` `/register` | 登录 / 邀请码注册 | 公开 | `POST /api/auth/*` |
+| `/login` | 登录 / 注册（开放注册或邀请制，由服务端开关决定） | 公开 | `GET /api/config`、`POST /api/auth/*` |
 | `/admin` | 仪表盘 | 管理员 | `GET /api/admin/dashboard` |
-| `/admin/events` `/registrations` `/grouping` `/players` `/ratings` `/sync` `/audit` `/invites` | 后台七页 | 管理员 | 见 [API.md](API.md) |
+| `/admin/events/:id` `/members` `/ratings` `/invites` `/jobs` `/audit` `/settings` | 后台子页 | 管理员 | 见 [API.md](API.md) |
 
-后台侧栏九项与接口的对应：仪表盘 / 赛事管理 / 报名管理 / 智能分组 / 玩家管理 / 评分管理 / 数据同步 / 操作日志 / **系统设置**。
-**系统设置 V1.0 不实现**（没有需要运营调的东西：修正上限、迭代次数都是 env）。侧栏该位置直接去掉，避免点进去是空页。
+后台没有独立侧栏：`/admin` 顶部一排按钮进入各子页（成员 / 队列 / 审计 / 评分 / 邀请码 / 设置）。
+**系统设置**（`/admin/settings`）目前只有「注册方式」一个开关：开放注册 ↔ 邀请制，改完即时生效，不需要重新部署。
 
 ### 2.1 为什么「我的主页」和「账号设置」分成两页
 
@@ -79,7 +79,8 @@
 | --- | --- | --- |
 | `PageBack` | 后台各子页、账号设置、赛事详情、比赛详情、玩家详情 | 统一放**标题上方左侧**（`.page-back` + `.back-link`，见 styles-ui.css）；文案「返回 + 目的地」。别再手写 `← xxx` 的内联链接——三种样式两种位置就是这么来的。**返回去哪**分两种：只有上级入口的页（后台子页、账号设置、赛事详情）写死 `to` + `label`；能从任意入口进来的详情页（玩家详情：排行榜 / 赛事报名名单 / 评论区 / 我的主页都能点进来）传 `back`，先回浏览器历史的上一页，站外直接打开时才回落到 `to`。目的地文案由 `lib/back.ts` 按上一页路径推（`/leaderboard` → 「返回排行榜」），推不出来才写「返回上一页」 |
 | `StatusPill` | 赛事卡、详情、列表 | `event.status` → 文案/颜色映射见 §4；`VOID/CANCELLED` 必须是灰色而非红色，避免"大家都在犯错"的错觉 |
-| `EventCard` | 首页、赛事列表、详情侧栏 | 三种 CTA 态：立即报名 / 加入候补 / 查看详情；`DRAFT` 状态对普通玩家不可见。**时间条**并排显示「报名截止 / 开赛」：报名期截止那格是主角（金色 + 倒计时，<24h 转琥珀），封盘后换成开赛时间；没填的时间显示「待定」而不是隐藏。标题旁有**服务器标签**（国服琥珀 / 全球服绿）+ 「?」说明怎么进对服，文案统一在 `lib/server.ts` |
+| `EventCard` | 首页、赛事列表、详情侧栏 | 三种 CTA 态：立即报名 / 加入候补 / 查看详情；`DRAFT` 状态对普通玩家不可见。**时间条**并排显示「报名截止 / 开赛」：报名期截止那格是主角（金色 + 倒计时，<24h 转琥珀），封盘后换成开赛时间；没填的时间显示「待定」而不是隐藏。标题旁有**服务器标签**（国服琥珀 / 全球服绿）+ 「?」说明怎么进对服，文案统一在 `lib/server.ts`。右下角是「分享 + 查看详情」：两个按钮都走 `.btn`，同高同字号同内边距（别再给分享单独用 `NButton size="small"`，会比旁边矮一圈） |
+| `EventShareButton` | 赛事卡右下角（首页与赛事列表共用）、赛事详情页头部 | 点击开浮层：复制链接 / 复制文案 / 系统分享（仅浏览器支持 `navigator.share` 时出现）。文案由 `lib/share.ts` 生成（纯函数 + 单测）：标题 + 状态、报名截止、开赛、服务器与报名进度、链接；**不写倒计时**（群里放两天就成假消息）。复制走 `lib/clipboard.ts`（Clipboard API 不可用时退回 textarea，局域网 http 下也能用）。触发器是 `.btn.btn-ghost`，本身不带尺寸参数——和同排按钮保持同一规格 |
 | `StatCard` | 首页四宫格、后台四宫格 | 数字等宽；`null` 显示 `—` 而不是 `0`（"0 场比赛"和"没数据"是两件事） |
 | `RatingBadge` | 档案、排行榜、分组卡 | 显示 `effective_rating`，hover 展开三层（系统分 / 修正 / 最终），与 PRD 的可解释性要求对应 |
 | `ProgressBar` | 赛事卡 `16 / 20` | 满员后转 amber；**同时显示"再需 N 人成局"**（见 §5.1） |
@@ -134,6 +135,7 @@
 
    这两个选项对社群的影响完全不同（一个让 6 个人今晚没得打，一个让到场的人多等两小时），系统没有资格替他们选。`AUTO_FINALIZE_ODD` 默认 `false`。
 5. **允许提前封盘**：满 10 人后管理员可随时关闭报名。在小社区里，"等第 20 个人"经常等于"这周不打"。
+6. **「取消赛事 / 延长报名」是显式动作，任何人数都生效**：10 人正好一场、20 人正好两场、甚至不足 10 人，只要管理员在下拉里选了这两项再点执行，就必须按选择执行——不能先走"人数正好 → 无需处理"的分支把它静默忽略（踩过：10/10 时选取消，提示「封盘完成」，状态却还是报名截止）。取消前必须二次确认，因为不可撤销。
 
 `slotsToNextMatch = 10 - (confirmed % 10)`，为 0 时表示刚好凑满一场；满员时为 `null`。前端显示 `16 / 20 · 再需 4 人开第 2 场`。
 

@@ -580,7 +580,11 @@ a {
   border: 1px solid var(--line-strong);
   background: linear-gradient(180deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.04));
   color: var(--gold-2);
+  /* 原生 <button> 不继承页面字体，且 line-height 与 <a> 不同；
+     这两行让 <a class="btn"> 与 <button class="btn"> 量出来完全一样高 */
+  font-family: inherit;
   font-size: 13px;
+  line-height: 1.4;
   letter-spacing: 0.1em;
   cursor: pointer;
   transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
@@ -813,6 +817,21 @@ a {
   gap: 12px;
 }
 
+/* 只有详情页头部允许整组（状态 + 分享）换行；
+   赛事卡不让它换——换了会把状态胶囊甩到标题下面去 */
+.event-head-detail {
+  flex-wrap: wrap;
+}
+
+/* 详情页标题右侧：状态 + 分享。margin-left:auto 保证换行后仍然靠右 */
+.event-head-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 .event-name {
   font-family: var(--display);
   font-size: 17px;
@@ -940,8 +959,61 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  /* 窄卡片里「再需 X 人」和两个按钮会顶在一起，允许换行而不是横向溢出 */
+  flex-wrap: wrap;
   margin-top: 4px;
 }
+
+/* 卡片右下角：分享 + 查看详情。两个都走 .btn，同高同字号同内边距；
+   再给一个共同的最小宽度，让"92px / 99px"这种随字数抖动的差也消失 */
+.event-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.event-actions .btn {
+  min-width: 8em;
+}
+
+/* 分享浮层：内边距与底色交给 NPopover（raw 会把背景和 padding 一起清掉，
+   这里别再手写 padding，否则会叠加成两倍） */
+.share-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 292px;
+  max-width: min(292px, calc(100vw - 48px));
+}
+
+.share-pop-title {
+  font-family: var(--display);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--gold-2);
+}
+
+.share-pop-url {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  /* 长链接必须能断行，否则浮层会被撑开 */
+  word-break: break-all;
+}
+
+.share-pop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.share-pop-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
 
 .slots {
   font-family: var(--display);

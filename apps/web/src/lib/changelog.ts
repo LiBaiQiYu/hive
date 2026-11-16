@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.15.0';
+export const APP_VERSION = '1.16.3';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,35 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.16.3',
+    date: '2026-11-16',
+    items: [
+      '赛事列表新增「已取消」分类',
+      '首页只显示报名中或进行中的赛事，已结束与已取消不再出现',
+    ],
+  },
+  {
+    version: '1.16.2',
+    date: '2026-11-16',
+    items: ['修复：后台选择「取消赛事」或「延长报名」后执行不生效（人数正好或不足 10 人时被忽略）'],
+  },
+  {
+    version: '1.16.1',
+    date: '2026-11-13',
+    items: [
+      '赛事详情页也可以分享，与列表共用同一套链接与文案',
+      '赛事卡的「分享」与「查看详情」统一尺寸',
+    ],
+  },
+  {
+    version: '1.16.0',
+    date: '2026-11-13',
+    items: [
+      '注册方式改为后台可切换：开放注册或邀请码注册，改完即时生效',
+      '赛事卡新增分享：可复制链接，或复制带时间与报名进度的文案',
+    ],
+  },
   {
     version: '1.15.0',
     date: '2026-11-11',

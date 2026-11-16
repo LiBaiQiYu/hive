@@ -76,11 +76,12 @@ pnpm sec:check      # = node scripts/security-check.mjs
 | --- | --- | --- |
 | 认证 | 匿名 / 伪造 token / Cookie 属性 / 非 https 不加 Secure / host-only | 伪造 token 401；Cookie 带 HttpOnly+SameSite=Lax+Path=/，无 Domain、无 Secure |
 | CSRF | 缺自定义头、伪造 Origin、正确 Origin、GET 豁免、CORS 面 | 403 / 403 / 200 / 200 / 响应里没有 `Access-Control-Allow-Origin` |
-| 授权 | 10 个后台端点 × 匿名 × 普通玩家 | 匿名 401、玩家 403，无一例外 |
+| 授权 | 14 个后台端点 × 匿名 × 普通玩家 | 匿名 401、玩家 403，无一例外 |
 | 输入 | 超长字段、1MB body、非 JSON、非法 id、limit 越界、sort 注入 | 全部 400/404，没有 500，没有栈外泄 |
 | 注入 | SQL 注入串写进简介；`__proto__` 原型污染；XSS 载荷 | 表还在；role 仍是 PLAYER；XSS 原样存储（由前端转义） |
 | 越权 | body 里塞 `role: ADMIN`、给报名接口塞别人的 userId、rankTier 越界 | 角色不变、未把他人登记进去、越界 400 |
-| 注册 | 无效/缺失/复用邀请码、弱口令、重复用户名 | 403 / 400 / 403 / 400 / 409 |
+| 注册（邀请制） | 无效/缺失/复用邀请码、弱口令、重复用户名 | 403 / 400 / 403 / 400 / 409 |
+| 注册（开放注册，默认） | 不带邀请码；带一个不存在的邀请码 | 都建号成功（201）；弱口令、重复用户名仍被拒。脚本按 `/api/config` 自动选对应的一组断言 |
 | 会话 | 改密码后本机仍有效、其他设备被踢、退出后 token 立即失效 | 200 / 401 / 401 |
 | 管理员 | 不能改自己的角色（409）；成员列表可读 | 符合预期 |
 | 审计 | 授予管理员后审计日志立即出现，带 operator 与 requestId | 命中 |
@@ -105,7 +106,7 @@ pnpm sec:check      # = node scripts/security-check.mjs
 | 权限 | 所有 `/api/admin/*` 服务端 `requireAdmin(c)` | 6+ 端点全 403/401 |
 | SQL 注入 | 全 `prepare(...).bind(...)` | 注入串写库无副作用 |
 | 密码存储 | PBKDF2-HMAC-SHA256 50k + HMAC(pepper)；常数时间比较；迭代变更静默 rehash | 9 个单测 |
-| 邀请码 | `crypto.getRandomValues` + 32 字符表 8 位 ≈ 40 bit；守卫式 `UPDATE` 原子扣减 | 一次性码不可复用 |
+| 邀请码 | `crypto.getRandomValues` + 32 字符表 8 位 ≈ 40 bit；守卫式 `UPDATE` 原子扣减；**只在邀请制开关打开时参与注册** | 一次性码不可复用；开放注册时带假码也不影响建号 |
 | Steam OpenID | state Cookie（HMAC 签名）+ `op_endpoint`/`return_to`/`claimed_id` + 反向 `check_authentication` | 生产跑通一次真实绑定 |
 | XSS | 无 `v-html`/`innerHTML`/`eval` + CSP `script-src 'self'` | grep 零命中 |
 | 密钥卫生 | 仓库无硬编码密钥；`.dev.vars`、`backups/` 已 gitignore；**git 全历史扫描**未见生产 pepper | `git log -S` 零命中 |

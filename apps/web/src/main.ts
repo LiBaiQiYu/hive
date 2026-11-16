@@ -35,6 +35,7 @@ const AdminRatingsPage = () => import('./pages/AdminRatingsPage.vue');
 const AdminMembersPage = () => import('./pages/AdminMembersPage.vue');
 const AdminJobsPage = () => import('./pages/AdminJobsPage.vue');
 const AdminAuditPage = () => import('./pages/AdminAuditPage.vue');
+const AdminSettingsPage = () => import('./pages/AdminSettingsPage.vue');
 
 const router = createRouter({
   history: createWebHistory(),
@@ -57,6 +58,7 @@ const router = createRouter({
     { path: '/admin/members', name: 'admin-members', component: AdminMembersPage, meta: { admin: true } },
     { path: '/admin/jobs', name: 'admin-jobs', component: AdminJobsPage, meta: { admin: true } },
     { path: '/admin/audit', name: 'admin-audit', component: AdminAuditPage, meta: { admin: true } },
+    { path: '/admin/settings', name: 'admin-settings', component: AdminSettingsPage, meta: { admin: true } },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
   // #profile / #security 这类页内锚点：滚到目标，并给吸顶导航让出高度。

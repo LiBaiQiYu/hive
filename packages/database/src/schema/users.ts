@@ -10,7 +10,8 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 import { TS_NOW } from './_shared';
 
 /**
- * 邀请码。REGISTRATION_REQUIRE_INVITE=true 时注册必须携带有效邀请码。
+ * 邀请码。注册是否需要它由 `app_settings.registration.require_invite` 决定
+ * （后台「系统设置」可切，默认关闭 = 开放注册）；开启时必须携带有效邀请码。
  * 先声明本表，users.invite_code_id 才能引用；users 反向引用由闭包延迟求值。
  */
 export const inviteCodes = sqliteTable(

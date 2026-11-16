@@ -3,12 +3,21 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { drizzle } from 'drizzle-orm/d1';
 import { z } from 'zod';
 import { playerRatings, users } from '@hive/db';
-import { ApiError, newId, loginSchema, registerSchema, changePasswordSchema, SESSION_COOKIE } from '@hive/shared';
+import {
+  ApiError,
+  newId,
+  loginSchema,
+  registerSchema,
+  registerNoInviteSchema,
+  changePasswordSchema,
+  SESSION_COOKIE,
+} from '@hive/shared';
 import type { AppEnv, Env } from '../env';
 import { cookieSecure, intVar } from '../env';
 import { requireUser } from '../guard';
 import { hashPassword, verifyPassword } from '../password';
 import { findValidReset } from '../services/password-reset';
+import { readSettings } from '../services/settings';
 import { createSession, hashIp, hashToken, readSession, revokeSession } from '../session';
 
 export const authRoutes = new Hono<AppEnv>();
@@ -37,7 +46,17 @@ function setSessionCookie(c: Parameters<typeof setCookie>[0], env: Env, token: s
  * ------------------------------------------------------------------------ */
 authRoutes.post('/register', async (c) => {
   const env = c.env;
-  const parsed = registerSchema.safeParse(await c.req.json().catch(() => null));
+  const payload = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+
+  // 注册方式由后台开关决定（`app_settings.registration.require_invite`，默认开放）。
+  // 开关读失败不要静默当成"开放"——那等于一次数据库抖动就把社区打开了。
+  const settings = await readSettings(env);
+
+  // 两种模式共用同一份表单定义：邀请制 = registerSchema（多一个 inviteCode），
+  // 开放注册 = 去掉邀请码的同一份 schema。哪个字段不对、说什么话，两边完全一致。
+  const parsed = settings.registrationRequireInvite
+    ? registerSchema.safeParse(payload)
+    : registerNoInviteSchema.safeParse(payload);
   if (!parsed.success) {
     throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
   }
@@ -45,32 +64,44 @@ authRoutes.post('/register', async (c) => {
   const now = Date.now();
   const db = drizzle(env.DB);
 
-  // ---- 1) 邀请码：先确认可用的原因，再用带守卫的 UPDATE 原子消耗 ----
-  const code = await env.DB.prepare(
-    `SELECT id, max_uses AS maxUses, used_count AS usedCount,
-            expires_at AS expiresAt, revoked_at AS revokedAt
-       FROM invite_codes WHERE code = ?`,
-  )
-    .bind(input.inviteCode)
-    .first<{ id: string; maxUses: number; usedCount: number; expiresAt: number | null; revokedAt: number | null }>();
+  // ---- 1) 邀请码：只有邀请制开启时才校验并原子消耗 ----
+  let inviteCodeId: string | null = null;
 
-  // 不区分"不存在 / 已撤销 / 已过期 / 已用尽"，避免被枚举出有效码
-  if (!code) throw new ApiError('INVITE_INVALID', '邀请码不可用');
-  if (code.revokedAt !== null) throw new ApiError('INVITE_INVALID', '邀请码不可用');
-  if (code.expiresAt !== null && code.expiresAt <= now) throw new ApiError('INVITE_INVALID', '邀请码不可用');
-  if (code.maxUses !== 0 && code.usedCount >= code.maxUses) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+  if (settings.registrationRequireInvite) {
+    // 上面的 parse 已经保证邀请码存在且格式正确；`in` 只是让 TS 也相信这一点
+    const inviteValue = 'inviteCode' in input ? input.inviteCode : '';
 
-  // 守卫条件写在 UPDATE 里，而不是"先 SELECT 再判断"——并发注册会超发
-  const consumed = await env.DB.prepare(
-    `UPDATE invite_codes SET used_count = used_count + 1, updated_at = ?
-      WHERE id = ? AND revoked_at IS NULL
-        AND (expires_at IS NULL OR expires_at > ?)
-        AND (max_uses = 0 OR used_count < max_uses)`,
-  )
-    .bind(now, code.id, now)
-    .run();
+    const code = await env.DB.prepare(
+      `SELECT id, max_uses AS maxUses, used_count AS usedCount,
+              expires_at AS expiresAt, revoked_at AS revokedAt
+         FROM invite_codes WHERE code = ?`,
+    )
+      .bind(inviteValue)
+      .first<{ id: string; maxUses: number; usedCount: number; expiresAt: number | null; revokedAt: number | null }>();
 
-  if (!consumed.meta.changes) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    // 不区分"不存在 / 已撤销 / 已过期 / 已用尽"，避免被枚举出有效码
+    if (!code) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    if (code.revokedAt !== null) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    if (code.expiresAt !== null && code.expiresAt <= now) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    if (code.maxUses !== 0 && code.usedCount >= code.maxUses) {
+      throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    }
+
+    // 守卫条件写在 UPDATE 里，而不是"先 SELECT 再判断"——并发注册会超发
+    const consumed = await env.DB.prepare(
+      `UPDATE invite_codes SET used_count = used_count + 1, updated_at = ?
+        WHERE id = ? AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > ?)
+          AND (max_uses = 0 OR used_count < max_uses)`,
+    )
+      .bind(now, code.id, now)
+      .run();
+
+    if (!consumed.meta.changes) throw new ApiError('INVITE_INVALID', '邀请码不可用');
+    inviteCodeId = code.id;
+  }
+  // 开关关闭时整段跳过：不校验、不消耗、`users.invite_code_id` 记 NULL。
+  // 即使请求里带了邀请码也当作没带——否则"开放注册"和"邀请码溯源"两套语义会打架。
 
   // ---- 2) 预检重复，给出可读的错误而不是让唯一索引抛 500 ----
   const duplicate = await env.DB.prepare(
@@ -80,9 +111,11 @@ authRoutes.post('/register', async (c) => {
     .first<{ hit: number }>();
 
   if (duplicate) {
-    await env.DB.prepare(`UPDATE invite_codes SET used_count = used_count - 1 WHERE id = ?`)
-      .bind(code.id)
-      .run();
+    if (inviteCodeId) {
+      await env.DB.prepare(`UPDATE invite_codes SET used_count = used_count - 1 WHERE id = ?`)
+        .bind(inviteCodeId)
+        .run();
+    }
     throw new ApiError('CONFLICT', '用户名或邮箱已被占用');
   }
 
@@ -100,7 +133,7 @@ authRoutes.post('/register', async (c) => {
         passwordHash,
         role: 'PLAYER',
         status: 'ACTIVE',
-        inviteCodeId: code.id,
+        inviteCodeId,
         // 注册即登录：不写这一列的话，后台「最近登录」对刚注册的人是「从未」——
         // 因为 last_login_at 只在 POST /auth/login 里更新，而注册后没人会立刻再登一次。
         lastLoginAt: now,
@@ -119,10 +152,12 @@ authRoutes.post('/register', async (c) => {
       }),
     ]);
   } catch (err) {
-    // batch 是事务，失败时整批回滚；补偿邀请码的消耗
-    await env.DB.prepare(`UPDATE invite_codes SET used_count = used_count - 1 WHERE id = ?`)
-      .bind(code.id)
-      .run();
+    // batch 是事务，失败时整批回滚；补偿邀请码的消耗（开放注册时没有码可补偿）
+    if (inviteCodeId) {
+      await env.DB.prepare(`UPDATE invite_codes SET used_count = used_count - 1 WHERE id = ?`)
+        .bind(inviteCodeId)
+        .run();
+    }
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes('UNIQUE')) throw new ApiError('CONFLICT', '用户名或邮箱已被占用');
     throw err;

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api } from '../lib/api';
+import { fetchPublicConfig } from '../lib/config';
 import { PASSWORD_RESET_EMAIL } from '../lib/contact';
 import { loadMe } from '../lib/session';
 
@@ -13,6 +14,19 @@ const mode = ref<'login' | 'register'>('login');
 const submitting = ref(false);
 const error = ref('');
 const message = useMessage();
+
+/**
+ * 注册方式（后台「系统设置」的开关）：
+ *   null  = 还没从服务端拿到，先按"要邀请码"渲染，避免开放注册的人看到一闪而过的输入框；
+ *   true  = 邀请制，显示并校验邀请码；
+ *   false = 开放注册，整段邀请码逻辑（显示、校验、提交字段）都不参与。
+ */
+const requireInvite = ref<boolean | null>(null);
+
+onMounted(async () => {
+  const config = await fetchPublicConfig();
+  requireInvite.value = config.registrationRequireInvite;
+});
 
 /**
  * 登录后回跳（比如被守卫从 /settings 带来的）。
@@ -181,6 +195,32 @@ function switchMode(next: 'login' | 'register') {
   error.value = '';
 }
 
+/**
+ * 标题旁的帮助文案跟着注册方式走。
+ * 只说"现在是什么规则"，不解释后台怎么切——玩家不需要知道这些。
+ */
+const registerHelp = computed(() =>
+  requireInvite.value === false
+    ? {
+        title: '开放注册',
+        steps: [
+          '① 现在不需要邀请码，填完资料就能加入',
+          '② 用户名注册后不可修改，它是登录凭据',
+          '③ Steam 绑定是可选的，之后也可以手动填段位',
+        ],
+        note: '管理员随时可以切回邀请制；已经注册的账号不受影响。',
+      }
+    : {
+        title: '邀请制',
+        steps: [
+          '① 邀请码由管理员在群里发放，默认一码一人',
+          '② 用户名注册后不可修改，它是登录凭据',
+          '③ Steam 绑定是可选的，之后也可以手动填段位',
+        ],
+        note: '不绑定 Steam 同样能参与分队：手动填写的段位也计入评分，只是归属会显示「未验证」。',
+      },
+);
+
 /* ------------------------------------------------------------------ 登录 */
 
 function submitLogin() {
@@ -217,8 +257,14 @@ async function doLogin() {
 
 async function submitRegister() {
   error.value = '';
+
+  // 开放注册时邀请码整段不参与：不标红、不提交（服务端同样会忽略它）
+  const fields = requireInvite.value
+    ? REGISTER_FIELDS
+    : REGISTER_FIELDS.filter((field) => field !== 'inviteCode');
+
   let firstInvalid: RegisterField | null = null;
-  for (const field of REGISTER_FIELDS) {
+  for (const field of fields) {
     touched[field] = true;
     if (!validateField(field) && !firstInvalid) firstInvalid = field;
   }
@@ -229,16 +275,15 @@ async function submitRegister() {
 
   submitting.value = true;
   try {
-    await api('/auth/register', {
-      method: 'POST',
-      body: {
-        username: registerForm.value.username.trim().toLowerCase(),
-        displayName: registerForm.value.displayName.trim(),
-        email: registerForm.value.email.trim().toLowerCase(),
-        password: registerForm.value.password,
-        inviteCode: normalizeInvite(registerForm.value.inviteCode),
-      },
-    });
+    const body: Record<string, string> = {
+      username: registerForm.value.username.trim().toLowerCase(),
+      displayName: registerForm.value.displayName.trim(),
+      email: registerForm.value.email.trim().toLowerCase(),
+      password: registerForm.value.password,
+    };
+    if (requireInvite.value) body.inviteCode = normalizeInvite(registerForm.value.inviteCode);
+
+    await api('/auth/register', { method: 'POST', body });
     await loadMe();
     message.success('账号已创建，欢迎加入');
     void router.replace(redirectTo.value || '/events');
@@ -250,9 +295,12 @@ async function submitRegister() {
       }
       // 服务端故意不区分"不存在 / 已过期 / 已用完"（防枚举），这里也只给一句合并的说法
       if (err.code === 'INVITE_INVALID') {
+        // 另一种可能：管理员刚把开关切回邀请制（另一个标签页 / 手机），
+        // 本地还以为开放注册。把输入框放出来，别把错误挂在一个看不见的字段上
+        requireInvite.value = true;
         fieldError.inviteCode = '邀请码无效、已过期或已被用完，找管理员再要一个';
         touched.inviteCode = true;
-        focusField('[data-field="inviteCode"]');
+        void nextTick(() => focusField('[data-field="inviteCode"]'));
         return;
       }
       error.value = err.message;
@@ -272,13 +320,7 @@ async function submitRegister() {
         {{ mode === 'login' ? '登录 HIVE' : '加入 HIVE' }}
         <HelpTip
           v-if="mode === 'register'"
-          title="邀请制"
-          :steps="[
-            '① 邀请码由管理员在群里发放，默认一码一人',
-            '② 用户名注册后不可修改，它是登录凭据',
-            '③ Steam 绑定是可选的，之后也可以手动填段位',
-          ]"
-          note="不绑定 Steam 同样能参与分队：手动填写的段位也计入评分，只是归属会显示「未验证」。"
+          v-bind="registerHelp"
         />
       </h1>
 
@@ -303,9 +345,7 @@ async function submitRegister() {
         </button>
       </div>
 
-      <p v-if="mode === 'register'" class="form-note muted">
-        带 <em class="req" aria-hidden="true">*</em> 的为必填。邀请码找管理员要；用户名注册后不可改。
-      </p>
+      <p v-if="mode === 'register'" class="form-note muted">带 <em class="req" aria-hidden="true">*</em> 的为必填。<template v-if="requireInvite">邀请码找管理员要；</template>用户名注册后不可改。</p>
 
       <p v-if="error" class="alert">{{ error }}</p>
 
@@ -356,7 +396,7 @@ async function submitRegister() {
       </form>
 
       <form v-else @submit.prevent="submitRegister">
-        <label class="field" data-field="inviteCode">
+        <label v-if="requireInvite" class="field" data-field="inviteCode">
           <span class="field-label">
             邀请码
             <em class="req" aria-hidden="true">*</em>
@@ -446,7 +486,13 @@ async function submitRegister() {
           />
           <span v-if="fieldError.password" class="field-error">{{ fieldError.password }}</span>
         </label>
-        <NButton type="primary" attr-type="submit" :disabled="submitting" :loading="submitting" block>
+        <NButton
+          type="primary"
+          attr-type="submit"
+          :disabled="submitting || requireInvite === null"
+          :loading="submitting"
+          block
+        >
           {{ submitting ? '注册中…' : '创建账号' }}
         </NButton>
       </form>
