@@ -13,6 +13,7 @@
 import { computed, ref } from 'vue';
 import { NButton } from 'naive-ui';
 import { ApiError, api } from '../lib/api';
+import { isPlaceholderEmail } from '../lib/email';
 import { loadMe, session } from '../lib/session';
 
 const busy = ref(false);
@@ -39,6 +40,12 @@ async function confirmEmail() {
 
 /** 兜底：如果 /me 里的邮箱是空的（老数据），提醒文案换成"去填一个" */
 const missing = computed(() => email.value.trim().length === 0);
+
+/**
+ * 占位地址（@hive.local 这类）同样收不到重置邮件。
+ * 这时「我确认能收到信」是个假承诺，直接不给点，只留「去改邮箱」。
+ */
+const placeholder = computed(() => !missing.value && isPlaceholderEmail(email.value));
 </script>
 
 <template>
@@ -46,17 +53,34 @@ const missing = computed(() => email.value.trim().length === 0);
     <div class="container email-banner-inner">
       <span class="email-banner-icon" aria-hidden="true">✉</span>
       <span class="email-banner-text">
-        密码找回只靠注册邮箱。请确认
-        <b v-if="!missing" class="mono">{{ email }}</b>
-        <b v-else>你还没填邮箱</b>
-        能收到信——否则忘记密码时只能找管理员重置。
+        <template v-if="missing">
+          密码找回只靠注册邮箱。<b>你还没填邮箱</b>——否则忘记密码时只能找管理员重置。
+        </template>
+        <template v-else-if="placeholder">
+          当前邮箱 <b class="mono">{{ email }}</b> 是占位地址，收不到重置邮件。请先改成真实邮箱。
+        </template>
+        <template v-else>
+          密码找回只靠注册邮箱。请确认
+          <b class="mono">{{ email }}</b>
+          能收到信——否则忘记密码时只能找管理员重置。
+        </template>
       </span>
       <span v-if="error" class="email-banner-error">{{ error }}</span>
       <span class="email-banner-actions">
-        <NButton size="tiny" type="primary" :loading="busy" :disabled="missing" @click="confirmEmail">
+        <NButton
+          v-if="!missing && !placeholder"
+          size="tiny"
+          type="primary"
+          :loading="busy"
+          @click="confirmEmail"
+        >
           我确认能收到信
         </NButton>
-        <RouterLink to="/settings#profile" class="email-banner-link">
+        <RouterLink
+          to="/settings#profile"
+          class="email-banner-link"
+          :class="{ 'is-cta': missing || placeholder }"
+        >
           {{ missing ? '去填邮箱' : '去改邮箱' }}
         </RouterLink>
       </span>

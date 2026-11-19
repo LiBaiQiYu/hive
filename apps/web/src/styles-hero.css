@@ -68,7 +68,7 @@
 
 .hero--warroom .hero-kicker {
   color: #7f7565;
-  font-size: 11.5px;
+  font-size: 11px;
   letter-spacing: 0.34em;
 }
 
@@ -92,24 +92,24 @@
 /* 主行动：两个主题都用同一块深红，和画作的暖色/赤金更搭 */
 .hero--warroom .btn.war-cta,
 .hero--warroom .btn.war-cta:active:not(:disabled) {
-  background: linear-gradient(180deg, #b3261e, #8e1b15);
-  border-color: #8e1b15;
-  color: #fdf8f2;
+  background: var(--accent);
+  border-color: color-mix(in oklab, var(--accent) 72%, #000);
+  color: #17130a;
 }
 
 .hero--warroom .btn.war-cta:hover:not(:disabled) {
-  background: linear-gradient(180deg, #c3382d, #9a1f17);
-  border-color: #9a1f17;
-  color: #ffffff;
-  box-shadow: 0 10px 26px rgba(179, 38, 30, 0.3);
+  background: color-mix(in oklab, var(--accent) 88%, #fff);
+  border-color: color-mix(in oklab, var(--accent) 80%, #fff);
+  color: #17130a;
+  box-shadow: 0 10px 26px color-mix(in oklab, var(--accent) 28%, transparent);
 }
 
 .war-cta {
   height: 46px;
   padding: 0 24px;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 14px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.02em;
 }
 
 .war-cta-arrow {
@@ -125,9 +125,9 @@
 .war-cta-ghost {
   height: 46px;
   padding: 0 20px;
-  border-radius: 4px;
+  border-radius: 8px;
   font-size: 13px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.02em;
   background: rgba(255, 255, 255, 0.55);
 }
 
@@ -174,6 +174,23 @@
 
 :root[data-theme='light'] .hero.hero--warroom {
   background: #f8f3ea;
+}
+
+:root[data-theme='light'] .hero--warroom .btn.war-cta,
+:root[data-theme='light'] .hero--warroom .btn.war-cta:active:not(:disabled) {
+  background: linear-gradient(180deg, var(--accent), var(--accent-soft));
+  border-color: var(--accent-soft);
+  color: #fdf8f2;
+}
+
+:root[data-theme='light'] .hero--warroom .btn.war-cta:hover:not(:disabled) {
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 88%, #fff),
+    var(--accent)
+  );
+  border-color: var(--accent);
+  color: #ffffff;
 }
 
 :root[data-theme='dark'] .hero.hero--warroom {
@@ -276,7 +293,7 @@
   }
 
   .hero--warroom .hero-sub {
-    font-size: 13.5px;
+    font-size: 13px;
     line-height: 1.85;
   }
 }

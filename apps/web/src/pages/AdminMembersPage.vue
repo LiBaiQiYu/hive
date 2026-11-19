@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { NButton, NModal, NPopconfirm, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
 import VerificationFilter from '../components/VerificationFilter.vue';
 import VerificationTag from '../components/VerificationTag.vue';
+import SortableTh from '../components/SortableTh.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 import {
   filterPlayers,
@@ -156,7 +158,7 @@ async function copyPassword() {
       <span class="muted list-tools-hint">点表头按段位 / 天梯分 / 评分排序</span>
     </div>
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <SkeletonRows v-if="loading" />
 
     <div v-else-if="rows.length === 0" class="empty">这个筛选下没有成员。</div>
 
@@ -169,15 +171,29 @@ async function copyPassword() {
               <th>用户名</th>
               <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
               <th>角色</th>
-              <th class="th-sort" @click="onSort('rankTier')">
+              <SortableTh
+                :active="sort?.key === 'rankTier'"
+                :direction="sort?.direction ?? 'desc'"
+                @sort="onSort('rankTier')"
+              >
                 段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
-              </th>
-              <th class="num th-sort" @click="onSort('mmr')">
+              </SortableTh>
+              <SortableTh
+                numeric
+                :active="sort?.key === 'mmr'"
+                :direction="sort?.direction ?? 'desc'"
+                @sort="onSort('mmr')"
+              >
                 天梯分 <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
-              </th>
-              <th class="num th-sort" @click="onSort('effective')">
+              </SortableTh>
+              <SortableTh
+                numeric
+                :active="sort?.key === 'effective'"
+                :direction="sort?.direction ?? 'desc'"
+                @sort="onSort('effective')"
+              >
                 评分 <span class="sort-arrow">{{ sortArrow('effective') }}</span>
-              </th>
+              </SortableTh>
               <th class="num">报名</th>
               <th class="num">出场</th>
               <th>最近登录</th>
@@ -226,7 +242,6 @@ async function copyPassword() {
                   <NButton
                     v-else
                     size="small"
-                    type="primary"
                     :disabled="busy"
                     @click="setRole(user, 'ADMIN')"
                   >
@@ -237,6 +252,7 @@ async function copyPassword() {
                     <template #trigger>
                       <NButton
                         size="small"
+                        quaternary
                         :disabled="busy"
                         :loading="resetting === user.id"
                       >

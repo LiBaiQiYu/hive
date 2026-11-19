@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { NButton, NSelect, NTab, NTabs, useDialog, useMessage } from 'naive-ui';
-import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import { ApiError, api, formatDate, MATCH_STATUS_LABEL, type EventView } from '../lib/api';
 import { SERVER_HELP, serverLabel } from '../lib/server';
 import { session } from '../lib/session';
 import { rankLabel } from '../lib/rank';
@@ -12,6 +13,8 @@ import PlayerCard, { type PlayerCardData } from '../components/PlayerCard.vue';
 import PlayerAvatar from '../components/PlayerAvatar.vue';
 import RankIcon from '../components/RankIcon.vue';
 import VerificationTag from '../components/VerificationTag.vue';
+import StatusPill from '../components/StatusPill.vue';
+import SortableTh from '../components/SortableTh.vue';
 import EventShareButton from '../components/EventShareButton.vue';
 import HelpTip from '../components/HelpTip.vue';
 import PageBack from '../components/PageBack.vue';
@@ -263,7 +266,7 @@ async function withdraw() {
   <div class="container">
     <PageBack to="/events" label="返回赛事列表" />
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <SkeletonRows v-if="loading" />
     <div v-else-if="!event" class="empty">{{ error || '赛事不存在' }}</div>
 
     <template v-else>
@@ -286,14 +289,18 @@ async function withdraw() {
             </div>
           </div>
           <div class="event-head-side">
-            <span class="pill pill-idle">{{ STATUS_LABEL[event.status] ?? event.status }}</span>
+            <StatusPill :status="event.status" />
             <!-- 详情页和列表共用同一个分享组件与文案格式 -->
             <EventShareButton :event="event" />
           </div>
         </div>
 
         <div class="progress" style="margin: 20px 0 10px">
-          <div class="progress-bar" :style="{ width: `${progress}%` }" />
+          <div
+            class="progress-bar"
+            :class="{ 'is-full': progress >= 100 }"
+            :style="{ width: `${progress}%` }"
+          />
         </div>
         <div class="event-foot">
           <div>
@@ -402,7 +409,7 @@ async function withdraw() {
               <tr v-for="item in matchList" :key="item.id">
                 <td class="mono">第 {{ item.matchNo }} 场</td>
                 <td class="muted" style="font-size: 12px">
-                  {{ STATUS_LABEL[item.status] ?? item.status }}
+                  {{ MATCH_STATUS_LABEL[item.status] ?? item.status }}
                 </td>
                 <td class="num mono">{{ item.ratingGap ?? '—' }}</td>
                 <td style="text-align: right">
@@ -450,19 +457,32 @@ async function withdraw() {
                 <th>玩家</th>
                 <th>DOTA2 ID</th>
                 <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
-                <th class="th-sort" title="点击按段位排序" @click="onSortRoster('rankTier')">
+                <SortableTh
+                  title="点击按段位排序"
+                  :active="rosterSort?.key === 'rankTier'"
+                  :direction="rosterSort?.direction ?? 'desc'"
+                  @sort="onSortRoster('rankTier')"
+                >
                   段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
-                </th>
-                <th
-                  class="num th-sort"
+                </SortableTh>
+                <SortableTh
+                  numeric
                   title="点击按 WARROOM 评分排序"
-                  @click="onSortRoster('effective')"
+                  :active="rosterSort?.key === 'effective'"
+                  :direction="rosterSort?.direction ?? 'desc'"
+                  @sort="onSortRoster('effective')"
                 >
                   WARROOM <span class="sort-arrow">{{ sortArrow('effective') }}</span>
-                </th>
-                <th class="num th-sort" title="点击按天梯 MMR 排序" @click="onSortRoster('mmr')">
+                </SortableTh>
+                <SortableTh
+                  numeric
+                  title="点击按天梯 MMR 排序"
+                  :active="rosterSort?.key === 'mmr'"
+                  :direction="rosterSort?.direction ?? 'desc'"
+                  @sort="onSortRoster('mmr')"
+                >
                   天梯 MMR <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
-                </th>
+                </SortableTh>
                 <th>位置</th>
                 <th>状态</th>
                 <th>Steam</th>

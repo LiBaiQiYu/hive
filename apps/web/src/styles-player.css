@@ -54,7 +54,7 @@
 .player-votes .n-button.is-active {
   color: var(--gold-2);
   border-color: var(--line-strong);
-  background: rgba(212, 173, 51, 0.1);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 .player-joined {

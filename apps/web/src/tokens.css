@@ -1,0 +1,15 @@
+:root {
+  --accent: #d4ad33;
+  --accent-soft: #f0d68d;
+  --info: oklch(66% 0.14 285);
+  --danger: #c25454;
+  --success: #63bb6c;
+}
+
+[data-theme='light'] {
+  --accent: #b3261e;
+  --accent-soft: #8e1b15;
+  --info: #3b4a66;
+  --danger: #b3261e;
+  --success: #1f8f52;
+}

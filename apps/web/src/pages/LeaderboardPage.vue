@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import { NSpin } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import RankMedal from '../components/RankMedal.vue';
 import VerificationFilter from '../components/VerificationFilter.vue';
 import VerificationTag from '../components/VerificationTag.vue';
+import SortableTh from '../components/SortableTh.vue';
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { ApiError, api } from '../lib/api';
 import { mmrHint } from '../lib/rank';
 import {
@@ -102,9 +103,7 @@ const sortArrow = (key: PlayerSortKey) =>
 
     <p v-if="error" class="alert">{{ error }}</p>
 
-    <div v-if="loading" class="empty" style="display: flex; justify-content: center; padding: 40px">
-      <NSpin size="small" />
-    </div>
+    <SkeletonRows v-if="loading" />
 
     <div v-else-if="rows.length === 0" class="empty">
       {{ counts.ALL === 0 ? '还没有可排名的玩家。' : '这个筛选下没有玩家。' }}
@@ -120,27 +119,51 @@ const sortArrow = (key: PlayerSortKey) =>
               <th>用户名</th>
               <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
               <th>角色</th>
-              <th class="th-sort" @click="onSort('rankTier')">
+              <SortableTh
+                :active="sort.key === 'rankTier'"
+                :direction="sort.direction"
+                @sort="onSort('rankTier')"
+              >
                 段位 <span class="sort-arrow">{{ sortArrow('rankTier') }}</span>
-              </th>
-              <th class="num th-sort" @click="onSort('mmr')">
+              </SortableTh>
+              <SortableTh
+                numeric
+                :active="sort.key === 'mmr'"
+                :direction="sort.direction"
+                @sort="onSort('mmr')"
+              >
                 MMR <span class="sort-arrow">{{ sortArrow('mmr') }}</span>
-              </th>
-              <th class="num th-sort" @click="onSort('effective')">
+              </SortableTh>
+              <SortableTh
+                numeric
+                :active="sort.key === 'effective'"
+                :direction="sort.direction"
+                @sort="onSort('effective')"
+              >
                 WARROOM <span class="sort-arrow">{{ sortArrow('effective') }}</span>
-              </th>
-              <th class="num th-sort" @click="onSort('wins')">
+              </SortableTh>
+              <SortableTh
+                numeric
+                :active="sort.key === 'wins'"
+                :direction="sort.direction"
+                @sort="onSort('wins')"
+              >
                 胜 / 负 <span class="sort-arrow">{{ sortArrow('wins') }}</span>
-              </th>
+              </SortableTh>
               <th
                 class="num"
                 title="报名后没到场、被替补顶下来的场次：不计胜负，但会拉低出勤率"
               >
                 弃赛
               </th>
-              <th class="num th-sort" @click="onSort('winRate')">
+              <SortableTh
+                numeric
+                :active="sort.key === 'winRate'"
+                :direction="sort.direction"
+                @sort="onSort('winRate')"
+              >
                 胜率 <span class="sort-arrow">{{ sortArrow('winRate') }}</span>
-              </th>
+              </SortableTh>
             </tr>
           </thead>
           <tbody>
