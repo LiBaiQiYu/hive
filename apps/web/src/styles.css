@@ -474,6 +474,17 @@ a {
   padding: 20px 22px;
 }
 
+/* 卡片里的「?」浮窗必须能盖住**同排后面的卡片**。
+   问题出在这儿：`.event-card:hover` 上的 transform 会给整张卡建立层叠上下文，
+   浮窗的 z-index:40 就被关在这张卡里，对后面的兄弟卡完全无效——
+   于是后面的白卡把浮窗下半截盖住（1440px 三列时一眼就能看到）。
+   解法：hover / focus-within 时把卡片本身抬到兄弟之上（5 < 导航的 20，
+   滚到导航底下时仍然被导航压住），浮窗在卡内继续用 40。 */
+.card:hover,
+.card:focus-within {
+  z-index: 5;
+}
+
 .card-title {
   font-family: var(--display);
   letter-spacing: 0.1em;

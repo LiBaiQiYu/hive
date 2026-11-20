@@ -287,9 +287,11 @@
 | 挂载位置 | 章节标题 `h1.section-title`、卡片标题 `.card-title`、字段标签 `.field-label`；都没有时补一行小标题，不新造样式 |
 | 组件 | `apps/web/src/components/HelpTip.vue`；样式在 `styles-theme.css` 的 `.help / .help-pop`，深色浅色各一套 |
 | 写法 | `<HelpTip title="…" :steps="['① …','② …']" note="…" />`；长内容加 `wide`（400px）；需要链接/加粗时用默认插槽 |
-| 交互 | hover 或键盘聚焦展开；`Esc` 收起；展开前按视口宽度收敛 `--pop-shift`，贴边也不会被切掉 |
+| 交互 | hover 或键盘聚焦展开；`Esc` 收起；展开前 `place()` 量三件事并按需收敛：① 视口左右剩余 → 写 `--pop-shift` 让浮窗与箭头一起内收；② 视口下方剩余不够 → 置 `data-pop-flip="up"` 把浮窗翻到「?」上方（箭头跟着换到底边）；③ ≤560px 时整块改成 fixed 底部弹层 |
+| 层级 | 浮窗 `z-index: 40` 只在**卡片内部**有效，所以 `.card:hover / :focus-within` 会把卡片本身抬到 `z-index: 5`——否则同排后面的卡片会把浮窗下半截盖住（赛事列表三列时必现）。5 小于导航的 20，卡片滚到导航底下时仍被导航压住 |
 
 约束：浮窗是绝对定位，祖先不能有 `overflow: hidden`（当前 `.card` 没有）。若以后给卡片加裁切，必须把浮窗改成 `position: fixed` 或走 Teleport。
+新增的"卡片 + 浮层"组合要照抄 `.card:hover { z-index: 5 }` 这一条，否则层叠上下文会把浮层关在卡里。
 评分卡的浮窗文案要与**当前算法**一致（v3 = 实力分 MMR ÷ 10 + 出勤独立、只影响候补）；§8 里早期 PRD 的五项概念未实现，不要照抄。
 
 ### 10.1 HolographicSticker（全息贴纸组件）

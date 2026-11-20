@@ -492,6 +492,30 @@
   pointer-events: auto;
 }
 
+/* 下方空间不够时（列表末尾、后台表单末尾），整块翻到「?」上方。
+   翻转标记由 HelpTip.place() 按视口剩余高度算出来，写在 data-pop-flip 上。 */
+.help[data-pop-flip='up'] .help-pop {
+  top: auto;
+  bottom: calc(100% + 12px);
+  transform: translateX(calc(-50% + var(--pop-shift, 0px))) translateY(6px);
+}
+
+.help[data-pop-flip='up']:hover .help-pop,
+.help[data-pop-flip='up']:focus .help-pop,
+.help[data-pop-flip='up']:focus-within .help-pop {
+  transform: translateX(calc(-50% + var(--pop-shift, 0px))) translateY(0);
+}
+
+/* 箭头跟着换到浮窗底部，继续指向「?」 */
+.help[data-pop-flip='up'] .help-pop::before {
+  top: auto;
+  bottom: -6px;
+  border-left: none;
+  border-top: none;
+  border-right: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+}
+
 .help-pop a {
   color: var(--gold-2);
   text-decoration: none;
@@ -559,10 +583,12 @@
 }
 
 /* 窄屏：帮助浮窗改成底部弹层（fixed + 左右各留 12px），
-   绝对定位的 320px 浮窗在 390 宽视口里无论怎么居中都会把页面撑宽。 */
+   绝对定位的 320px 浮窗在 390 宽视口里无论怎么居中都会把页面撑宽。
+   这里的选择器要比上面的翻转规则更具体，否则 data-pop-flip 的 bottom 会盖回来。 */
 @media (max-width: 560px) {
   .help-pop,
-  .help-pop-wide {
+  .help-pop-wide,
+  .help[data-pop-flip='up'] .help-pop {
     position: fixed;
     top: auto;
     bottom: 12px;
@@ -575,11 +601,15 @@
 
   .help:hover .help-pop,
   .help:focus .help-pop,
-  .help:focus-within .help-pop {
+  .help:focus-within .help-pop,
+  .help[data-pop-flip='up']:hover .help-pop,
+  .help[data-pop-flip='up']:focus .help-pop,
+  .help[data-pop-flip='up']:focus-within .help-pop {
     transform: translateY(0);
   }
 
-  .help-pop::before {
+  .help-pop::before,
+  .help[data-pop-flip='up'] .help-pop::before {
     display: none;
   }
 }
