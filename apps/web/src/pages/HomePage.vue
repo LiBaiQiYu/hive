@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import EventCard from '../components/EventCard.vue';
 import HelpTip from '../components/HelpTip.vue';
-import StatCard from '../components/StatCard.vue';
 import { api, type EventView } from '../lib/api';
 import { session } from '../lib/session';
 
@@ -94,13 +92,24 @@ const boardBanner = computed(() => {
 
     <section class="section">
       <div class="stat-row">
-        <StatCard label="赛事" :value="events.length" />
-        <StatCard label="累计报名" :value="totalConfirmed" />
-        <StatCard label="进行中" :value="activeEvents.length" />
-        <StatCard
-          label="目标场次"
-          :value="events.reduce((sum, e) => sum + e.targetMatches, 0)"
-        />
+        <div class="stat">
+          <div class="stat-label">赛事</div>
+          <div class="stat-value">{{ events.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">累计报名</div>
+          <div class="stat-value">{{ totalConfirmed }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">进行中</div>
+          <div class="stat-value">{{ activeEvents.length }}</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">目标场次</div>
+          <div class="stat-value">
+            {{ events.reduce((sum, e) => sum + e.targetMatches, 0) }}
+          </div>
+        </div>
       </div>
     </section>
 
@@ -121,14 +130,11 @@ const boardBanner = computed(() => {
         <RouterLink to="/events" class="muted" style="font-size: 13px">全部赛事 →</RouterLink>
       </div>
 
-      <SkeletonRows v-if="loading" variant="cards" :rows="3" />
+      <div v-if="loading" class="empty">加载中…</div>
       <div v-else-if="activeEvents.length > 0" class="grid grid-3">
         <EventCard v-for="event in activeEvents" :key="event.id" :event="event" />
       </div>
-      <div v-else class="empty">
-        还没有进行中的赛事。管理员创建后，这里会显示正在报名或进行中的赛事。
-        <RouterLink to="/events" class="empty-action">查看全部赛事</RouterLink>
-      </div>
+      <div v-else class="empty">还没有进行中的赛事。管理员创建后，这里会显示正在报名或进行中的赛事。</div>
     </section>
   </div>
 </template>

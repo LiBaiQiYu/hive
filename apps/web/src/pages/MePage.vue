@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import SkeletonRows from '../components/SkeletonRows.vue';
 /**
  * 我的主页：玩家档案，不是设置页。
  *
@@ -160,7 +159,7 @@ const previewPlayer = computed<PlayerCardData>(() => {
       </div>
     </div>
 
-    <SkeletonRows v-if="loading" />
+    <div v-if="loading" class="empty">加载中…</div>
 
     <div v-else-if="!session.me" class="empty">
       请先 <RouterLink to="/login" style="color: var(--gold-2)">登录</RouterLink>。

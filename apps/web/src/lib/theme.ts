@@ -9,14 +9,6 @@ export const theme = ref<Theme>('dark');
 function apply(next: Theme): void {
   theme.value = next;
   document.documentElement.dataset.theme = next;
-  syncMeta(next);
-}
-
-function syncMeta(next: Theme): void {
-  const cs = document.querySelector('meta[name="color-scheme"]');
-  const tc = document.querySelector('meta[name="theme-color"]');
-  if (cs) cs.setAttribute('content', next);
-  if (tc) tc.setAttribute('content', next === 'light' ? '#F4F6FB' : '#0B0D11');
 }
 
 /** 初次加载：显式选择 > 系统偏好 > 深色 */

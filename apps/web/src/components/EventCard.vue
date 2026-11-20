@@ -13,11 +13,17 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import EventShareButton from './EventShareButton.vue';
 import HelpTip from './HelpTip.vue';
-import StatusPill from './StatusPill.vue';
-import { formatDate, type EventView } from '../lib/api';
+import { formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { SERVER_HELP, serverLabel } from '../lib/server';
 
 const props = defineProps<{ event: EventView }>();
+
+const pillClass = (status: string) => {
+  if (status === 'REGISTRATION_OPEN') return 'pill pill-open';
+  if (status === 'REGISTRATION_CLOSED') return 'pill pill-closed';
+  if (status === 'PUBLISHED') return 'pill pill-published';
+  return 'pill pill-idle';
+};
 
 /* ---------------------------------------------------------------- 时间条 */
 
@@ -140,7 +146,9 @@ const whenCells = computed<WhenCell[]>(() => {
         </span>
         <HelpTip v-bind="SERVER_HELP" />
       </div>
-      <StatusPill :status="props.event.status" />
+      <span :class="pillClass(props.event.status)">
+        {{ STATUS_LABEL[props.event.status] ?? props.event.status }}
+      </span>
     </div>
 
     <div class="event-meta">
@@ -165,11 +173,10 @@ const whenCells = computed<WhenCell[]>(() => {
     </div>
 
     <div class="progress">
-        <div
-          class="progress-bar"
-          :class="{ 'is-full': props.event.confirmed >= props.event.capacity }"
-          :style="{ width: `${Math.min(100, (props.event.confirmed / props.event.capacity) * 100)}%` }"
-        />
+      <div
+        class="progress-bar"
+        :style="{ width: `${Math.min(100, (props.event.confirmed / props.event.capacity) * 100)}%` }"
+      />
     </div>
 
     <div class="event-foot">

@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
-import { NButton } from 'naive-ui';
-import { ApiError, api, formatDate, type EventView } from '../lib/api';
+import { NButton, NSpin } from 'naive-ui';
+import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { formatDuration } from '../lib/duration';
 import { session } from '../lib/session';
 import PageBack from '../components/PageBack.vue';
-import StatusPill from '../components/StatusPill.vue';
-import SkeletonRows from '../components/SkeletonRows.vue';
 
 interface Member {
   id: string;
@@ -117,7 +115,9 @@ const bench = computed(() => match.value?.bench ?? []);
 
 <template>
   <div class="container">
-    <SkeletonRows v-if="loading" />
+    <div v-if="loading" class="empty" style="display: flex; justify-content: center; padding: 40px">
+      <NSpin size="small" />
+    </div>
 
     <div v-else-if="!match" class="empty">{{ error || '比赛不存在或还未发布' }}</div>
 
@@ -145,7 +145,7 @@ const bench = computed(() => match.value?.bench ?? []);
               <span v-if="match.durationSeconds">时长 {{ formatDuration(match.durationSeconds) }}</span>
             </div>
           </div>
-          <StatusPill :status="match.status" kind="match" />
+          <span class="pill pill-published">{{ STATUS_LABEL[match.status] ?? match.status }}</span>
         </div>
 
         <p

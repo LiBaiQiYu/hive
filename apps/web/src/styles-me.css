@@ -25,7 +25,7 @@
   font-size: 56px;
   line-height: 1;
   color: var(--gold-2);
-  text-shadow: 0 0 28px color-mix(in oklab, var(--accent) 28%, transparent);
+  text-shadow: 0 0 28px rgba(201, 162, 39, 0.28);
 }
 
 .rating-pm {
@@ -507,12 +507,12 @@
 }
 
 :root[data-theme='light'] .powered-badge {
-  border-color: color-mix(in oklab, var(--info) 34%, transparent);
-  background: color-mix(in oklab, var(--info) 9%, transparent);
+  border-color: rgba(108, 92, 231, 0.34);
+  background: rgba(108, 92, 231, 0.09);
 }
 
 :root[data-theme='light'] .powered-badge b {
-  color: var(--info);
+  color: #5546c4;
 }
 
 @media (max-width: 560px) {
@@ -647,7 +647,7 @@
 .lb-stars {
   display: inline-flex;
   gap: 1px;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0;
   color: var(--gold);
   opacity: 0.85;
@@ -671,9 +671,4 @@
 
 .email-status-ok {
   color: var(--gold-2);
-}
-
-/* 占位地址：密码找回必然失败，用 danger 色与"只是还没确认"区分开 */
-.email-status-warn {
-  color: var(--danger);
 }

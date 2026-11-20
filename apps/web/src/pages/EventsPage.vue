@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
-import { NRadioButton, NRadioGroup } from 'naive-ui';
 import EventCard from '../components/EventCard.vue';
 import { api, STATUS_LABEL, type EventView } from '../lib/api';
 
@@ -40,24 +38,22 @@ const visible = computed(() =>
       <span class="muted" style="font-size: 13px">共 {{ events.length }} 场</span>
     </div>
 
-    <NRadioGroup v-model:value="filter" size="small" class="event-filters">
-      <NRadioButton v-for="item in FILTERS" :key="item.key" :value="item.key">
-        {{ item.label }}
-      </NRadioButton>
-    </NRadioGroup>
-
-    <SkeletonRows v-if="loading" variant="cards" :rows="3" />
-    <div v-else-if="visible.length === 0" class="empty">
-      这个分组下还没有赛事。
+    <div class="nav-links" style="margin-bottom: 20px; flex-wrap: wrap">
       <button
-        v-if="filter !== 'ALL'"
+        v-for="item in FILTERS"
+        :key="item.key"
         type="button"
-        class="empty-action"
-        @click="filter = 'ALL'"
+        class="nav-link"
+        :class="{ active: filter === item.key }"
+        style="border: none; background: none; cursor: pointer"
+        @click="filter = item.key"
       >
-        看全部赛事
+        {{ item.label }}
       </button>
     </div>
+
+    <div v-if="loading" class="empty">加载中…</div>
+    <div v-else-if="visible.length === 0" class="empty">这个分组下还没有赛事。</div>
     <div v-else class="grid grid-3">
       <EventCard v-for="event in visible" :key="event.id" :event="event" />
     </div>

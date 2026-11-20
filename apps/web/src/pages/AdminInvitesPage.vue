@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import SkeletonRows from '../components/SkeletonRows.vue';
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { NButton, NDatePicker, NInput, NInputNumber, useMessage } from 'naive-ui';
@@ -218,7 +217,7 @@ function statusOf(code: InviteCode): { text: string; tag: string } {
         <NButton :disabled="busy" @click="refresh">刷新</NButton>
       </div>
 
-      <SkeletonRows v-if="loading" />
+      <div v-if="loading" class="empty">加载中…</div>
       <div v-else-if="codes.length === 0" class="empty">还没有邀请码。</div>
 
       <div v-else class="card" style="padding: 8px 12px">

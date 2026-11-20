@@ -14,7 +14,6 @@ import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../HelpTip.vue';
 import CurrentPasswordInput from '../CurrentPasswordInput.vue';
 import { ApiError, api } from '../../lib/api';
-import { isPlaceholderEmail } from '../../lib/email';
 import { loadMe, session } from '../../lib/session';
 
 const message = useMessage();
@@ -62,9 +61,6 @@ watch(() => session.me?.user, fillProfile, { deep: true, immediate: true });
 const emailChanged = computed(
   () => profile.value.email.trim().toLowerCase() !== (session.me?.user.email ?? '').trim().toLowerCase(),
 );
-
-/** 占位地址收不到信，不能让玩家点「我确认能收到信」把问题藏起来 */
-const emailPlaceholder = computed(() => isPlaceholderEmail(profile.value.email.trim()));
 
 async function saveProfile() {
   profileError.value = '';
@@ -161,16 +157,7 @@ async function saveProfile() {
           :input-props="{ autocomplete: 'email', spellcheck: 'false' }"
           size="medium"
         />
-        <span
-          v-if="profile.email.trim() && emailPlaceholder"
-          class="email-status email-status-warn"
-        >
-          这是占位地址，密码找回收不到信，请改成真实邮箱
-        </span>
-        <span v-else-if="emailChanged" class="email-status">
-          保存后生效，之后再点「我确认能收到信」
-        </span>
-        <span v-else-if="session.me?.user.emailConfirmed" class="email-status email-status-ok">
+        <span v-if="session.me?.user.emailConfirmed" class="email-status email-status-ok">
           ✓ 已确认这个邮箱能收到信
         </span>
         <span v-else class="email-status">
