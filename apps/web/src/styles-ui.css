@@ -31,6 +31,10 @@
   height: auto;
 }
 
+.n-button {
+  letter-spacing: 0.02em;
+}
+
 /* ---------------------------------------------------------------- 二级页返回 */
 
 /* 后台子页和「账号设置」共用的左上角返回。位置和样式只在这里定义，
@@ -46,7 +50,7 @@
   padding: 3px 8px 3px 4px;
   border-radius: 6px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 12px;
   transition:
     color 0.15s ease,
     background-color 0.15s ease;
@@ -161,6 +165,23 @@
   }
 }
 
+@media (max-width: 620px) {
+  .theme-toggle-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .user-chip.n-button {
+    height: 44px;
+  }
+
+  .nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
 .user-caret {
   width: 11px;
   height: 11px;
@@ -234,10 +255,6 @@
     box-shadow 0.18s ease;
 }
 
-.card:hover {
-  border-color: var(--line-strong);
-}
-
 /* 表格行 */
 .table tbody tr {
   transition: background-color 0.15s ease;
@@ -252,7 +269,7 @@
   padding: 0 6px;
   border: 1px solid currentColor;
   border-radius: 4px;
-  font-size: 10.5px;
+  font-size: 10px;
   line-height: 1.75;
   letter-spacing: 0.04em;
   white-space: nowrap;
@@ -294,6 +311,39 @@
   font-variant-numeric: tabular-nums;
 }
 
+.vf-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Naive 默认把这组按钮画成连体分段控件，靠 splitor 竖线分隔。
+   这里用的是独立胶囊：去掉竖线，每个按钮自己画完整描边，
+   否则竖线会比胶囊高出一截、看着像边框缺了一角。 */
+.vf-group .n-radio-group__splitor {
+  display: none;
+}
+
+.vf-group .n-radio-button {
+  border: 1px solid var(--n-button-border-color);
+  border-radius: 6px !important;
+}
+
+.vf-group .n-radio-button:hover,
+.vf-group .n-radio-button:focus-within,
+.vf-group .n-radio-button--checked {
+  border-color: var(--n-button-border-color-active);
+}
+
+.vf-group .n-radio-button:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* 自绘描边后关掉 Naive 的状态边框，免得两层线叠出深浅不一的缺口 */
+.vf-group .n-radio-button__state-border {
+  display: none;
+}
+
 /* 可点表头：箭头只在当前列出现，避免每列都有箭头反而看不出在按什么排 */
 .th-sort {
   cursor: pointer;
@@ -307,7 +357,7 @@
 
 .sort-arrow {
   margin-left: 2px;
-  font-size: 9px;
+  font-size: 10px;
   opacity: 0.75;
 }
 
@@ -322,11 +372,6 @@
        与其把字挤成竖排，不如让它横向滚 */
     min-width: 860px;
   }
-}
-
-/* 按钮按下时下沉 1px，点击感更明确 */
-.btn:active:not(:disabled) {
-  transform: translateY(1px);
 }
 
 /* ------------------------------------------ 赛事报名名单（卡片 / 列表切换） */
@@ -415,11 +460,10 @@
 
 .btn {
   transition:
-    background 0.16s ease,
-    border-color 0.16s ease,
-    color 0.16s ease,
-    box-shadow 0.16s ease,
-    transform 0.08s ease;
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    filter 0.1s ease;
 }
 
 /* 键盘操作时给一个明确的焦点环（鼠标点击不触发） */
@@ -428,6 +472,12 @@
 .help:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
+}
+
+.th-sort:focus-visible,
+.table tbody tr[tabindex='0']:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -2px;
 }
 
 /* 输入框聚焦时的过渡，避免"啪"一下变色 */
@@ -454,7 +504,7 @@
   gap: 8px 10px;
   flex-wrap: wrap;
   padding: 9px 0;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: var(--text);
 }
@@ -495,6 +545,21 @@
 
 .email-banner-link:hover {
   color: var(--gold-2);
+}
+
+/* 占位/空邮箱时没有可确认的东西，CTA 升为唯一动作，做成小胶囊更显眼 */
+.email-banner-link.is-cta {
+  padding: 3px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 999px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.email-banner-link.is-cta:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
 }
 
 @media (max-width: 640px) {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
@@ -21,6 +22,8 @@ import PageBack from '../components/PageBack.vue';
 import RankMedal from '../components/RankMedal.vue';
 import VerificationFilter from '../components/VerificationFilter.vue';
 import VerificationTag from '../components/VerificationTag.vue';
+import StatusPill from '../components/StatusPill.vue';
+import SortableTh from '../components/SortableTh.vue';
 import {
   filterPlayers,
   sortPlayers,
@@ -853,19 +856,13 @@ function applyLineup(view: LineupView) {
   lineupOriginal.value = map;
 }
 
-const statusPill = (status: string) => {
-  if (status === 'REGISTRATION_OPEN') return 'pill pill-open';
-  if (status === 'PUBLISHED') return 'pill pill-published';
-  if (status === 'DRAFT') return 'pill pill-idle';
-  return 'pill pill-closed';
-};
 </script>
 
 <template>
   <div class="container">
     <PageBack label="返回后台" />
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <SkeletonRows v-if="loading" />
     <div v-else-if="!event" class="empty">{{ error || '赛事不存在' }}</div>
 
     <template v-else>
@@ -879,9 +876,7 @@ const statusPill = (status: string) => {
               <span>开赛 {{ formatDate(event.startsAt) }}</span>
             </div>
           </div>
-          <span :class="statusPill(event.status)">
-            {{ STATUS_LABEL[event.status] ?? event.status }}
-          </span>
+          <StatusPill :status="event.status" />
         </div>
 
         <div class="toolbar" style="margin-top: 18px">
@@ -1064,17 +1059,7 @@ const statusPill = (status: string) => {
                   />
                 </svg>
                 <span class="mono match-no">第 {{ match.matchNo }} 场</span>
-                <span :class="statusPill(match.status)">
-                  {{
-                    match.status === 'DRAFT'
-                      ? '草稿'
-                      : match.status === 'COMPLETED'
-                        ? '已结束'
-                        : match.status === 'VOID'
-                          ? '流局'
-                          : match.status
-                  }}
-                </span>
+                <StatusPill :status="match.status" kind="match" />
                 <span class="muted match-meta">
                   {{ match.memberCount }} 人 · 分差 {{ match.ratingGap ?? '—' }} · v{{ match.version }}
                 </span>
@@ -1293,19 +1278,30 @@ const statusPill = (status: string) => {
                     <th title="身份由谁证明：Steam / 数字 ID / 自报">验证</th>
                     <th>角色</th>
                     <th>状态</th>
-                    <th class="th-sort" @click="onRegSort('rankTier')">
+                    <SortableTh
+                      :active="regSort?.key === 'rankTier'"
+                      :direction="regSort?.direction ?? 'desc'"
+                      @sort="onRegSort('rankTier')"
+                    >
                       段位 <span class="sort-arrow">{{ regSortArrow('rankTier') }}</span>
-                    </th>
-                    <th class="num th-sort" @click="onRegSort('mmr')">
+                    </SortableTh>
+                    <SortableTh
+                      numeric
+                      :active="regSort?.key === 'mmr'"
+                      :direction="regSort?.direction ?? 'desc'"
+                      @sort="onRegSort('mmr')"
+                    >
                       MMR <span class="sort-arrow">{{ regSortArrow('mmr') }}</span>
-                    </th>
-                    <th
-                      class="num th-sort"
+                    </SortableTh>
+                    <SortableTh
+                      numeric
                       title="报名时冻结的评分快照——分队用的就是它，之后改评分不会回写"
-                      @click="onRegSort('effective')"
+                      :active="regSort?.key === 'effective'"
+                      :direction="regSort?.direction ?? 'desc'"
+                      @sort="onRegSort('effective')"
                     >
                       评分 <span class="sort-arrow">{{ regSortArrow('effective') }}</span>
-                    </th>
+                    </SortableTh>
                     <th class="num">出勤</th>
                     <th>位置</th>
                     <th></th>

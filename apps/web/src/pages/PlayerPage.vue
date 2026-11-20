@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 /**
  * 玩家主页：别人眼里的你。
  *
@@ -277,9 +278,7 @@ watch(playerId, async () => {
     <!-- 从任何卡片/评论进来都回上一页；只有站外直接打开时才回落到 backLink -->
     <PageBack back :to="backLink.to" :label="backLink.label" />
 
-    <div v-if="loading" class="empty" style="display: flex; justify-content: center; padding: 40px">
-      加载中…
-    </div>
+    <SkeletonRows v-if="loading" />
 
     <div v-else-if="error" class="empty">{{ error }}</div>
 

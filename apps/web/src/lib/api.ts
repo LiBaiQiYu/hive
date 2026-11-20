@@ -172,6 +172,14 @@ export const STATUS_LABEL: Record<string, string> = {
   CANCELLED: '已取消',
 };
 
+export const MATCH_STATUS_LABEL: Record<string, string> = {
+  DRAFT: '草稿',
+  PUBLISHED: '已发布',
+  IN_PROGRESS: '进行中',
+  COMPLETED: '已完成',
+  VOID: '流局',
+};
+
 export function formatDate(ms: number | null): string {
   if (!ms) return '待定';
   const date = new Date(ms);

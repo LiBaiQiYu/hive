@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { NButton, NDatePicker, NInput, NSelect, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
+import StatCard from '../components/StatCard.vue';
 import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
 import { SERVER_HELP, SERVER_OPTIONS, serverLabel, type ServerRegion } from '../lib/server';
 
@@ -98,58 +100,44 @@ async function create() {
   <div class="container">
     <div class="section-head">
       <h1 class="section-title">管理后台</h1>
-      <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
-        <NButton size="small" @click="router.push('/admin/members')">成员</NButton>
-        <NButton size="small" @click="router.push('/admin/jobs')">队列</NButton>
-        <NButton size="small" @click="router.push('/admin/audit')">审计</NButton>
-        <NButton size="small" @click="router.push('/admin/ratings')">评分</NButton>
-        <NButton size="small" @click="router.push('/admin/invites')">邀请码</NButton>
-        <NButton size="small" @click="router.push('/admin/settings')">设置</NButton>
-      </div>
+      <nav class="admin-nav">
+        <RouterLink to="/admin/members" class="btn btn-ghost">成员</RouterLink>
+        <RouterLink to="/admin/jobs" class="btn btn-ghost">队列</RouterLink>
+        <RouterLink to="/admin/audit" class="btn btn-ghost">审计</RouterLink>
+        <RouterLink to="/admin/ratings" class="btn btn-ghost">评分</RouterLink>
+        <RouterLink to="/admin/invites" class="btn btn-ghost">邀请码</RouterLink>
+        <RouterLink to="/admin/settings" class="btn btn-ghost">设置</RouterLink>
+      </nav>
     </div>
 
     <p v-if="error" class="alert">{{ error }}</p>
 
     <!-- 概览 -->
     <section v-if="dashboard" class="admin-stats">
-      <div class="admin-stat">
-        <div class="stat-label">成员</div>
-        <div class="admin-stat-value mono">{{ dashboard.members.active }}</div>
-        <div class="muted" style="font-size: 11px">
-          {{ dashboard.members.admins }} 名管理员 · 本月新增 {{ dashboard.members.newThisMonth }}
-        </div>
-      </div>
-      <div class="admin-stat">
-        <div class="stat-label">赛事</div>
-        <div class="admin-stat-value mono">{{ dashboard.events.total }}</div>
-        <div class="muted" style="font-size: 11px">
-          报名中 {{ dashboard.events.openNow }} · 进行中 {{ dashboard.events.ongoing }}
-        </div>
-      </div>
-      <div class="admin-stat">
-        <div class="stat-label">本月报名</div>
-        <div class="admin-stat-value mono">{{ dashboard.registrations.thisMonth }}</div>
-        <div class="muted" style="font-size: 11px">按报名时间统计</div>
-      </div>
-      <div class="admin-stat" :class="{ 'admin-stat-warn': dashboard.pendingPublish > 0 }">
-        <div class="stat-label">待发布</div>
-        <div class="admin-stat-value mono">{{ dashboard.pendingPublish }}</div>
-        <div class="muted" style="font-size: 11px">
-          {{ dashboard.pendingPublish > 0 ? '已封盘但还没发布阵容' : '没有积压' }}
-        </div>
-      </div>
-      <div
-        class="admin-stat"
-        :class="{ 'admin-stat-warn': dashboard.jobs.dead > 0 }"
-        style="cursor: pointer"
-        @click="router.push('/admin/jobs')"
+      <StatCard label="成员" :value="dashboard.members.active">
+        {{ dashboard.members.admins }} 名管理员 · 本月新增 {{ dashboard.members.newThisMonth }}
+      </StatCard>
+      <StatCard label="赛事" :value="dashboard.events.total">
+        报名中 {{ dashboard.events.openNow }} · 进行中 {{ dashboard.events.ongoing }}
+      </StatCard>
+      <StatCard label="本月报名" :value="dashboard.registrations.thisMonth">
+        按报名时间统计
+      </StatCard>
+      <StatCard
+        label="待发布"
+        :value="dashboard.pendingPublish"
+        :tone="dashboard.pendingPublish > 0 ? 'warn' : 'default'"
       >
-        <div class="stat-label">后台任务</div>
-        <div class="admin-stat-value mono">{{ dashboard.jobs.pending }}</div>
-        <div class="muted" style="font-size: 11px">
-          {{ dashboard.jobs.dead > 0 ? `${dashboard.jobs.dead} 个已判死` : '队列正常' }}
-        </div>
-      </div>
+        {{ dashboard.pendingPublish > 0 ? '已封盘但还没发布阵容' : '没有积压' }}
+      </StatCard>
+      <StatCard
+        label="后台任务"
+        :value="dashboard.jobs.pending"
+        :tone="dashboard.jobs.dead > 0 ? 'warn' : 'default'"
+        to="/admin/jobs"
+      >
+        {{ dashboard.jobs.dead > 0 ? `${dashboard.jobs.dead} 个已判死` : '队列正常' }}
+      </StatCard>
     </section>
 
     <section class="card">
@@ -239,7 +227,7 @@ async function create() {
         <NButton @click="refresh">刷新</NButton>
       </div>
 
-      <div v-if="loading" class="empty">加载中…</div>
+      <SkeletonRows v-if="loading" />
       <div v-else-if="events.length === 0" class="empty">还没有赛事，先在上面创建一个。</div>
 
       <div v-else class="card" style="padding: 8px 12px">

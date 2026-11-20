@@ -9,19 +9,21 @@
   --bg-2: #0e1116;
   --surface: #151a24;
   --surface-2: #1c2230;
-  --line: rgba(201, 162, 39, 0.22);
-  --line-strong: rgba(201, 162, 39, 0.55);
-  --gold: #d4ad33;
-  --gold-2: #f0d68d;
+  --line: color-mix(in oklab, var(--accent) 22%, transparent);
+  --line-strong: color-mix(in oklab, var(--accent) 55%, transparent);
+  --gold: var(--accent);
+  --gold-2: var(--accent-soft);
   --text: #efece3;
   --muted: #a9b0c0;
-  --brand: #7b6cf0;
-  --radiant: #63bb6c;
-  --dire: #c25454;
+  --brand: var(--info);
+  --radiant: var(--success);
+  --dire: var(--danger);
   --amber: #eab03c;
   --input-bg: #0d1017;
-  --input-line: rgba(201, 162, 39, 0.38);
   --radius: 10px;
+  --radius-overlay: 12px;
+  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.42);
+  --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.28);
   --display: 'Trajan Pro', 'Cinzel', Georgia, 'Songti SC', 'Noto Serif SC', serif;
   color-scheme: dark;
 }
@@ -32,39 +34,17 @@
   --bg-2: #eaeef7;
   --surface: #ffffff;
   --surface-2: #f6f8fd;
-  --line: rgba(27, 32, 51, 0.14);
-  --line-strong: rgba(108, 92, 231, 0.5);
-  --gold: #6c5ce7;
-  --gold-2: #5546c4;
+  --line: color-mix(in oklab, var(--accent) 16%, transparent);
+  --line-strong: color-mix(in oklab, var(--accent) 45%, transparent);
   --text: #1b2033;
   --muted: #5b6478;
-  --brand: #6c5ce7;
-  --radiant: #1f8f52;
-  --dire: #b3261e;
+  --radiant: var(--success);
+  --dire: var(--danger);
   --amber: #a8620a;
   --input-bg: #ffffff;
-  --input-line: rgba(27, 32, 51, 0.22);
+  --shadow-pop: 0 12px 32px rgba(27, 32, 51, 0.14);
+  --shadow-card: 0 8px 22px rgba(27, 32, 51, 0.08);
   color-scheme: light;
-}
-
-/* select 的原生下拉列表由操作系统绘制，不继承 .input 的背景色，
-   不显式指定就会出现"深色页面 + 白底白字"的不可读下拉框 */
-select.input {
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position:
-    calc(100% - 16px) calc(50% + 1px),
-    calc(100% - 11px) calc(50% + 1px);
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 32px;
-  cursor: pointer;
-}
-
-select.input option {
-  background-color: var(--surface);
-  color: var(--text);
 }
 
 input[type='date'],
@@ -278,7 +258,7 @@ a {
 
 /* 域名那行是副信息，别和开发者名字抢注意力 */
 .footer-link-sub {
-  font-size: 11.5px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--muted);
 }
@@ -319,6 +299,7 @@ a {
   font-size: 11px;
   letter-spacing: 0.04em;
   line-height: 18px;
+  min-height: 24px;
   cursor: pointer;
   transition:
     border-color 0.18s ease,
@@ -328,14 +309,14 @@ a {
 
 .footer-qq:hover,
 .footer-qq:focus-visible {
-  border-color: rgba(201, 162, 39, 0.45);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
   color: var(--gold-2);
-  background-color: rgba(201, 162, 39, 0.06);
+  background-color: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 .footer-qq.is-open,
 .footer-qq.is-copied {
-  border-color: rgba(201, 162, 39, 0.55);
+  border-color: color-mix(in oklab, var(--accent) 55%, transparent);
   color: var(--gold-2);
 }
 
@@ -371,9 +352,9 @@ a {
   width: 230px;
   padding: 8px 8px 6px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-overlay);
   background: var(--surface);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.38);
+  box-shadow: var(--shadow-pop);
   opacity: 0;
   visibility: hidden;
   transform: translateX(-50%) translateY(6px);
@@ -575,28 +556,27 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 9px 20px;
-  border-radius: 6px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
   border: 1px solid var(--line-strong);
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.16), rgba(201, 162, 39, 0.04));
+  background: transparent;
   color: var(--gold-2);
-  /* 原生 <button> 不继承页面字体，且 line-height 与 <a> 不同；
-     这两行让 <a class="btn"> 与 <button class="btn"> 量出来完全一样高 */
   font-family: inherit;
   font-size: 13px;
-  line-height: 1.4;
-  letter-spacing: 0.1em;
+  line-height: 1;
+  letter-spacing: 0.02em;
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, filter 0.1s ease;
 }
 
 .btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.26), rgba(201, 162, 39, 0.08));
-  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.25), 0 6px 18px rgba(0, 0, 0, 0.4);
+  background: rgba(201, 162, 39, 0.1);
+  border-color: rgba(201, 162, 39, 0.75);
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  filter: brightness(0.94);
 }
 
 .btn:disabled {
@@ -605,14 +585,14 @@ a {
 }
 
 .btn-primary {
-  border-color: rgba(108, 92, 231, 0.6);
-  background: linear-gradient(180deg, #6c5ce7, #5546c4);
-  color: #f4f2ff;
+  border-color: color-mix(in oklab, var(--accent) 72%, #000);
+  background: var(--accent);
+  color: #17130a;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #7d6ef0, #5b4bd0);
-  box-shadow: 0 8px 22px rgba(108, 92, 231, 0.35);
+.btn.btn-primary:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--accent) 88%, #fff);
+  color: #17130a;
 }
 
 .btn-ghost {
@@ -650,8 +630,8 @@ a {
 }
 
 .pill-published {
-  color: var(--brand);
-  background: rgba(108, 92, 231, 0.12);
+  color: color-mix(in oklab, var(--info) 65%, #fff);
+  background: color-mix(in oklab, var(--info) 14%, transparent);
 }
 
 .pill-idle {
@@ -668,6 +648,7 @@ a {
 }
 
 .stat {
+  display: block;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px 16px;
@@ -688,6 +669,31 @@ a {
   font-variant-numeric: tabular-nums;
 }
 
+.stat-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.stat-link {
+  cursor: pointer;
+  transition: border-color 0.16s ease;
+}
+
+.stat-link:hover {
+  border-color: var(--line-strong);
+}
+
+.stat-link:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+.stat-warn {
+  border-color: color-mix(in oklab, var(--amber) 55%, transparent);
+}
+
 .progress {
   height: 8px;
   border-radius: 999px;
@@ -697,8 +703,12 @@ a {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, var(--radiant), var(--gold));
+  background: var(--accent);
   transition: width 0.3s;
+}
+
+.progress-bar.is-full {
+  background: var(--amber);
 }
 
 .muted {
@@ -715,6 +725,78 @@ a {
   color: var(--muted);
   border: 1px dashed var(--line);
   border-radius: var(--radius);
+}
+
+.skeleton {
+  display: grid;
+  gap: 12px;
+}
+
+.skeleton--cards {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.skeleton-item {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.skeleton-bar {
+  display: block;
+  height: 10px;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--fg) 9%, transparent);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-bar--title {
+  width: 55%;
+  height: 14px;
+}
+
+.skeleton-bar--short {
+  width: 36%;
+}
+
+.empty-action {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gold-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.empty-action:hover {
+  text-decoration: underline;
+}
+
+.empty-action:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar {
+    animation: none;
+    opacity: 0.55;
+  }
 }
 
 /* ---------------------------------------------------------------- 表单 */
@@ -768,24 +850,6 @@ a {
   color: var(--muted);
 }
 
-.input {
-  width: 100%;
-  padding: 10px 12px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  /* 只改 background-color：用 background 简写会把 select 的箭头（background-image）连同清掉 */
-  background-color: var(--input-bg);
-  color: var(--text);
-  font: inherit;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.input:focus {
-  border-color: var(--line-strong);
-  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.1);
-}
-
 .alert {
   padding: 10px 14px;
   border-radius: 6px;
@@ -797,6 +861,34 @@ a {
 }
 
 /* ---------------------------------------------------------------- 赛事 */
+
+.event-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.event-filters .n-radio-button {
+  border: 1px solid var(--n-button-border-color);
+  border-radius: 6px !important;
+}
+
+/* 同上：独立胶囊，不要 Naive 连体控件的分隔竖线与状态边框 */
+.event-filters .n-radio-group__splitor,
+.event-filters .n-radio-button__state-border {
+  display: none;
+}
+
+.event-filters .n-radio-button:hover,
+.event-filters .n-radio-button:focus-within,
+.event-filters .n-radio-button--checked {
+  border-color: var(--n-button-border-color-active);
+}
+
+.event-filters .n-radio-button:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+}
 
 .event-card {
   display: flex;
@@ -1091,7 +1183,7 @@ a {
   margin-left: 6px;
   padding: 1px 6px;
   border-radius: 999px;
-  border: 1px solid rgba(201, 162, 39, 0.45);
+  border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
   color: var(--gold-2);
   font-size: 10px;
   letter-spacing: 0.08em;
@@ -1144,7 +1236,7 @@ a {
 /* 弃赛是"负面事实"，用金色把它和普通候补区分开；候补用信息蓝；
    临场换下是中性的调度，退赛已经离场，都用最轻的灰。 */
 .bench-tag[data-reason='ABSENT'] {
-  border-color: rgba(201, 162, 39, 0.5);
+  border-color: color-mix(in oklab, var(--accent) 50%, transparent);
   color: var(--gold-2);
 }
 
@@ -1274,5 +1366,55 @@ a {
 
   .user-name {
     display: none;
+  }
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 500;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .table {
+    font-size: 12px;
+  }
+
+  .table th {
+    padding: 7px 6px;
+    letter-spacing: 0.08em;
+  }
+
+  .table td {
+    padding: 8px 6px;
   }
 }

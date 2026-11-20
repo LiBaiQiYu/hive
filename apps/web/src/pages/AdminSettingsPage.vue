@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 /**
  * 后台 · 系统设置。
  *
@@ -99,7 +100,7 @@ function revert() {
         />
       </h2>
 
-      <div v-if="loading" class="empty">加载中…</div>
+      <SkeletonRows v-if="loading" />
 
       <template v-else>
         <div class="setting-row">

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { NButton, useMessage } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
+import StatCard from '../components/StatCard.vue';
 import { ApiError, api, formatDate } from '../lib/api';
 
 interface JobRow {
@@ -90,29 +92,20 @@ const statusTag = (status: string) => {
 
     <p v-if="error" class="alert">{{ error }}</p>
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <SkeletonRows v-if="loading" />
 
     <template v-else>
       <section class="admin-stats">
-        <div class="admin-stat">
-          <div class="stat-label">待执行</div>
-          <div class="admin-stat-value mono">{{ summary?.PENDING ?? 0 }}</div>
-        </div>
-        <div class="admin-stat">
-          <div class="stat-label">执行中</div>
-          <div class="admin-stat-value mono">{{ summary?.RUNNING ?? 0 }}</div>
-        </div>
-        <div class="admin-stat">
-          <div class="stat-label">已完成</div>
-          <div class="admin-stat-value mono">{{ summary?.DONE ?? 0 }}</div>
-        </div>
-        <div class="admin-stat" :class="{ 'admin-stat-warn': alertCount > 0 }">
-          <div class="stat-label">异常</div>
-          <div class="admin-stat-value mono">{{ alertCount }}</div>
-          <div class="muted" style="font-size: 11px">
-            失败 {{ summary?.FAILED ?? 0 }} · 判死 {{ summary?.DEAD ?? 0 }}
-          </div>
-        </div>
+        <StatCard label="待执行" :value="summary?.PENDING ?? 0" />
+        <StatCard label="执行中" :value="summary?.RUNNING ?? 0" />
+        <StatCard label="已完成" :value="summary?.DONE ?? 0" />
+        <StatCard
+          label="异常"
+          :value="alertCount"
+          :tone="alertCount > 0 ? 'warn' : 'default'"
+        >
+          失败 {{ summary?.FAILED ?? 0 }} · 判死 {{ summary?.DEAD ?? 0 }}
+        </StatCard>
       </section>
 
       <section v-if="byKind.length > 0" class="section">

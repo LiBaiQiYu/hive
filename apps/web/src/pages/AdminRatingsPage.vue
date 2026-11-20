@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SkeletonRows from '../components/SkeletonRows.vue';
 import { computed, onMounted, ref } from 'vue';
 import { NButton, NInput, NInputNumber, NRadioButton, NRadioGroup, NSelect, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
@@ -340,7 +341,7 @@ function deltaClass(n: number | null): string {
       </li>
     </ul>
 
-    <div v-if="loading" class="empty">加载中…</div>
+    <SkeletonRows v-if="loading" />
     <div v-else-if="players.length === 0" class="empty">还没有玩家资料。</div>
 
     <section v-else class="card ratings-card">
