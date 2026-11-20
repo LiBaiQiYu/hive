@@ -8,5 +8,5 @@
   var cs = document.querySelector('meta[name="color-scheme"]');
   var tc = document.querySelector('meta[name="theme-color"]');
   if (cs) cs.setAttribute('content', theme);
-  if (tc) tc.setAttribute('content', theme === 'light' ? '#F4F6FB' : '#0B0D11');
+  if (tc) tc.setAttribute('content', theme === 'light' ? '#f4f6fb' : '#0a0c10');
 })();

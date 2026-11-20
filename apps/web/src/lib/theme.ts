@@ -16,7 +16,7 @@ function syncMeta(next: Theme): void {
   const cs = document.querySelector('meta[name="color-scheme"]');
   const tc = document.querySelector('meta[name="theme-color"]');
   if (cs) cs.setAttribute('content', next);
-  if (tc) tc.setAttribute('content', next === 'light' ? '#F4F6FB' : '#0B0D11');
+  if (tc) tc.setAttribute('content', next === 'light' ? '#f4f6fb' : '#0a0c10');
 }
 
 /** 初次加载：显式选择 > 系统偏好 > 深色 */

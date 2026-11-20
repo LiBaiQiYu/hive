@@ -3,49 +3,8 @@
    参考 DOTA2 的界面气质：近黑底、赤金细描边、阵营双色、衬线体标题。
    ========================================================================== */
 
-:root {
-  /* 深色（默认）：提高对比度，正文与次要文字都往上提了一档 */
-  --bg: #0a0c10;
-  --bg-2: #0e1116;
-  --surface: #151a24;
-  --surface-2: #1c2230;
-  --line: color-mix(in oklab, var(--accent) 22%, transparent);
-  --line-strong: color-mix(in oklab, var(--accent) 55%, transparent);
-  --gold: var(--accent);
-  --gold-2: var(--accent-soft);
-  --text: #efece3;
-  --muted: #a9b0c0;
-  --brand: var(--info);
-  --radiant: var(--success);
-  --dire: var(--danger);
-  --amber: #eab03c;
-  --input-bg: #0d1017;
-  --radius: 10px;
-  --radius-overlay: 12px;
-  --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.42);
-  --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.28);
-  --display: 'Trajan Pro', 'Cinzel', Georgia, 'Songti SC', 'Noto Serif SC', serif;
-  color-scheme: dark;
-}
-
-/* 浅色：沿用概念图的配色（浅灰底 + 白卡 + 紫色主色 + 深藏青标题） */
-:root[data-theme='light'] {
-  --bg: #f4f6fb;
-  --bg-2: #eaeef7;
-  --surface: #ffffff;
-  --surface-2: #f6f8fd;
-  --line: color-mix(in oklab, var(--accent) 16%, transparent);
-  --line-strong: color-mix(in oklab, var(--accent) 45%, transparent);
-  --text: #1b2033;
-  --muted: #5b6478;
-  --radiant: var(--success);
-  --dire: var(--danger);
-  --amber: #a8620a;
-  --input-bg: #ffffff;
-  --shadow-pop: 0 12px 32px rgba(27, 32, 51, 0.14);
-  --shadow-card: 0 8px 22px rgba(27, 32, 51, 0.08);
-  color-scheme: light;
-}
+/* 颜色令牌全部在 tokens.css；这里只做主题无关的排版基线。
+   新增颜色请改 tokens.css，不要在这个文件里写死色值。 */
 
 input[type='date'],
 input[type='datetime-local'],
@@ -76,12 +35,13 @@ body {
 body {
   min-height: 100vh;
   color: var(--text);
-  font: 14px/1.7 -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font: 14px/1.7 var(--font-body);
   background-color: var(--bg);
-  /* 两层径向暗角 + 一层极淡的斜向纹理，制造"石材表面"的质感 */
+  /* 两层径向暗角 + 一层极淡的斜向纹理，制造"石材表面"的质感。
+     暗角只用中性色与赤金微光：紫色是 --info（信息态），不做背景装饰。 */
   background-image:
-    radial-gradient(1100px 560px at 50% -10%, rgba(108, 92, 231, 0.14), transparent 70%),
-    radial-gradient(900px 500px at 90% 0%, rgba(163, 59, 59, 0.1), transparent 65%),
+    radial-gradient(1100px 560px at 50% -10%, color-mix(in oklab, var(--accent) 7%, transparent), transparent 70%),
+    radial-gradient(900px 500px at 90% 0%, color-mix(in oklab, var(--danger) 8%, transparent), transparent 65%),
     repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 7px);
   background-attachment: fixed;
 }
@@ -109,7 +69,7 @@ a {
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
-  background: rgba(10, 12, 16, 0.86);
+  background: var(--veil);
   backdrop-filter: blur(10px);
 }
 
@@ -148,7 +108,7 @@ a {
 
 .nav-link {
   padding: 6px 14px;
-  border-radius: 6px;
+  border-radius: var(--radius-chip);
   color: var(--muted);
   font-size: 13px;
   letter-spacing: 0.06em;
@@ -157,12 +117,12 @@ a {
 
 .nav-link:hover {
   color: var(--gold-2);
-  background: rgba(201, 162, 39, 0.08);
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
 }
 
 .nav-link.active {
   color: var(--gold-2);
-  background: rgba(201, 162, 39, 0.12);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
 .nav-link.disabled {
@@ -292,7 +252,7 @@ a {
   margin-left: 2px;
   padding: 2px 9px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: none;
   color: var(--muted);
   font: inherit;
@@ -321,7 +281,7 @@ a {
 }
 
 .footer-qq.is-copied {
-  border-color: rgba(87, 160, 94, 0.6);
+  border-color: color-mix(in oklab, var(--success) 60%, transparent);
   color: var(--radiant);
 }
 
@@ -385,7 +345,7 @@ a {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
 }
 
 .footer-qq-pop-hint {
@@ -437,6 +397,8 @@ a {
 
 /* ---------------------------------------------------------------- 英雄区 */
 
+/* 首页用的是 .hero.hero--warroom（styles-hero.css），
+   这一份是通用英雄区底：只在没有原画时兜底，装饰光同样只用赤金与危险色。 */
 .hero {
   position: relative;
   overflow: hidden;
@@ -444,9 +406,9 @@ a {
   border-radius: var(--radius);
   padding: 54px 48px;
   background:
-    radial-gradient(700px 320px at 12% 20%, rgba(108, 92, 231, 0.22), transparent 68%),
-    radial-gradient(600px 300px at 88% 90%, rgba(163, 59, 59, 0.18), transparent 70%),
-    linear-gradient(160deg, #151a24 0%, #0d1015 100%);
+    radial-gradient(700px 320px at 12% 20%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 68%),
+    radial-gradient(600px 300px at 88% 90%, color-mix(in oklab, var(--danger) 12%, transparent), transparent 70%),
+    linear-gradient(160deg, var(--surface) 0%, var(--bg-2) 100%);
 }
 
 .hero::after {
@@ -457,7 +419,7 @@ a {
   width: 38%;
   background: repeating-linear-gradient(
     -55deg,
-    rgba(201, 162, 39, 0.07) 0 2px,
+    color-mix(in oklab, var(--accent) 7%, transparent) 0 2px,
     transparent 2px 16px
   );
   pointer-events: none;
@@ -476,7 +438,7 @@ a {
   line-height: 1.05;
   margin: 14px 0 6px;
   letter-spacing: 0.12em;
-  color: #f2eee2;
+  color: var(--text-strong);
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
 }
 
@@ -507,7 +469,7 @@ a {
   position: relative;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+  background: linear-gradient(180deg, var(--card-sheen), transparent 40%),
     var(--surface);
   padding: 20px 22px;
 }
@@ -546,7 +508,7 @@ a {
   font-size: 18px;
   letter-spacing: 0.12em;
   margin: 0;
-  color: #efe9d8;
+  color: var(--text-strong);
 }
 
 /* ---------------------------------------------------------------- 控件 */
@@ -558,7 +520,7 @@ a {
   gap: 8px;
   height: 36px;
   padding: 0 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-strong);
   background: transparent;
   color: var(--gold-2);
@@ -571,8 +533,8 @@ a {
 }
 
 .btn:hover:not(:disabled) {
-  background: rgba(201, 162, 39, 0.1);
-  border-color: rgba(201, 162, 39, 0.75);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 75%, transparent);
 }
 
 .btn:active:not(:disabled) {
@@ -587,12 +549,12 @@ a {
 .btn-primary {
   border-color: color-mix(in oklab, var(--accent) 72%, #000);
   background: var(--accent);
-  color: #17130a;
+  color: var(--on-accent);
 }
 
 .btn.btn-primary:hover:not(:disabled) {
   background: color-mix(in oklab, var(--accent) 88%, #fff);
-  color: #17130a;
+  color: var(--on-accent);
 }
 
 .btn-ghost {
@@ -612,7 +574,7 @@ a {
   align-items: center;
   gap: 6px;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid currentColor;
   font-size: 11px;
   letter-spacing: 0.12em;
@@ -621,12 +583,12 @@ a {
 
 .pill-open {
   color: var(--radiant);
-  background: rgba(87, 160, 94, 0.1);
+  background: color-mix(in oklab, var(--success) 12%, transparent);
 }
 
 .pill-closed {
   color: var(--amber);
-  background: rgba(224, 160, 40, 0.1);
+  background: color-mix(in oklab, var(--amber) 12%, transparent);
 }
 
 .pill-published {
@@ -636,7 +598,7 @@ a {
 
 .pill-idle {
   color: var(--muted);
-  background: rgba(138, 143, 156, 0.08);
+  background: color-mix(in oklab, var(--muted) 10%, transparent);
 }
 
 /* ---------------------------------------------------------------- 数据 */
@@ -650,9 +612,9 @@ a {
 .stat {
   display: block;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--wash);
 }
 
 .stat-label {
@@ -696,8 +658,8 @@ a {
 
 .progress {
   height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-pill);
+  background: var(--wash-strong);
   overflow: hidden;
 }
 
@@ -748,8 +710,10 @@ a {
 .skeleton-bar {
   display: block;
   height: 10px;
-  border-radius: 6px;
-  background: color-mix(in oklab, var(--fg) 9%, transparent);
+  border-radius: var(--radius-chip);
+  /* 骨架条是"占位"而不是"内容"：用中性叠加色，别引用不存在的 --fg
+     （var() 解析失败会让整条声明失效，背景变全透明，骨架就看不见了） */
+  background: var(--wash-strong);
   animation: skeleton-pulse 1.5s ease-in-out infinite;
 }
 
@@ -852,26 +816,33 @@ a {
 
 .alert {
   padding: 10px 14px;
-  border-radius: 6px;
-  border: 1px solid rgba(163, 59, 59, 0.5);
-  background: rgba(163, 59, 59, 0.12);
-  color: #e6a6a6;
+  border-radius: var(--radius-control);
+  border: 1px solid color-mix(in oklab, var(--danger) 50%, transparent);
+  background: color-mix(in oklab, var(--danger) 12%, transparent);
+  color: var(--danger-text);
   font-size: 13px;
   margin-bottom: 14px;
 }
 
 /* ---------------------------------------------------------------- 赛事 */
 
-.event-filters {
+/* Naive 的 RadioGroup 自带 `height: var(--n-height)` 与 `white-space: nowrap`
+   （选择器 `.n-radio-group.n-radio-group--button-group`，权重 0,2,0）。
+   窄屏换成两行时容器仍然只算一行高，第二行会溢出到下面内容的头顶上
+   （实测 390px 下 clientHeight 30 / scrollHeight 69）。用同等权重把高度交回内容。 */
+.n-radio-group.event-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  height: auto;
+  line-height: normal;
+  white-space: normal;
   margin-bottom: 20px;
 }
 
 .event-filters .n-radio-button {
   border: 1px solid var(--n-button-border-color);
-  border-radius: 6px !important;
+  border-radius: var(--radius-chip) !important;
 }
 
 /* 同上：独立胶囊，不要 Naive 连体控件的分隔竖线与状态边框 */
@@ -928,7 +899,7 @@ a {
   font-family: var(--display);
   font-size: 17px;
   letter-spacing: 0.06em;
-  color: #f0ebdc;
+  color: var(--text-strong);
   margin: 0;
 }
 
@@ -949,7 +920,7 @@ a {
   gap: 5px;
   padding: 1px 9px 1px 7px;
   border: 1px solid var(--line-strong);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -966,7 +937,7 @@ a {
 
 .server-tag.is-cn {
   color: var(--amber);
-  border-color: rgba(224, 160, 40, 0.45);
+  border-color: color-mix(in oklab, var(--amber) 45%, transparent);
 }
 
 .server-tag.is-cn::before {
@@ -989,7 +960,7 @@ a {
   /* 用底色当分隔线，省掉两条 border */
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 
@@ -1025,7 +996,11 @@ a {
 
 /* 当前最该看的那一格（报名期=截止，封盘后=开赛） */
 .event-when-cell.is-key {
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.12), rgba(201, 162, 39, 0.02));
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--accent) 12%, transparent),
+    color-mix(in oklab, var(--accent) 2%, transparent)
+  );
 }
 
 .event-when-cell.is-key .event-when-label,
@@ -1043,7 +1018,7 @@ a {
 }
 
 :root[data-theme='light'] .event-when-cell.is-key {
-  background: rgba(179, 38, 30, 0.06);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 .event-foot {
@@ -1131,13 +1106,23 @@ a {
 }
 
 .team-radiant {
-  border-color: rgba(87, 160, 94, 0.4);
-  background: linear-gradient(180deg, rgba(87, 160, 94, 0.1), transparent 60%), var(--surface);
+  border-color: color-mix(in oklab, var(--success) 40%, transparent);
+  background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--success) 10%, transparent),
+      transparent 60%
+    ),
+    var(--surface);
 }
 
 .team-dire {
-  border-color: rgba(163, 59, 59, 0.4);
-  background: linear-gradient(180deg, rgba(163, 59, 59, 0.1), transparent 60%), var(--surface);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+  background: linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--danger) 10%, transparent),
+      transparent 60%
+    ),
+    var(--surface);
 }
 
 .team-name {
@@ -1155,7 +1140,7 @@ a {
   align-items: center;
   gap: 10px;
   padding: 7px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  border-bottom: 1px dashed var(--line-dashed);
 }
 
 .slot:last-child {
@@ -1182,7 +1167,7 @@ a {
 .slot-guest-tag {
   margin-left: 6px;
   padding: 1px 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid color-mix(in oklab, var(--accent) 45%, transparent);
   color: var(--gold-2);
   font-size: 10px;
@@ -1214,7 +1199,7 @@ a {
   align-items: baseline;
   gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+  border-bottom: 1px dashed var(--line-dashed);
 }
 
 .bench-row:last-of-type {
@@ -1224,7 +1209,7 @@ a {
 .bench-tag {
   justify-self: start;
   padding: 1px 7px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--line);
   color: var(--muted);
   font-size: 11px;
@@ -1241,13 +1226,13 @@ a {
 }
 
 .bench-tag[data-reason='WAITLIST'] {
-  border-color: rgba(120, 180, 255, 0.4);
-  color: #8aa4d6;
+  border-color: color-mix(in oklab, var(--info) 45%, transparent);
+  color: color-mix(in oklab, var(--info) 70%, #fff);
 }
 
 .bench-tag[data-reason='NOT_SELECTED'] {
-  border-color: rgba(140, 160, 200, 0.45);
-  color: #9aa8c4;
+  border-color: color-mix(in oklab, var(--muted) 45%, transparent);
+  color: var(--muted);
 }
 
 .bench-name {
@@ -1388,7 +1373,7 @@ a {
 
 .table td {
   padding: 9px 10px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--line-faint);
 }
 
 .table tr:last-child td {
@@ -1396,7 +1381,7 @@ a {
 }
 
 .table tr:hover td {
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--wash);
 }
 
 .table .num {

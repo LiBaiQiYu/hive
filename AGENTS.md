@@ -38,6 +38,10 @@ DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内�
               开赛提醒邮件：赛事页手动发，`TEST` 只发管理员自己（验通道）、`ALL` 遍历确认名单
 前端    Vue 3 + vue-router + **Naive UI**（按钮/下拉/日期/输入/确认框/Toast），深/浅色双主题，玩家卡片（3D 倾斜）
         主题映射在 `apps/web/src/lib/ui.ts`（Naive 色板 → HIVE 的 --gold/--surface），后台路由按需加载
+        **颜色只有一个真源 `apps/web/src/tokens.css`**（`:root` + `[data-theme='light']`）：其余样式表
+        只准 `var()` 引用，要透明度用 `color-mix(in oklab, var(--token) N%, transparent)`；圆角同理走
+        `--radius-sm/chip/control/overlay/pill`。规范与历史遗留见 `docs/UI-AUDIT-2026-11.md`。
+        列表/表格/状态一律复用 `StatusPill` / `SortableTh` / `SkeletonRows` / `StatCard`，别在页面里手写
         `NConfigProvider` 挂了 `zhCN` + `dateZhCN`；日期选择器要「只到分钟」就传 `time-picker-format="HH:mm"`
         —— Naive 的时/分/秒列是按 `format` 推导的，不需要（也没有）`showSecond` 这类开关
         按钮统一用 `NButton`：默认态=描边、`type="primary"`=主行动、表格行内小动作才用 `quaternary`

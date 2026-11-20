@@ -15,139 +15,139 @@
 
 :root[data-theme='light'] body {
   background-image:
-    radial-gradient(1100px 560px at 50% -10%, rgba(179, 38, 30, 0.09), transparent 72%),
-    radial-gradient(900px 500px at 92% 0%, rgba(27, 32, 51, 0.05), transparent 65%);
+    radial-gradient(1100px 560px at 50% -10%, color-mix(in oklab, var(--accent) 9%, transparent), transparent 72%),
+    radial-gradient(900px 500px at 92% 0%, color-mix(in oklab, var(--text) 5%, transparent), transparent 65%);
 }
 
 :root[data-theme='light'] .nav {
-  background: rgba(255, 255, 255, 0.9);
-  border-bottom-color: rgba(27, 32, 51, 0.1);
-  box-shadow: 0 1px 12px rgba(27, 32, 51, 0.05);
+  background: var(--veil);
+  border-bottom-color: color-mix(in oklab, var(--text) 10%, transparent);
+  box-shadow: 0 1px 12px color-mix(in oklab, var(--text) 5%, transparent);
 }
 
 :root[data-theme='light'] .nav-link {
-  color: #4a5265;
+  color: var(--muted);
 }
 
 :root[data-theme='light'] .nav-link:hover {
-  color: #8e1b15;
-  background: rgba(179, 38, 30, 0.06);
+  color: var(--accent-soft);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 :root[data-theme='light'] .nav-link.active {
-  color: #8e1b15;
-  background: rgba(179, 38, 30, 0.1);
+  color: var(--accent-soft);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 :root[data-theme='light'] .hero {
   background:
-    radial-gradient(700px 320px at 12% 20%, rgba(179, 38, 30, 0.14), transparent 68%),
-    radial-gradient(600px 300px at 88% 90%, rgba(27, 32, 51, 0.08), transparent 70%),
-    linear-gradient(160deg, #ffffff 0%, #f1eee9 100%);
-  border-color: rgba(27, 32, 51, 0.1);
+    radial-gradient(700px 320px at 12% 20%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 68%),
+    radial-gradient(600px 300px at 88% 90%, color-mix(in oklab, var(--text) 8%, transparent), transparent 70%),
+    linear-gradient(160deg, var(--surface) 0%, var(--bg-2) 100%);
+  border-color: color-mix(in oklab, var(--text) 10%, transparent);
 }
 
 :root[data-theme='light'] .hero::after {
   background: repeating-linear-gradient(
     -55deg,
-    rgba(179, 38, 30, 0.05) 0 2px,
+    color-mix(in oklab, var(--accent) 5%, transparent) 0 2px,
     transparent 2px 16px
   );
 }
 
 :root[data-theme='light'] .hero-title {
-  color: #1b2033;
+  color: var(--text);
   text-shadow: none;
 }
 
 :root[data-theme='light'] .card {
-  background: #ffffff;
-  box-shadow: 0 2px 12px rgba(27, 32, 51, 0.06);
+  background: var(--surface);
+  box-shadow: 0 2px 12px color-mix(in oklab, var(--text) 6%, transparent);
 }
 
 :root[data-theme='light'] .stat,
 :root[data-theme='light'] .team,
 :root[data-theme='light'] .pos-row,
 :root[data-theme='light'] .empty {
-  background: #ffffff;
+  background: var(--surface);
 }
 
 /* 次级按钮：白底红字，悬停只加深文字与极淡底色 */
 :root[data-theme='light'] .btn {
-  background: #ffffff;
-  border-color: rgba(179, 38, 30, 0.32);
-  color: #8e1b15;
+  background: var(--surface);
+  border-color: color-mix(in oklab, var(--accent) 32%, transparent);
+  color: var(--accent-soft);
 }
 
 :root[data-theme='light'] .btn:hover:not(:disabled) {
-  background: rgba(179, 38, 30, 0.06);
-  border-color: rgba(179, 38, 30, 0.5);
-  color: #7a1710;
-  box-shadow: 0 2px 8px rgba(179, 38, 30, 0.1);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 50%, transparent);
+  color: color-mix(in oklab, var(--accent-soft) 82%, #000);
+  box-shadow: 0 2px 8px color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 :root[data-theme='light'] .btn-ghost {
   background: transparent;
-  border-color: rgba(27, 32, 51, 0.18);
-  color: #4a5265;
+  border-color: color-mix(in oklab, var(--text) 18%, transparent);
+  color: var(--muted);
 }
 
 :root[data-theme='light'] .btn-ghost:hover:not(:disabled) {
-  background: rgba(179, 38, 30, 0.06);
-  border-color: rgba(179, 38, 30, 0.32);
-  color: #8e1b15;
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 32%, transparent);
+  color: var(--accent-soft);
 }
 
 /* 主按钮：同一色阶里微微加深，不做跳色 */
 :root[data-theme='light'] .btn-primary {
-  color: #ffffff;
-  border-color: #8e1b15;
-  background: linear-gradient(180deg, #be2f26, #a8261e);
+  color: var(--on-accent);
+  border-color: var(--accent-soft);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 88%, #fff), var(--accent));
 }
 
 :root[data-theme='light'] .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ac2820, #8e1b15);
-  box-shadow: 0 4px 12px rgba(179, 38, 30, 0.22);
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 90%, #000), var(--accent-soft));
+  box-shadow: 0 4px 12px color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
 :root[data-theme='light'] .progress {
-  background: rgba(27, 32, 51, 0.08);
+  background: color-mix(in oklab, var(--text) 8%, transparent);
 }
 
 :root[data-theme='light'] .team-radiant {
-  background: linear-gradient(180deg, rgba(31, 143, 82, 0.08), transparent 60%), #ffffff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--success) 8%, transparent), transparent 60%), var(--surface);
 }
 
 :root[data-theme='light'] .team-dire {
-  background: linear-gradient(180deg, rgba(179, 38, 30, 0.07), transparent 60%), #ffffff;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 7%, transparent), transparent 60%), var(--surface);
 }
 
 :root[data-theme='light'] .table tr:hover td {
-  background: rgba(179, 38, 30, 0.04);
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
 }
 
 :root[data-theme='light'] .slot,
 :root[data-theme='light'] .id-row {
-  border-bottom-color: rgba(27, 32, 51, 0.08);
+  border-bottom-color: color-mix(in oklab, var(--text) 8%, transparent);
 }
 
 :root[data-theme='light'] .footer {
-  border-top-color: rgba(27, 32, 51, 0.1);
+  border-top-color: color-mix(in oklab, var(--text) 10%, transparent);
 }
 
 :root[data-theme='light'] .tag-other {
-  color: #4a5265;
+  color: var(--muted);
 }
 
 /* 状态色不受主色影响：绿=成功、琥珀=待办、灰=完结 */
 :root[data-theme='light'] .pill-open {
-  color: #1f8f52;
-  background: rgba(31, 143, 82, 0.1);
+  color: var(--success);
+  background: color-mix(in oklab, var(--success) 10%, transparent);
 }
 
 :root[data-theme='light'] .pill-closed {
-  color: #a8620a;
-  background: rgba(168, 98, 10, 0.1);
+  color: var(--amber);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
 }
 
 :root[data-theme='light'] .pill-published {
@@ -156,8 +156,8 @@
 }
 
 :root[data-theme='light'] .pill-idle {
-  color: #4a5265;
-  background: rgba(74, 82, 101, 0.08);
+  color: var(--muted);
+  background: color-mix(in oklab, var(--muted) 8%, transparent);
 }
 
 /* 深色下也把"不可用"的导航项提亮一档，原来的 0.35 几乎看不见 */
@@ -178,9 +178,9 @@
 
 /* ② 错误提示：深色用的是浅粉字 (#e6a6a6)，放到浅底上几乎看不见 */
 :root[data-theme='light'] .alert {
-  border-color: rgba(179, 38, 30, 0.32);
-  background: #fdecea;
-  color: #8e1b15;
+  border-color: color-mix(in oklab, var(--accent) 32%, transparent);
+  background: color-mix(in oklab, var(--danger) 8%, var(--surface));
+  color: var(--accent-soft);
 }
 
 /* ③ 用白色 alpha 画的分隔线：在浅底上等于隐形（表格、场次抽屉、阵容槽位） */
@@ -189,11 +189,11 @@
 :root[data-theme='light'] .slot,
 :root[data-theme='light'] .id-row,
 :root[data-theme='light'] .pos-row {
-  border-color: rgba(27, 32, 51, 0.09);
+  border-color: color-mix(in oklab, var(--text) 9%, transparent);
 }
 
 :root[data-theme='light'] .table th {
-  border-bottom-color: rgba(27, 32, 51, 0.16);
+  border-bottom-color: color-mix(in oklab, var(--text) 16%, transparent);
 }
 
 /* ④ 评分数字的金色辉光在浅底上发脏，直接去掉 */
@@ -208,20 +208,20 @@
 
 /* 附加：空状态、表头、隔行底色在浅色下的可读性 */
 :root[data-theme='light'] .empty {
-  border-color: rgba(27, 32, 51, 0.16);
-  background: rgba(255, 255, 255, 0.7);
-  color: #4a5265;
+  border-color: color-mix(in oklab, var(--text) 16%, transparent);
+  background: color-mix(in oklab, var(--surface) 70%, transparent);
+  color: var(--muted);
 }
 
 
 :root[data-theme='light'] .table th {
-  color: #4a5265;
+  color: var(--muted);
 }
 
 :root[data-theme='light'] .hero-kicker,
 :root[data-theme='light'] .stat-label,
 :root[data-theme='light'] .field-label {
-  color: #5b6478;
+  color: var(--muted);
 }
 
 /* 输入、下拉、多行文本统一文字色，避免浏览器继承成灰 */
@@ -237,7 +237,7 @@
 :root[data-theme='light'] .stat,
 :root[data-theme='light'] .match-item,
 :root[data-theme='light'] .team {
-  border-color: rgba(27, 32, 51, 0.1);
+  border-color: color-mix(in oklab, var(--text) 10%, transparent);
 }
 
 /* 展开的场次卡：浅色下用淡投影，深色那套 28% 黑会像一块脏印 */
@@ -252,12 +252,12 @@
 :root[data-theme='light'] .btn-primary,
 :root[data-theme='light'] .btn-primary:hover:not(:disabled),
 :root[data-theme='light'] .btn-primary:active:not(:disabled) {
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 .btn-primary:hover:not(:disabled),
 .btn-primary:active:not(:disabled) {
-  color: #17130a;
+  color: var(--on-accent);
 }
 
 /* ③ 浅色下的页面标题用 Dota2 红，和"红色作为文字主色"的基线一致 */
@@ -395,7 +395,7 @@
   border-radius: 50%;
   border: 1px solid var(--line-strong);
   color: var(--gold-2);
-  font-family: -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
@@ -434,7 +434,7 @@
 
 .help:hover,
 .help:focus-visible {
-  background: rgba(179, 38, 30, 0.1);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
   outline: none;
 }
 
@@ -449,7 +449,7 @@
   border: 1px solid var(--line-strong);
   background: var(--surface-2);
   color: var(--muted);
-  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0;
@@ -523,13 +523,13 @@
 }
 
 :root[data-theme='light'] .help-pop {
-  background: #ffffff;
-  color: #4a5265;
+  background: var(--surface);
+  color: var(--muted);
   box-shadow: var(--shadow-pop);
 }
 
 :root[data-theme='light'] .help-pop::before {
-  background: #ffffff;
+  background: var(--surface);
 }
 
 /* ==========================================================================

@@ -48,7 +48,7 @@
   align-items: center;
   gap: 5px;
   padding: 3px 8px 3px 4px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   color: var(--muted);
   font-size: 12px;
   transition:
@@ -71,11 +71,11 @@
 
 .back-link:hover {
   color: var(--gold-2);
-  background: rgba(201, 162, 39, 0.08);
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
 }
 
 :root[data-theme='light'] .back-link:hover {
-  background: rgba(179, 38, 30, 0.06);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 /* ---------------------------------------------------------------- 顶栏 */
@@ -210,7 +210,7 @@
 .slot-dragover {
   outline: 1px dashed var(--gold);
   outline-offset: -2px;
-  background: rgba(212, 173, 51, 0.06);
+  background: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 .slot-empty {
@@ -218,7 +218,7 @@
 }
 
 :root[data-theme='light'] .slot-dragover {
-  background: rgba(179, 38, 30, 0.05);
+  background: color-mix(in oklab, var(--accent) 5%, transparent);
 }
 
 /* ---------------------------------------------------------------- 路由切换 */
@@ -268,7 +268,7 @@
   align-items: center;
   padding: 0 6px;
   border: 1px solid currentColor;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 10px;
   line-height: 1.75;
   letter-spacing: 0.04em;
@@ -278,17 +278,17 @@
 
 .vtag[data-tone='ok'] {
   color: var(--radiant);
-  background: rgba(99, 187, 108, 0.1);
+  background: color-mix(in oklab, var(--success) 10%, transparent);
 }
 
 .vtag[data-tone='warn'] {
   color: var(--amber);
-  background: rgba(224, 160, 40, 0.1);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
 }
 
 .vtag[data-tone='idle'] {
   color: var(--muted);
-  background: rgba(138, 143, 156, 0.1);
+  background: color-mix(in oklab, var(--muted) 10%, transparent);
 }
 
 /* 列表工具条：左边筛选、右边一句操作提示 */
@@ -311,10 +311,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-.vf-group {
+/* Naive 的按钮组 RadioGroup 固定 height/line-height/nowrap，换行后会压住下一块内容。
+   这里用同等权重把高度交回内容（详见 styles.css 里 .event-filters 的说明）。 */
+.n-radio-group.vf-group {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  height: auto;
+  line-height: normal;
+  white-space: normal;
 }
 
 /* Naive 默认把这组按钮画成连体分段控件，靠 splitor 竖线分隔。
@@ -326,7 +331,7 @@
 
 .vf-group .n-radio-button {
   border: 1px solid var(--n-button-border-color);
-  border-radius: 6px !important;
+  border-radius: var(--radius-chip) !important;
 }
 
 .vf-group .n-radio-button:hover,
@@ -403,7 +408,7 @@
   flex: none;
   border-radius: 50%;
   object-fit: cover;
-  background: rgba(0, 0, 0, 0.25);
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
   border: 1px solid var(--line);
 }
 
@@ -495,7 +500,11 @@
 .email-banner {
   border-bottom: 1px solid var(--line);
   /* 淡淡的琥珀色渐变：比纯色底更像"提示"，不像"报错" */
-  background: linear-gradient(90deg, rgba(212, 173, 51, 0.12), rgba(212, 173, 51, 0.02) 65%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent) 12%, transparent),
+    color-mix(in oklab, var(--accent) 2%, transparent) 65%
+  );
 }
 
 .email-banner-inner {
@@ -551,7 +560,7 @@
 .email-banner-link.is-cta {
   padding: 3px 11px;
   border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--accent);
   text-decoration: none;
 }

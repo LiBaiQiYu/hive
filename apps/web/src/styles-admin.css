@@ -10,7 +10,7 @@
 .tag {
   display: inline-block;
   padding: 1px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 11px;
   letter-spacing: 0.08em;
   border: 1px solid transparent;
@@ -18,26 +18,26 @@
 
 .tag-confirmed {
   color: var(--radiant);
-  border-color: rgba(87, 160, 94, 0.4);
-  background: rgba(87, 160, 94, 0.1);
+  border-color: color-mix(in oklab, var(--success) 40%, transparent);
+  background: color-mix(in oklab, var(--success) 10%, transparent);
 }
 
 .tag-waitlist {
   color: var(--amber);
-  border-color: rgba(224, 160, 40, 0.4);
-  background: rgba(224, 160, 40, 0.1);
+  border-color: color-mix(in oklab, var(--amber) 40%, transparent);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
 }
 
 .tag-other {
   color: var(--muted);
-  border-color: rgba(138, 143, 156, 0.3);
+  border-color: color-mix(in oklab, var(--muted) 30%, transparent);
 }
 
 /* 「弃赛」：和候补同为琥珀色系，但语义不同（候补是等位，弃赛是没到场），单列一个类名 */
 .tag-absent {
   color: var(--amber);
-  border-color: rgba(224, 160, 40, 0.4);
-  background: rgba(224, 160, 40, 0.1);
+  border-color: color-mix(in oklab, var(--amber) 40%, transparent);
+  background: color-mix(in oklab, var(--amber) 10%, transparent);
 }
 
 .admin-form {
@@ -68,7 +68,7 @@
   max-height: 240px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--input-bg);
   color: var(--muted);
   font-size: 11px;
@@ -113,7 +113,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    linear-gradient(180deg, var(--card-sheen), transparent 40%),
     var(--surface);
   transition:
     border-color 0.16s ease,
@@ -146,7 +146,7 @@
   gap: 4px 10px;
   padding: 2px 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: none;
   color: inherit;
   font: inherit;
@@ -204,7 +204,7 @@
 
 .match-drawer {
   padding: 4px 14px 16px;
-  border-top: 1px dashed rgba(255, 255, 255, 0.07);
+  border-top: 1px dashed var(--line-dashed);
   animation: drawer-in 0.18s ease both;
 }
 
@@ -325,7 +325,7 @@
   gap: 10px;
   padding: 8px 16px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-2);
 }
 
@@ -345,7 +345,7 @@
 
 .rating-stat-value small {
   margin-left: 1px;
-  font-family: -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-family: var(--font-body);
   font-size: 11px;
   color: var(--muted);
 }
@@ -464,8 +464,8 @@
 .confidence-track {
   width: 48px;
   height: 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-pill);
+  background: var(--wash-strong);
   overflow: hidden;
   flex: none;
 }
@@ -473,7 +473,7 @@
 .confidence-fill {
   display: block;
   height: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(90deg, var(--gold), var(--gold-2));
   transition: width 0.3s ease;
 }
@@ -548,7 +548,7 @@
   margin: 2px 0 4px;
   padding: 14px 16px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface-2);
 }
 
@@ -656,7 +656,7 @@
 .adjust-preview-new {
   color: var(--gold-2);
   font-family: var(--display);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.2;
 }
 
@@ -678,7 +678,7 @@
   margin: 2px 0 4px;
   padding: 12px 14px 6px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius);
   background: var(--surface-2);
 }
 
@@ -717,7 +717,7 @@
 
 .history-table td {
   padding: 9px 10px;
-  border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+  border-bottom: 1px dashed var(--line-dashed);
 }
 
 .history-table tr:last-child td {
@@ -742,41 +742,41 @@
 /* ---------------------------------------------------------------- 浅色修正 */
 
 :root[data-theme='light'] .confidence-track {
-  background: rgba(27, 32, 51, 0.1);
+  background: color-mix(in oklab, var(--text) 10%, transparent);
 }
 
 :root[data-theme='light'] .rating-row.is-open td {
-  background: rgba(179, 38, 30, 0.04);
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
 }
 
 :root[data-theme='light'] .rating-action-history.n-button:hover {
-  background-color: rgba(179, 38, 30, 0.06);
+  background-color: color-mix(in oklab, var(--accent) 6%, transparent);
 }
 
 :root[data-theme='light'] .rating-action-history.n-button:active {
-  background-color: rgba(179, 38, 30, 0.1);
+  background-color: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 :root[data-theme='light'] .rating-action.is-active.n-button {
-  background-color: rgba(179, 38, 30, 0.1);
+  background-color: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 
 :root[data-theme='light'] .rating-action.is-active.n-button:hover {
-  background-color: rgba(179, 38, 30, 0.14);
+  background-color: color-mix(in oklab, var(--accent) 14%, transparent);
 }
 
 :root[data-theme='light'] .history-table td {
-  border-bottom-color: rgba(27, 32, 51, 0.09);
+  border-bottom-color: color-mix(in oklab, var(--text) 9%, transparent);
 }
 
 :root[data-theme='light'] .rating-stat {
-  background: #ffffff;
+  background: var(--surface);
 }
 
 /* 深色主题的 primary 是金底，白字对比度只有 2:1 左右；换成深墨色才读得清 */
 :root[data-theme='dark'] .ratings-head-actions .n-button--primary-type,
 :root[data-theme='dark'] .adjust-actions .n-button--primary-type {
-  color: #221a04;
+  color: var(--on-accent);
 }
 
 @media (max-width: 700px) {
@@ -804,7 +804,7 @@
 .reset-password-box {
   padding: 12px 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   background: var(--surface-2);
   color: var(--gold-2);
   font-size: 18px;
@@ -820,7 +820,7 @@
 .slot-sub-btn {
   flex: none;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-strong);
   background: transparent;
   color: var(--muted);
@@ -873,7 +873,7 @@
 
 .sub-tab {
   padding: 6px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line-strong);
   background: transparent;
   color: var(--muted);
@@ -911,7 +911,7 @@
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   border: 1px solid var(--line);
   background: transparent;
   color: inherit;
@@ -966,7 +966,7 @@
 
 /* 开关拨了但还没按保存：必须说出来，不然离开页面就悄悄丢了 */
 .setting-dirty {
-  font-family: var(--body, inherit);
+  font-family: var(--font-body);
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--amber);

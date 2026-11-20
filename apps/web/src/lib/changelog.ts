@@ -16,7 +16,7 @@
  * 和 APP_VERSION 对不上就自动弹一次，之后只能从页脚的版本号点开，
  * 避免每次刷新都弹出。
  */
-export const APP_VERSION = '1.16.3';
+export const APP_VERSION = '1.17.0';
 
 export interface ReleaseNote {
   version: string;
@@ -26,6 +26,16 @@ export interface ReleaseNote {
 }
 
 export const RELEASES: ReleaseNote[] = [
+  {
+    version: '1.17.0',
+    date: '2026-11-20',
+    items: [
+      '全站配色统一到一套令牌：主行动赤金、状态色各自固定语义',
+      '统一按钮、圆角与字号档位，深浅两套主题观感对齐',
+      '赛事状态徽标、统计卡、加载骨架改为全站共用组件',
+      '修复后台骨架屏透明、部分浅色文字对比度偏低的问题',
+    ],
+  },
   {
     version: '1.16.3',
     date: '2026-11-16',

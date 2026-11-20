@@ -210,7 +210,7 @@
 
 .comment-reply {
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--wash);
 }
 
 @media (max-width: 900px) {

@@ -231,10 +231,11 @@ async function copyPassword() {
               <td style="text-align: right">
                 <span v-if="user.id === meId" class="muted" style="font-size: 12px">—</span>
                 <div v-else class="member-actions">
+                  <!-- 行内操作不重复主色：两枚都是文本按钮，整张表看下来只有一个视觉焦点（表头） -->
                   <template v-if="user.role === 'ADMIN'">
                     <NPopconfirm @positive-click="setRole(user, 'PLAYER')">
                       <template #trigger>
-                        <NButton size="small" :disabled="busy">取消管理员</NButton>
+                        <NButton size="small" quaternary :disabled="busy">取消管理员</NButton>
                       </template>
                       取消后该成员将无法进入后台，确定吗？
                     </NPopconfirm>
@@ -242,6 +243,7 @@ async function copyPassword() {
                   <NButton
                     v-else
                     size="small"
+                    quaternary
                     :disabled="busy"
                     @click="setRole(user, 'ADMIN')"
                   >

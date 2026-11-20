@@ -5,7 +5,8 @@ import { RouterLink, useRouter } from 'vue-router';
 import { NButton, NDatePicker, NInput, NSelect, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import StatCard from '../components/StatCard.vue';
-import { ApiError, api, formatDate, STATUS_LABEL, type EventView } from '../lib/api';
+import StatusPill from '../components/StatusPill.vue';
+import { ApiError, api, formatDate, type EventView } from '../lib/api';
 import { SERVER_HELP, SERVER_OPTIONS, serverLabel, type ServerRegion } from '../lib/server';
 
 const router = useRouter();
@@ -250,7 +251,7 @@ async function create() {
                 </span>
               </td>
               <td>
-                <span class="pill pill-idle">{{ STATUS_LABEL[event.status] ?? event.status }}</span>
+                <StatusPill :status="event.status" />
               </td>
               <td class="num">{{ event.confirmed }} / {{ event.capacity }}</td>
               <td class="muted">{{ formatDate(event.registrationClosesAt) }}</td>

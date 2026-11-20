@@ -12,9 +12,9 @@
   gap: 16px;
   min-height: 424px;
   padding: 0;
-  border-radius: 16px;
-  border: 1px solid rgba(27, 32, 51, 0.14);
-  background: #f8f3ea;
+  border-radius: var(--radius-overlay);
+  border: 1px solid var(--line);
+  background: var(--hero-bg);
   isolation: isolate;
 }
 
@@ -47,14 +47,26 @@
   background:
     radial-gradient(
       92% 135% at 0% 50%,
-      #fbf7f0 0%,
-      rgba(251, 247, 240, 0.985) 34%,
-      rgba(251, 247, 240, 0.86) 48%,
-      rgba(251, 247, 240, 0) 72%
+      var(--hero-veil) 0%,
+      color-mix(in oklab, var(--hero-veil) 98%, transparent) 34%,
+      color-mix(in oklab, var(--hero-veil) 86%, transparent) 48%,
+      color-mix(in oklab, var(--hero-veil) 0%, transparent) 72%
     ),
-    linear-gradient(180deg, rgba(251, 247, 240, 0.55), rgba(251, 247, 240, 0) 44%),
-    linear-gradient(0deg, rgba(251, 247, 240, 0.5), rgba(251, 247, 240, 0) 52%),
-    radial-gradient(46% 62% at 80% 10%, rgba(255, 221, 165, 0.24), rgba(255, 221, 165, 0) 72%);
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--hero-veil) 55%, transparent),
+      color-mix(in oklab, var(--hero-veil) 0%, transparent) 44%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in oklab, var(--hero-veil) 50%, transparent),
+      color-mix(in oklab, var(--hero-veil) 0%, transparent) 52%
+    ),
+    radial-gradient(
+      46% 62% at 80% 10%,
+      color-mix(in oklab, var(--accent-soft) 24%, transparent),
+      color-mix(in oklab, var(--accent-soft) 0%, transparent) 72%
+    );
 }
 
 /* ---------------------------------------------------------------- 文字列 */
@@ -67,7 +79,7 @@
 }
 
 .hero--warroom .hero-kicker {
-  color: #7f7565;
+  color: var(--hero-ink-muted);
   font-size: 11px;
   letter-spacing: 0.34em;
 }
@@ -77,37 +89,37 @@
   font-size: clamp(66px, 8.2vw, 108px);
   line-height: 0.92;
   letter-spacing: 0.1em;
-  color: #17213b;
+  color: var(--hero-ink);
   text-shadow: none;
 }
 
 .hero--warroom .hero-sub {
   max-width: 31em;
   margin: 0 0 28px;
-  color: #4e4a40;
+  color: var(--hero-ink-soft);
   font-size: 15px;
   line-height: 1.95;
 }
 
-/* 主行动：两个主题都用同一块深红，和画作的暖色/赤金更搭 */
+/* 主行动：两个主题都用同一块赤金，和画作的暖色更搭 */
 .hero--warroom .btn.war-cta,
 .hero--warroom .btn.war-cta:active:not(:disabled) {
   background: var(--accent);
   border-color: color-mix(in oklab, var(--accent) 72%, #000);
-  color: #17130a;
+  color: var(--on-accent);
 }
 
 .hero--warroom .btn.war-cta:hover:not(:disabled) {
   background: color-mix(in oklab, var(--accent) 88%, #fff);
   border-color: color-mix(in oklab, var(--accent) 80%, #fff);
-  color: #17130a;
+  color: var(--on-accent);
   box-shadow: 0 10px 26px color-mix(in oklab, var(--accent) 28%, transparent);
 }
 
 .war-cta {
   height: 46px;
   padding: 0 24px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 14px;
   letter-spacing: 0.02em;
 }
@@ -125,10 +137,10 @@
 .war-cta-ghost {
   height: 46px;
   padding: 0 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-control);
   font-size: 13px;
   letter-spacing: 0.02em;
-  background: rgba(255, 255, 255, 0.55);
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
 }
 
 /* ---------------------------------------------------------------- 状态标签 */
@@ -150,7 +162,11 @@
 .war-caption-line {
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, rgba(240, 214, 141, 0), rgba(240, 214, 141, 0.55));
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--accent-soft) 0%, transparent),
+    color-mix(in oklab, var(--accent-soft) 55%, transparent)
+  );
 }
 
 .war-caption-line:last-child {
@@ -160,9 +176,9 @@
 .war-caption-text {
   flex: none;
   padding: 3px 12px;
-  border-radius: 3px;
-  background: rgba(14, 12, 16, 0.34);
-  color: #f6ecd4;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--bg) 34%, transparent);
+  color: var(--hero-on-art);
   font-size: 11px;
   letter-spacing: 0.2em;
   line-height: 1.7;
@@ -173,14 +189,14 @@
 /* ---------------------------------------------------------------- 深色 */
 
 :root[data-theme='light'] .hero.hero--warroom {
-  background: #f8f3ea;
+  background: var(--hero-bg);
 }
 
 :root[data-theme='light'] .hero--warroom .btn.war-cta,
 :root[data-theme='light'] .hero--warroom .btn.war-cta:active:not(:disabled) {
   background: linear-gradient(180deg, var(--accent), var(--accent-soft));
   border-color: var(--accent-soft);
-  color: #fdf8f2;
+  color: var(--on-accent);
 }
 
 :root[data-theme='light'] .hero--warroom .btn.war-cta:hover:not(:disabled) {
@@ -190,12 +206,12 @@
     var(--accent)
   );
   border-color: var(--accent);
-  color: #ffffff;
+  color: var(--on-accent);
 }
 
 :root[data-theme='dark'] .hero.hero--warroom {
   border-color: var(--line);
-  background: #0b0d12;
+  background: var(--bg);
 }
 
 :root[data-theme='dark'] .war-art {
@@ -206,16 +222,28 @@
   background:
     radial-gradient(
       92% 135% at 0% 50%,
-      #0a0c10 0%,
-      rgba(10, 12, 16, 0.97) 24%,
-      rgba(10, 12, 16, 0.9) 38%,
-      rgba(10, 12, 16, 0.62) 52%,
-      rgba(10, 12, 16, 0.22) 65%,
-      rgba(10, 12, 16, 0) 78%
+      var(--bg) 0%,
+      color-mix(in oklab, var(--bg) 97%, transparent) 24%,
+      color-mix(in oklab, var(--bg) 90%, transparent) 38%,
+      color-mix(in oklab, var(--bg) 62%, transparent) 52%,
+      color-mix(in oklab, var(--bg) 22%, transparent) 65%,
+      color-mix(in oklab, var(--bg) 0%, transparent) 78%
     ),
-    linear-gradient(180deg, rgba(10, 12, 16, 0.5), rgba(10, 12, 16, 0) 44%),
-    linear-gradient(0deg, rgba(10, 12, 16, 0.55), rgba(10, 12, 16, 0) 55%),
-    radial-gradient(46% 62% at 80% 10%, rgba(255, 196, 120, 0.12), rgba(255, 196, 120, 0) 72%);
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--bg) 50%, transparent),
+      color-mix(in oklab, var(--bg) 0%, transparent) 44%
+    ),
+    linear-gradient(
+      0deg,
+      color-mix(in oklab, var(--bg) 55%, transparent),
+      color-mix(in oklab, var(--bg) 0%, transparent) 55%
+    ),
+    radial-gradient(
+      46% 62% at 80% 10%,
+      color-mix(in oklab, var(--accent-soft) 12%, transparent),
+      color-mix(in oklab, var(--accent-soft) 0%, transparent) 72%
+    );
 }
 
 :root[data-theme='dark'] .hero--warroom .hero-kicker {
@@ -223,7 +251,7 @@
 }
 
 :root[data-theme='dark'] .hero--warroom .hero-title {
-  color: #f4efe3;
+  color: var(--text-strong);
 }
 
 :root[data-theme='dark'] .hero--warroom .hero-sub {
@@ -260,26 +288,34 @@
     background:
       linear-gradient(
         180deg,
-        #fbf7f0 0%,
-        rgba(251, 247, 240, 0.98) 34%,
-        rgba(251, 247, 240, 0.92) 50%,
-        rgba(251, 247, 240, 0.55) 66%,
-        rgba(251, 247, 240, 0.15) 100%
+        var(--hero-veil) 0%,
+        color-mix(in oklab, var(--hero-veil) 98%, transparent) 34%,
+        color-mix(in oklab, var(--hero-veil) 92%, transparent) 50%,
+        color-mix(in oklab, var(--hero-veil) 55%, transparent) 66%,
+        color-mix(in oklab, var(--hero-veil) 15%, transparent) 100%
       ),
-      linear-gradient(90deg, rgba(251, 247, 240, 0.5), rgba(251, 247, 240, 0) 72%);
+      linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--hero-veil) 50%, transparent),
+        color-mix(in oklab, var(--hero-veil) 0%, transparent) 72%
+      );
   }
 
   :root[data-theme='dark'] .war-veil {
     background:
       linear-gradient(
         180deg,
-        #0a0c10 0%,
-        rgba(10, 12, 16, 0.97) 34%,
-        rgba(10, 12, 16, 0.9) 50%,
-        rgba(10, 12, 16, 0.55) 66%,
-        rgba(10, 12, 16, 0.18) 100%
+        var(--bg) 0%,
+        color-mix(in oklab, var(--bg) 97%, transparent) 34%,
+        color-mix(in oklab, var(--bg) 90%, transparent) 50%,
+        color-mix(in oklab, var(--bg) 55%, transparent) 66%,
+        color-mix(in oklab, var(--bg) 18%, transparent) 100%
       ),
-      linear-gradient(90deg, rgba(10, 12, 16, 0.5), rgba(10, 12, 16, 0) 72%);
+      linear-gradient(
+        90deg,
+        color-mix(in oklab, var(--bg) 50%, transparent),
+        color-mix(in oklab, var(--bg) 0%, transparent) 72%
+      );
   }
 }
 
