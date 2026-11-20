@@ -131,26 +131,35 @@ const whenCells = computed<WhenCell[]>(() => {
 
 <template>
   <article class="card event-card">
-    <div class="event-head">
-      <div class="event-title-row">
-        <h3 class="event-name">{{ props.event.title }}</h3>
-        <!-- 国服 / 全球服：进错服连房间都进不去，所以放在标题旁边而不是塞进灰色小字 -->
-        <span class="server-tag" :class="{ 'is-cn': props.event.serverRegion === 'CN' }">
-          {{ serverLabel(props.event.serverRegion) }}
-        </span>
-        <HelpTip v-bind="SERVER_HELP" />
-      </div>
+    <!-- 卡头固定两段：第一行永远是「标题 + 状态」，第二行永远是「服务器 + ? + 规模」。
+         标题长度不再影响下面的行高：标题按两行截断并预留两行高度，
+         同排卡片的第二行、时间条、按钮才能横向对齐。 -->
+    <header class="event-card-head">
+      <h3 class="event-name" :title="props.event.title">{{ props.event.title }}</h3>
       <StatusPill :status="props.event.status" />
+    </header>
+
+    <div class="event-card-sub">
+      <!-- 国服 / 全球服：进错服连房间都进不去，所以紧跟在标题下面单独一行 -->
+      <span class="server-tag" :class="{ 'is-cn': props.event.serverRegion === 'CN' }">
+        {{ serverLabel(props.event.serverRegion) }}
+      </span>
+      <HelpTip v-bind="SERVER_HELP" />
+      <span class="event-card-format">
+        5v5 · DOTA2 · {{ props.event.capacity }} 人（{{ props.event.targetMatches }} 场）
+      </span>
     </div>
 
-    <div class="event-meta">
-      <span>5v5 · DOTA2 · {{ props.event.capacity }} 人（{{ props.event.targetMatches }} 场）</span>
-    </div>
-
+    <!-- 时间条：报名截止 / 开赛。没有任何可显示的格子时也保留节点（用 .is-empty 隐藏），
+         这样卡片的 DOM 结构对每张卡都是一样的，调试和对比时不会"少一段"。 -->
     <div
-      v-if="whenCells.length > 0"
       class="event-when"
-      :style="{ gridTemplateColumns: `repeat(${whenCells.length}, minmax(0, 1fr))` }"
+      :class="{ 'is-empty': whenCells.length === 0 }"
+      :style="
+        whenCells.length > 0
+          ? { gridTemplateColumns: `repeat(${whenCells.length}, minmax(0, 1fr))` }
+          : undefined
+      "
     >
       <div
         v-for="cell in whenCells"
@@ -165,11 +174,11 @@ const whenCells = computed<WhenCell[]>(() => {
     </div>
 
     <div class="progress">
-        <div
-          class="progress-bar"
-          :class="{ 'is-full': props.event.confirmed >= props.event.capacity }"
-          :style="{ width: `${Math.min(100, (props.event.confirmed / props.event.capacity) * 100)}%` }"
-        />
+      <div
+        class="progress-bar"
+        :class="{ 'is-full': props.event.confirmed >= props.event.capacity }"
+        :style="{ width: `${Math.min(100, (props.event.confirmed / props.event.capacity) * 100)}%` }"
+      />
     </div>
 
     <div class="event-foot">

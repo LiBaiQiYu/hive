@@ -861,7 +861,13 @@ a {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
+/* 赛事卡：固定五段（卡头 / 副信息 / 时间条 / 进度 / 页脚）。
+   为了同排卡片横向对齐，每段高度必须是确定的：
+   · 卡头固定两行标题高（见下），标题长短不再影响后续行；
+   · 副信息固定一行：服务器标签 + 「?」+ 规模；
+   · 页脚 margin-top:auto 吸底，按钮永远贴卡片底部。 */
 .event-card {
+  --event-title-lines: 2;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -871,6 +877,56 @@ a {
 .event-card:hover {
   border-color: var(--line-strong);
   transform: translateY(-2px);
+}
+
+/* 卡头：标题 + 状态。标题**固定占两行的高度**（短标题的第二行留白，
+   长标题两行后省略），这样同排卡片的第二行、时间条、按钮才能横向对齐。
+   对齐用 baseline 而不是 center：标题被撑成两行高后，center 会让状态胶囊
+   落到两行中间，短标题时就和文字错开了；baseline 永远跟首行对齐。 */
+.event-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.event-card-head .event-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--event-title-lines);
+  line-clamp: var(--event-title-lines);
+  overflow: hidden;
+  /* 用 em 而不是 px：这个高度跟着标题自己的字号走，换字号不会错位 */
+  min-height: calc(var(--event-title-lines) * 1.35em);
+  line-height: 1.35;
+  /* 长英文名（如 COMPLETED verify）没有空格可断，允许任意位置折行 */
+  overflow-wrap: anywhere;
+}
+
+.event-card-head .pill {
+  flex: none;
+}
+
+/* 副信息行：服务器标签 + 说明 + 规模，永远一行 */
+.event-card-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: -4px;
+}
+
+.event-card-sub .help {
+  margin-left: 0;
+}
+
+.event-card-format {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .event-head {
@@ -964,6 +1020,12 @@ a {
   overflow: hidden;
 }
 
+/* 没有任何可显示的时间（如已结束的赛事没填过时间）：整格不画，
+   但节点仍然留在 DOM 里，避免同一排卡片因少一个块而错位 */
+.event-when.is-empty {
+  display: none;
+}
+
 .event-when-cell {
   display: flex;
   flex-direction: column;
@@ -1028,7 +1090,9 @@ a {
   gap: 12px;
   /* 窄卡片里「再需 X 人」和两个按钮会顶在一起，允许换行而不是横向溢出 */
   flex-wrap: wrap;
-  margin-top: 4px;
+  /* 吸底：同排卡片里短的那张也会把按钮压到最下面，按钮不会一高一低 */
+  margin-top: auto;
+  padding-top: 4px;
 }
 
 /* 卡片右下角：分享 + 查看详情。两个都走 .btn，同高同字号同内边距；
