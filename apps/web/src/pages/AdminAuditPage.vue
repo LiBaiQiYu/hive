@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import SkeletonRows from '../components/SkeletonRows.vue';
 import { onMounted, ref } from 'vue';
 import { NButton, NSelect } from 'naive-ui';
 import PageBack from '../components/PageBack.vue';
@@ -112,7 +111,7 @@ const toggle = (id: string) => {
 
     <p v-if="error" class="alert">{{ error }}</p>
 
-    <SkeletonRows v-if="loading" />
+    <div v-if="loading" class="empty">加载中…</div>
 
     <div v-else-if="entries.length === 0" class="empty">没有匹配的记录。</div>
 
@@ -130,14 +129,7 @@ const toggle = (id: string) => {
         </thead>
         <tbody>
           <template v-for="entry in entries" :key="entry.id">
-            <tr
-              style="cursor: pointer"
-              tabindex="0"
-              :aria-expanded="expanded === entry.id"
-              @click="toggle(entry.id)"
-              @keydown.enter.prevent="toggle(entry.id)"
-              @keydown.space.prevent="toggle(entry.id)"
-            >
+            <tr style="cursor: pointer" @click="toggle(entry.id)">
               <td class="muted" style="font-size: 12px">{{ formatDate(entry.createdAt) }}</td>
               <td>
                 {{ entry.actorName ?? '—' }}

@@ -25,7 +25,7 @@
   font-size: 56px;
   line-height: 1;
   color: var(--gold-2);
-  text-shadow: 0 0 28px color-mix(in oklab, var(--accent) 28%, transparent);
+  text-shadow: 0 0 28px rgba(201, 162, 39, 0.28);
 }
 
 .rating-pm {
@@ -73,15 +73,15 @@
 
 .rating-break-bar {
   height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--wash-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
 .rating-break-bar i {
   display: block;
   height: 100%;
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--gold), var(--gold-2));
   transition: width 0.4s ease;
 }
@@ -104,17 +104,12 @@
   padding-bottom: 0;
 }
 
-/* 出勤明细条：与评分主条区分开的一档信息色（不抢赤金主行动） */
 .rating-attendance .rating-break-bar i {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--info) 70%, #000),
-    color-mix(in oklab, var(--info) 60%, #fff)
-  );
+  background: linear-gradient(90deg, #4f8fd6, #8bd8ff);
 }
 
 :root[data-theme='light'] .rating-break-bar {
-  background: color-mix(in oklab, var(--text) 8%, transparent);
+  background: rgba(27, 32, 51, 0.08);
 }
 
 /* 战绩页：统计卡（场次/胜/负/胜率/弃赛，数量变了也不会挤成两行） */
@@ -133,7 +128,7 @@
 
 .record-value {
   margin-top: 6px;
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.1;
   color: var(--gold-2);
 }
@@ -273,7 +268,7 @@
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px dashed var(--wash-strong);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
 }
 
 .id-row:last-child {
@@ -306,8 +301,8 @@
   gap: 16px;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--wash);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.015);
 }
 
 .pos-name {
@@ -414,7 +409,7 @@
 
 .identity-rank-value {
   font-family: var(--display);
-  font-size: 26px;
+  font-size: 24px;
   line-height: 1.15;
   color: var(--gold-2);
   white-space: nowrap;
@@ -468,20 +463,22 @@
 .identity-lock {
   margin: 2px 0 0;
   padding: 10px 12px;
-  border: 1px solid color-mix(in oklab, var(--amber) 34%, transparent);
-  border-radius: var(--radius-control);
-  background: color-mix(in oklab, var(--amber) 8%, transparent);
+  border: 1px solid rgba(234, 176, 60, 0.34);
+  border-radius: 8px;
+  background: rgba(234, 176, 60, 0.08);
   color: var(--text);
   font-size: 13px;
   line-height: 1.7;
 }
 
 :root[data-theme='light'] .identity-lock {
-  border-color: color-mix(in oklab, var(--amber) 28%, transparent);
-  background: color-mix(in oklab, var(--amber) 7%, transparent);
+  border-color: rgba(168, 98, 10, 0.28);
+  background: rgba(168, 98, 10, 0.07);
 }
 
-/* 第三方数据来源署名：用信息色（--info），和站内自己的赤金区分开 */
+/* 第三方数据来源署名。
+   刻意用品牌紫而不是 HIVE 的金色：这是个"数据是别人给的"提示，
+   和站内自己的信息（金色）区分开才不会看着像自夸。 */
 .identity-powered {
   display: flex;
   margin-top: 14px;
@@ -494,9 +491,9 @@
   align-items: center;
   gap: 5px;
   padding: 5px 13px;
-  border: 1px solid color-mix(in oklab, var(--info) 48%, transparent);
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--info) 16%, transparent);
+  border: 1px solid rgba(123, 108, 240, 0.48);
+  border-radius: 999px;
+  background: rgba(123, 108, 240, 0.16);
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.05em;
@@ -504,18 +501,18 @@
 }
 
 .powered-badge b {
-  color: color-mix(in oklab, var(--info) 60%, #fff);
+  color: #b7aefc;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
 
 :root[data-theme='light'] .powered-badge {
-  border-color: color-mix(in oklab, var(--info) 34%, transparent);
-  background: color-mix(in oklab, var(--info) 9%, transparent);
+  border-color: rgba(108, 92, 231, 0.34);
+  background: rgba(108, 92, 231, 0.09);
 }
 
 :root[data-theme='light'] .powered-badge b {
-  color: var(--info);
+  color: #5546c4;
 }
 
 @media (max-width: 560px) {
@@ -552,7 +549,7 @@
 .settings-jump a {
   padding: 5px 13px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -650,7 +647,7 @@
 .lb-stars {
   display: inline-flex;
   gap: 1px;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0;
   color: var(--gold);
   opacity: 0.85;
@@ -674,9 +671,4 @@
 
 .email-status-ok {
   color: var(--gold-2);
-}
-
-/* 占位地址：密码找回必然失败，用 danger 色与"只是还没确认"区分开 */
-.email-status-warn {
-  color: var(--danger);
 }

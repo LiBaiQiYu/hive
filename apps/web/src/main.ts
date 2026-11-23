@@ -1,7 +1,6 @@
 import { createApp } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
 import App from './App.vue';
-import './tokens.css';
 import './styles.css';
 import './styles-me.css';
 import './styles-admin.css';

@@ -30,9 +30,7 @@ const pop = ref<HTMLElement | null>(null);
 
 /**
  * 浮窗是绝对定位、水平居中于「?」的，靠近视口左右边缘时会被切掉。
- * 展开前量一次尺寸，把水平内收量写进 --pop-shift；
- * 下方空间不够时把 data-pop-flip 置为 up，让浮窗翻到上方（CSS 负责换边）。
- * 不这么做的话，列表末尾 / 后台表单末尾的「?」一展开就有一半在视口外。
+ * 展开前量一次宽度，把偏移量写进 --pop-shift，让浮窗和箭头一起内收。
  */
 function place() {
   const marker = root.value;
@@ -40,16 +38,9 @@ function place() {
   if (!marker || !bubble) return;
   const rect = marker.getBoundingClientRect();
   const width = bubble.offsetWidth;
-  const height = bubble.offsetHeight;
   const center = rect.left + rect.width / 2;
   const left = Math.min(Math.max(8, center - width / 2), window.innerWidth - width - 8);
   marker.style.setProperty('--pop-shift', `${left + width / 2 - center}px`);
-
-  const below = window.innerHeight - rect.bottom;
-  const above = rect.top;
-  const flipUp = below < height + 24 && above > below;
-  if (flipUp) marker.dataset.popFlip = 'up';
-  else delete marker.dataset.popFlip;
 }
 
 /** Esc 收起浮窗（焦点回到页面，不改变滚动位置） */

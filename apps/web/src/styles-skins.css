@@ -680,7 +680,7 @@
 
 .skin-swatch.is-active {
   border-color: var(--gold);
-  background-color: color-mix(in oklab, var(--accent) 10%, transparent);
+  background-color: rgba(201, 162, 39, 0.1);
 }
 
 .skin-swatch:focus-visible {
@@ -705,7 +705,7 @@
   z-index: 1;
   padding: 0 4px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 13px;
   letter-spacing: 0.02em;
   color: #2a1c05;
@@ -931,7 +931,7 @@
 
 .skin-frame-style-btn:hover {
   border-color: var(--line-strong);
-  background: color-mix(in oklab, var(--accent) 8%, transparent);
+  background: rgba(201, 162, 39, 0.08);
 }
 
 .skin-frame-style-btn:focus-visible {
@@ -1120,7 +1120,7 @@
   gap: 6px;
   padding: 10px 6px 8px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -1137,7 +1137,7 @@
 
 .frame-style-color.is-active {
   border-color: var(--gold);
-  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  background: rgba(201, 162, 39, 0.1);
 }
 
 .frame-style-color:focus-visible,
@@ -1167,7 +1167,7 @@
   gap: 3px;
   padding: 10px 11px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -1184,7 +1184,7 @@
 
 .frame-style-effect.is-active {
   border-color: var(--gold);
-  background: color-mix(in oklab, var(--accent) 10%, transparent);
+  background: rgba(201, 162, 39, 0.1);
 }
 
 .frame-style-effect-name {
