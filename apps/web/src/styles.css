@@ -768,6 +768,20 @@ a {
   color: var(--muted);
 }
 
+/* 自助找回：说明文字里嵌一个"邮箱 + 发送"的行内表单 */
+.reset-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.reset-row .n-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+
 .input {
   width: 100%;
   padding: 10px 12px;

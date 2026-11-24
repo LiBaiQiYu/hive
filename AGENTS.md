@@ -7,8 +7,14 @@
 ## 这是什么
 
 DOTA2 固定社区（单 QQ 群、约 15 人、每月 4–10 场）的 5v5 内战平台。
-全栈跑在 **Cloudflare Workers 免费版**：一个 Worker 同时提供 Vue SPA 和 Hono API，
+全栈原本跑在 **Cloudflare Workers 免费版**：一个 Worker 同时提供 Vue SPA 和 Hono API，
 数据在 D1，异步任务靠 D1 outbox + Cron（**免费版没有 Queues**）。
+
+**2026-11 起支持自建部署**（`deploy/` 目录）：同一份业务代码跑在 Node + SQLite 上，
+用 Docker Compose + 1Panel 托管，GitHub Actions 自动部署。两套运行时共用
+`packages/api/src/app.ts` 与全部 routes/services，差异只在入口层：
+- Workers：`src/index.ts`（D1 绑定 + Cron Triggers + `cloudflare:email`）
+- 自建：`src/server/index.ts`（`node:sqlite` 的 D1 兼容层 + setTimeout 复刻 Cron + SMTP）
 
 ## 当前状态
 
@@ -82,7 +88,16 @@ pnpm dev:web        # 可选，Vite 热更新（5173，已配 /api 代理）
 pnpm run deploy     # 部署到 Cloudflare（必须带 run：直接 `pnpm deploy` 会命中 pnpm 自带的 deploy 命令）
 pnpm sec:check      # 安全攻击用例 ≈78 项（含授权矩阵/注入/越权/隐私泄露；按当前注册方式增减），必须先起 pnpm dev
 pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，抓语法错与未定义绑定
+
+# 自建形态（Node + SQLite，不需要 wrangler）
+pnpm build:server       # esbuild 打包 → packages/api/dist/{server,migrate}.mjs
+pnpm db:migrate:sqlite  # 把 18 个迁移应用到 DB_PATH 指向的 sqlite 文件
+pnpm dev:node           # build + build:server + migrate + 起服务，读 .env.local
 ```
+
+自建部署的完整步骤见 [`deploy/README.md`](deploy/README.md)：Dockerfile、compose、
+`remote-deploy.sh`（切版本 + 健康检查 + 失败回滚）、`backup.sh`、`import-d1.sh`，
+以及 `.github/workflows/deploy-vps.yml`（push main 即自动部署）。
 
 交付前必过：`pnpm typecheck && pnpm test && pnpm build && pnpm db:check`（改过 `.vue` 再补 `pnpm web:check`），改过鉴权/接口再补一条 `pnpm sec:check`。
 
@@ -124,6 +139,11 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
 | 卡面 canvas 和卡片的 CSS 倾斜各走一套 → 鼠标进卡那一瞬间"卡片慢慢转、卡面画面瞬间跳" | canvas 是逐帧重绘的，CSS transition 管不到它。统一由 JS 插值：`PlayerCard` 里 `aim`（目标）/`at`（渲染值，rAF 指数逼近）/`glow`（悬浮量），`--rx/--ry/--px/--py` 和 canvas 的 `tiltX/tiltY` **都从 `at` 取**。配套：`.pcard-inner` 与 `.pcard-depth::before/after` **不能加 transform 过渡**，否则会在逐帧值上再叠一层延迟 |
 | 调参弹窗（NModal）里再放一张预览卡 + 长参数列表 → 整窗比视口还高，顶部被裁、底栏点不到 | 弹窗里**不要放预览卡**（页面左边本来就有实时预览，600px 的弹窗不挡它），参数列表单独滚动并限制 `max-height: min(62vh, 460px)`。实测 1400px 视口下弹窗 400–1000、底栏 990 可见 |
 | 多个 `wrangler dev` 实例同时开着（或一边跑 dev 一边 `wrangler d1 execute`）→ workerd 直接崩：`SQLITE_BUSY (extended: SQLITE_BUSY_RECOVERY)`，本地站点 502 | 本地**只允许一个** wrangler 实例。崩了先 `Get-CimInstance Win32_Process -Filter "Name='node.exe'"` 找 `hive.*wrangler` 的进程全杀，再重启 `pnpm dev:api`；`wrangler d1 execute --local` 查完就关，别和 dev 抢库 |
+| 自建侧单测里 `import 'node:sqlite'` → vitest 报 `Failed to load url sqlite (resolved id: sqlite)`。**不是代码问题**：Vite 5 判断内置模块用 Node 的 `builtinModules`，而 Node 22 只登记了 `node:sqlite`、没有裸名 `sqlite`；Vite 先剥掉 `node:` 前缀再查表，于是把 `sqlite` 当 npm 包解析 | `packages/api/src/server/sqlite-driver.ts` 用 `createRequire(import.meta.url)('node:sqlite')` 绕开打包器的解析；类型仍走 `import type ... from 'node:sqlite'`（会被擦除，不进产物）。写新的 Node-only 内置模块时照这个结构 |
+| 自建部署把代码做成 bind mount（`./current:/app`）→ 切 `current` 符号链接后容器里还是旧代码。Docker 在**创建容器时**就固化了 bind mount 的解析结果，`docker restart` 不会重新解析 | 代码**打进镜像**（`build: context: ./current`），每次部署 `docker compose build` + `up -d --force-recreate`。只有 `shared/data`（SQLite）挂卷。pixel-blog 用 bind mount + force-recreate 也行，但镜像方案少一个"忘了 recreate"的失败面 |
+| D1 导出的 `.sql` 直接 `exec` 到 SQLite → `no such table: main.invite_codes`。导出文件里表顺序不保证满足外键依赖（`INSERT users` 可能早于 `CREATE TABLE invite_codes`）；D1 靠 `defer_foreign_keys` 把检查推到提交时，但那**要求被引用的表已经存在** | `deploy/import-d1.sh` 的做法：`PRAGMA foreign_keys = OFF` → `BEGIN` → 清同名表 → `exec(整份 SQL)` → `COMMIT` → `PRAGMA foreign_keys = ON` → `foreign_key_check` + `integrity_check` 校验。已实测：17 users / 11 events / 105 audit_logs 全部导入，0 外键违规 |
+| 备份 SQLite 用 `cp` 拷正在写的库 → 可能拿到半份事务，恢复时丢数据或库损坏（WAL 模式下尤其） | 用 `VACUUM INTO '<path>'`（SQLite 原生在线备份，在一个读事务里生成一致副本）。`deploy/backup.sh` 已封装；恢复时**必须把 `-wal` / `-shm` 一起删掉**，否则和新主库对不上 |
+| 自建侧 `static.ts` 忘了给 `Content-Type`：浏览器对 `text/plain` 的 JS 会拒绝执行（strict MIME checking），页面一片空白但**所有接口都正常**，最容易误判成前端 bug | `headersFor()` 按扩展名显式补 `Content-Type`；`/assets/*` 走 `immutable` 长缓存，`index.html` 走 `must-revalidate`。有扩展名但文件不存在时返回 404，**不要回落成 index.html**（否则浏览器把 JS 当页面解析） |
 
 ## 关键设计决策（改了会连累别处）
 
@@ -169,7 +189,17 @@ pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，
   段位模式**必须把 `declared_mmr` 置 NULL**：`estimateMmr(rankTier, declaredMmr)` 里 MMR 优先，
   留着旧分数就等于没改段位。同步来源（STRATZ / OPENDOTA）拒绝这条路（下次同步会覆盖），需先解绑。
   旧的手填 20000 分 → WARROOM 1000 的坑就是这么堵的。
-- **密码找回走"收信 → 回信"**：免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到 `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，用 `message.reply()` 回一封带一次性令牌的链接。令牌只存 `sha256`、30 分钟、一次性，重置成功作废该账号全部会话。**控制台还要把 `reset@cwa1e.top` 建为 Custom address 并指到 Worker**，代码替代不了这一步。
+- **密码找回有三种形态，由 `RESET_FLOW` 决定（`routes/config.ts` 的 `resolveResetFlow`）**：
+  · `inbound`（Workers 默认）—— 免费版不能主动向任意邮箱发信，所以让玩家用注册邮箱发一封空白邮件到
+    `reset@cwa1e.top`；Worker 的 `email()` 校验「发件地址 == users.email + DMARC pass + 每小时 ≤3 次」后，
+    用 `message.reply()` 回一封带一次性令牌的链接。**控制台还要把 `reset@cwa1e.top` 建为 Custom address
+    并指到 Worker**，代码替代不了这一步。
+  · `self`（自建，配了 SMTP）—— 登录页直接填邮箱，`POST /api/auth/reset-request` 发信。
+    这个接口**对不存在的邮箱也回 ok**（否则就是账号枚举器），失败只写日志与审计。
+    默认值由入口推出来：Node 侧配了 `SMTP_HOST` 就是 `self`，否则 `admin`。
+  · `admin` —— 连发信通道都没有，只能找管理员重置。
+  三种形态共用同一套令牌逻辑（`services/password-reset.ts`：只存 sha256、30 分钟、一次性、
+  重置成功作废该账号全部会话），前端按 `GET /api/config` 的 `passwordResetFlow` 决定显示哪一种文案。
 - **`email_confirmed_at` 只是提示状态**：不参与鉴权，也不代表地址真的可达（我们没有发确认信的能力）。它只决定顶部提醒条是否出现（`components/EmailReminder.vue`），换邮箱会清空要求重新确认。别拿它当"已验证邮箱"用。
 - **快照冻结**：报名和分队各存一份快照，改评分**不得回写**任何 `*_snapshot`；已发布的阵容不会因改评分而变。
 - **换人只补阵容、不改历史**：`match_substitutions` 记流水（换下谁、换上谁、哪个位置、操作人），

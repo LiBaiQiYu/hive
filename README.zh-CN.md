@@ -114,7 +114,7 @@ flowchart TB
 | 数据 | Cloudflare D1（SQLite），Drizzle ORM 描述结构，SQL 迁移为唯一真源 |
 | 异步 | D1 outbox 表 + Cron 触发器（每日维护、每分钟任务派发与到点结算），无消息队列 |
 | 邮件 | 收信回复（重置链接）与主动发信（开赛提醒，`send_email` 绑定） |
-| 部署 | 单个 Worker 同时提供页面与接口，静态资源由 Workers Static Assets 承载 |
+| 部署 | 单个 Worker 同时提供页面与接口，静态资源由 Workers Static Assets 承载；也可自建（Node + SQLite + Docker，见 [deploy/README.md](deploy/README.md)） |
 
 运行基线为 **Workers 免费版**（单请求 CPU 10ms、Cron 至多 3 条、无 Queues、主动发信仅限已验证目的地）。这一约束直接影响了几个设计决策：密码哈希迭代次数按实测 CPU 校准、异步任务改用数据库表实现 outbox、每日维护合并进已有的 Cron 表达式、邮件只做「回信」而非群发。
 
@@ -155,15 +155,18 @@ pnpm dev        # 迁移 → 构建 → 起服务（http://127.0.0.1:8787）
 | `pnpm db:backup` | 导出生产库到 `backups/` |
 | `pnpm sec:check` | 安全攻击用例（需先启动 `pnpm dev`） |
 | `pnpm run deploy` | 部署到 Cloudflare（必须带 `run`） |
+| `pnpm build:server` | 打包自建部署产物（`packages/api/dist/{server,migrate}.mjs`） |
+| `pnpm dev:node` | 本地跑自建形态（Node + SQLite，读 `.env.local`） |
+| `pnpm db:migrate:sqlite` | 把迁移应用到自建的 SQLite 文件 |
 
 ## 质量保障
 
 | 项目 | 现状 |
 | --- | --- |
-| 单元测试 | 20 个测试文件、199 个用例，覆盖评分公式、分队算法、快照冻结、候补排序、弃赛与未进阵容归因、Steam 回调校验、发信结构 |
+| 单元测试 | 24 个测试文件、233 个用例，覆盖评分公式、分队算法、快照冻结、候补排序、弃赛与未进阵容归因、Steam 回调校验、发信结构、D1 兼容层契约 |
 | 安全用例 | ≈78 项，覆盖授权矩阵、CSRF、注入、越权、隐私泄露、XSS 与异常输入（按当前注册方式略有增减） |
-| 结构校验 | SQL 迁移与 Drizzle Schema 逐列比对（24 表 / 288 列 / 55 索引） |
-| 模板体检 | 41 个 `.vue` 文件编译通过 |
+| 结构校验 | SQL 迁移与 Drizzle Schema 逐列比对（25 表 / 292 列 / 55 索引） |
+| 模板体检 | 43 个 `.vue` 文件编译通过 |
 | 交付门禁 | `typecheck`、`test`、`build`、`db:check`、`web:check`；涉及鉴权与接口变更时追加 `sec:check` |
 
 安全设计与残余风险评估见 [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md)。
@@ -172,9 +175,10 @@ pnpm dev        # 迁移 → 构建 → 起服务（http://127.0.0.1:8787）
 
 ```text
 apps/web/                 前端 SPA（页面、组件、样式、资产）
-packages/api/             Worker 入口、路由、服务层与异步任务
+packages/api/             Worker 入口、路由、服务层与异步任务；src/server/ 是自建部署的 Node 入口
 packages/database/        迁移 SQL、Drizzle Schema、结构一致性校验脚本
 packages/shared/          前后端共享的类型、常量与错误码
+deploy/                  自建部署：Dockerfile、compose、部署/备份/导入脚本与文档
 scripts/                  安全自检、Vue 模板体检等仓库级脚本
 docs/                     架构、数据库、接口、界面、开发与安全文档（含配图）
 ```

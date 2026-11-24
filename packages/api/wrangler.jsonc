@@ -131,7 +131,10 @@
     "AUTO_FINALIZE_ODD": "false",
     "SYNC_JOB_BATCH_SIZE": 5,
     "SYNC_JOB_LEASE_SECONDS": 120,
-    "AUDIT_RETENTION_DAYS": 365
+    "AUDIT_RETENTION_DAYS": 365,
+    // 密码找回走哪条路：inbound = 玩家发信到 reset@，Worker 回信（免费版只能这样）。
+    // 自建服务器有 SMTP，那边用 self（见 deploy/.env.example），代码同一份。
+    "RESET_FLOW": "inbound"
   },
 
   // wrangler 4.x：缺密钥时部署即失败，而不是上线后 500
@@ -185,7 +188,8 @@
         "AUTO_FINALIZE_ODD": "false",
         "SYNC_JOB_BATCH_SIZE": 5,
         "SYNC_JOB_LEASE_SECONDS": 120,
-        "AUDIT_RETENTION_DAYS": 30
+        "AUDIT_RETENTION_DAYS": 30,
+        "RESET_FLOW": "inbound"
       },
       // 与生产同口径：STRATZ 是主源，缺 token 就没法验证"段位同步"这条链路
       "secrets": {

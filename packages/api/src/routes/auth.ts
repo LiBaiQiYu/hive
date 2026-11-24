@@ -1,8 +1,6 @@
 import { Hono } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { drizzle } from 'drizzle-orm/d1';
 import { z } from 'zod';
-import { playerRatings, users } from '@hive/db';
 import {
   ApiError,
   newId,
@@ -16,7 +14,16 @@ import type { AppEnv, Env } from '../env';
 import { cookieSecure, intVar } from '../env';
 import { requireUser } from '../guard';
 import { hashPassword, verifyPassword } from '../password';
-import { findValidReset } from '../services/password-reset';
+import { resolveResetFlow } from './config';
+import { explainMailError, sendMail } from '../services/mailer';
+import {
+  RESET_MAX_PER_HOUR,
+  RESET_TTL_MINUTES,
+  buildResetMail,
+  createResetToken,
+  findValidReset,
+  recentResetCount,
+} from '../services/password-reset';
 import { readSettings } from '../services/settings';
 import { createSession, hashIp, hashToken, readSession, revokeSession } from '../session';
 
@@ -62,7 +69,6 @@ authRoutes.post('/register', async (c) => {
   }
   const input = parsed.data;
   const now = Date.now();
-  const db = drizzle(env.DB);
 
   // ---- 1) 邀请码：只有邀请制开启时才校验并原子消耗 ----
   let inviteCodeId: string | null = null;
@@ -124,32 +130,32 @@ authRoutes.post('/register', async (c) => {
   const passwordHash = await hashPassword(input.password, env.PASSWORD_PEPPER, iterations(env));
 
   try {
-    await db.batch([
-      db.insert(users).values({
-        id: userId,
-        username: input.username,
-        displayName: input.displayName,
-        email: input.email,
+    // 用裸 SQL 而不是 drizzle：这一处是后端唯一用到 ORM 的地方，
+    // 去掉它之后整条数据层就只剩 `env.DB.prepare()` 一种写法——
+    // 也就能在 Cloudflare 与自建服务器（node:sqlite）上用同一份代码。
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO users (id, username, display_name, email, password_hash, role, status,
+                            invite_code_id, last_login_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'PLAYER', 'ACTIVE', ?, ?, ?, ?)`,
+      ).bind(
+        userId,
+        input.username,
+        input.displayName,
+        input.email,
         passwordHash,
-        role: 'PLAYER',
-        status: 'ACTIVE',
         inviteCodeId,
         // 注册即登录：不写这一列的话，后台「最近登录」对刚注册的人是「从未」——
         // 因为 last_login_at 只在 POST /auth/login 里更新，而注册后没人会立刻再登一次。
-        lastLoginAt: now,
-        createdAt: now,
-        updatedAt: now,
-      }),
-      db.insert(playerRatings).values({
-        id: newId(now),
-        userId,
-        systemRating: 500,
-        adminAdjustment: 0,
-        effectiveRating: 500,
-        confidenceBp: 0,
-        algorithmVersion: 'warroom-v1',
-        updatedAt: now,
-      }),
+        now,
+        now,
+        now,
+      ),
+      env.DB.prepare(
+        `INSERT INTO player_ratings (id, user_id, system_rating, admin_adjustment, effective_rating,
+                                     confidence_bp, algorithm_version, updated_at)
+         VALUES (?, ?, 500, 0, 500, 0, 'warroom-v1', ?)`,
+      ).bind(newId(now), userId, now),
     ]);
   } catch (err) {
     // batch 是事务，失败时整批回滚；补偿邀请码的消耗（开放注册时没有码可补偿）
@@ -308,6 +314,87 @@ authRoutes.post('/password', async (c) => {
   ]);
 
   return c.json({ data: { ok: true }, meta: { requestId: c.get('requestId') } });
+});
+
+/* --------------------------------------------------------------------------
+ * POST /api/auth/reset-request —— 自助申请重置链接（只在 RESET_FLOW=self 时开放）
+ *
+ * Workers 免费版发不了任意收件人，所以线上走"玩家发信 → 我们回信"。
+ * 自建服务器有 SMTP，就把这一步收回网页里：填邮箱、点发送、收信。
+ *
+ * **无论邮箱是否存在都返回同样的结果**：否则这个接口就成了账号枚举器。
+ * 真正发生什么只写审计与日志，不回给调用方。
+ * ------------------------------------------------------------------------ */
+const resetRequestSchema = z.object({
+  email: z.string().trim().toLowerCase().email('邮箱格式不正确').max(254),
+});
+
+authRoutes.post('/reset-request', async (c) => {
+  const env = c.env;
+  if (resolveResetFlow(env) !== 'self') {
+    // 明确告诉前端"这条路不通"，让它把界面切回说明文案（而不是静默失败）。
+    // 用 POLICY_REQUIRED 而不是 NOT_FOUND：接口存在，只是这个部署形态不开放它。
+    throw new ApiError('POLICY_REQUIRED', '当前部署不支持自助发信，请按页面提示操作');
+  }
+
+  const parsed = resetRequestSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    throw new ApiError('VALIDATION_FAILED', '输入不合法', parsed.error.flatten().fieldErrors);
+  }
+
+  const now = Date.now();
+  const email = parsed.data.email;
+  const ok = { data: { ok: true }, meta: { requestId: c.get('requestId') } };
+
+  const user = await env.DB.prepare(
+    `SELECT id, display_name AS displayName, status FROM users WHERE email = ?`,
+  )
+    .bind(email)
+    .first<{ id: string; displayName: string; status: string }>();
+
+  // 账号不存在 / 已停用：照样回 ok，但什么都不做
+  if (!user || user.status !== 'ACTIVE') {
+    console.log(`[hive] 重置申请忽略 ${JSON.stringify({ found: Boolean(user), status: user?.status ?? null })}`);
+    return c.json(ok);
+  }
+
+  // 每小时 3 次的上限沿用邮件找回那套，避免这个接口变成发信机
+  const recent = await recentResetCount(env, user.id, now);
+  if (recent >= RESET_MAX_PER_HOUR) {
+    console.log(`[hive] 重置申请被限流 ${JSON.stringify({ userId: user.id, recent })}`);
+    return c.json(ok);
+  }
+
+  const { token } = await createResetToken(env, user.id, now);
+  const origin = (env.APP_ORIGIN ?? '').replace(/\/+$/, '');
+  const mail = buildResetMail({
+    displayName: user.displayName,
+    resetUrl: `${origin}/reset-password?token=${encodeURIComponent(token)}`,
+    ttlMinutes: RESET_TTL_MINUTES,
+  });
+
+  const result = await sendMail(env, { to: email, subject: mail.subject, text: mail.text });
+  if (!result.ok) {
+    // 发信失败要让人知道（否则用户会一直等），但错误文案不暴露内部细节
+    console.error('[hive] 重置邮件发送失败', explainMailError(result.error));
+    throw new ApiError('INTERNAL', '邮件发送失败，请稍后重试或联系管理员');
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id,
+       after_json, request_id, created_at)
+     VALUES (?, NULL, 'SYSTEM', 'user.password-reset-request', 'user', ?, ?, ?, ?)`,
+  )
+    .bind(
+      newId(now),
+      user.id,
+      JSON.stringify({ via: 'WEB_FORM' }),
+      c.get('requestId') ?? null,
+      now,
+    )
+    .run();
+
+  return c.json(ok);
 });
 
 /* --------------------------------------------------------------------------

@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# HIVE —— 自建服务器部署（1Panel + Docker Compose）
+#
+# 目录约定（服务器上的 /opt/hive/）：
+#   releases/<时间戳>/   每次部署的构建上下文（server.mjs + migrate.mjs + public/ + migrations/）
+#   current -> releases/<时间戳>
+#   shared/.env          运行期密钥，只存在服务器上，权限 600
+#   shared/data/         SQLite 数据库（唯一需要备份的东西）
+#   Dockerfile           镜像定义（CI 每次随之更新）
+#   docker-compose.yml   本文件
+#
+# 镜像由 CI 在服务器本地 build（首次约 1 分钟，之后走层缓存）。
+# 代码进镜像而不是 bind mount —— 这样切版本天然生效，不需要处理
+# 「符号链接换了但容器还挂着旧目录」那个坑。
+# ---------------------------------------------------------------------------
+services:
+  hive:
+    # 构建上下文就是本次 release 目录，Dockerfile 由部署脚本一起放进去
+    # （不写 ../Dockerfile：compose 会先解析 current 这个符号链接，
+    #   相对路径的 ../ 到底落在 releases/ 还是 /opt/hive/ 取决于实现，太脆）
+    build: ./current
+    image: hive-app:latest
+    container_name: hive
+    restart: unless-stopped
+
+    # 只监听回环地址。对外访问走 1Panel「网站 → 反向代理 → http://127.0.0.1:8787」，
+    # HTTPS / gzip 由 OpenResty 负责，容器不直接暴露公网。
+    ports:
+      - '127.0.0.1:8787:8787'
+
+    environment:
+      NODE_ENV: production
+      PORT: '8787'
+      HOST: 0.0.0.0
+      DB_PATH: /srv/data/hive.db
+      STATIC_DIR: /srv/app/public
+      MIGRATIONS_DIR: /srv/app/migrations
+
+    env_file:
+      - ./shared/.env
+
+    volumes:
+      # 只有数据库挂卷：切版本不影响数据，备份也只需要拷这一个目录
+      - ./shared/data:/srv/data
+
+    # SQLite 在容器里写，断电重启要能恢复：WAL 已开，加上优雅停止
+    stop_grace_period: 15s
+
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

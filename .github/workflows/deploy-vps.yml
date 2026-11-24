@@ -1,0 +1,210 @@
+# ---------------------------------------------------------------------------
+# HIVE → 自建服务器（VPS / 1Panel）自动部署
+#
+# 流程：push main → 云端构建前端 + 后端产物 → 上传产物与部署脚本 →
+#       SSH 执行 remote-deploy.sh（切版本 + 重建容器 + 健康检查 + 失败回滚）
+#
+# 为什么在 CI 构建而不是在服务器构建：
+#   前端 vite build + 后端 esbuild 在 2C2G 的机器上容易抢内存；
+#   云端构建完只有 10MB 左右的产物，服务器全程不承担构建峰值。
+#
+# 需要的 GitHub Secrets（**没配也安全**：只跑构建与测试，跳过部署）：
+#   SSH_HOST          服务器 IP 或域名
+#   SSH_USER          登录用户（对 /opt/hive 有写权限，能执行 docker）
+#   SSH_PRIVATE_KEY   对应私钥内容
+#   SSH_PORT          可选，默认 22
+#   SSH_KNOWN_HOSTS   可选，ssh-keyscan <host> 的输出；不填则首次连接自动接受
+#
+# 注意：前端**没有**构建期内联的变量（API 都走同源 /api），
+# 所以不需要 GitHub Variables —— 所有配置都在服务器的 shared/.env 里。
+# ---------------------------------------------------------------------------
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只允许一次部署，避免两个 release 竞争 current 符号链接
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP_DIR: /opt/hive
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 构建与自检：无论有没有配部署密钥都会跑，本身就是一套 CI
+  # -------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      artifact: ${{ steps.pack.outputs.name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Vue template check
+        run: pnpm web:check
+
+      - name: Build frontend
+        run: pnpm build
+
+      - name: Build backend (Node bundle)
+        run: pnpm build:server
+
+      - name: Assemble artifact
+        id: pack
+        run: |
+          set -euo pipefail
+          test -f packages/api/dist/server.mjs || { echo '缺少 packages/api/dist/server.mjs'; exit 1; }
+          test -f packages/api/dist/migrate.mjs || { echo '缺少 packages/api/dist/migrate.mjs'; exit 1; }
+          test -f apps/web/dist/index.html || { echo '缺少 apps/web/dist/index.html'; exit 1; }
+
+          mkdir -p artifact
+          cp packages/api/dist/server.mjs artifact/server.mjs
+          cp packages/api/dist/migrate.mjs artifact/migrate.mjs
+          cp -r apps/web/dist artifact/public
+          cp -r packages/database/migrations artifact/migrations
+          # source map 只在排查线上问题时才要，别把体积翻倍
+          rm -f artifact/server.mjs.map artifact/public/_headers
+
+          tar -czf hive.tar.gz -C artifact .
+          echo "name=hive.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "artifact: $(du -h hive.tar.gz | cut -f1)"
+
+      - name: Upload artifact for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-server
+          path: hive.tar.gz
+          retention-days: 7
+
+      - name: Upload artifact for deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-deploy-bundle
+          path: |
+            hive.tar.gz
+            deploy/remote-deploy.sh
+            deploy/Dockerfile
+            deploy/docker-compose.yml
+          retention-days: 3
+
+  # -------------------------------------------------------------------------
+  # 部署：只有配了 SSH_HOST 才会真正执行
+  # -------------------------------------------------------------------------
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check deploy secrets
+        id: precheck
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SSH_HOST" ] || [ -z "$SSH_USER" ] || [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过部署::未配置 SSH_HOST / SSH_USER / SSH_PRIVATE_KEY，本次只做构建与测试。配置方法见 deploy/README.md"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download artifact
+        if: steps.precheck.outputs.ready == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: hive-deploy-bundle
+
+      - name: Setup SSH
+        if: steps.precheck.outputs.ready == 'true'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          PORT="${SSH_PORT:-22}"
+          echo "SSH_PORT_RESOLVED=$PORT" >> "$GITHUB_ENV"
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          if [ -n "$SSH_KNOWN_HOSTS" ]; then
+            printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            echo "SSH_STRICT=yes" >> "$GITHUB_ENV"
+          else
+            # 未配置 known_hosts 时首次连接自动信任；安全性依赖私钥本身
+            ssh-keyscan -p "$PORT" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null || true
+            echo "SSH_STRICT=accept-new" >> "$GITHUB_ENV"
+          fi
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Upload artifact and deploy files
+        if: steps.precheck.outputs.ready == 'true'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          scp -P "$SSH_PORT_RESOLVED" -o StrictHostKeyChecking="$SSH_STRICT" -i ~/.ssh/id_deploy \
+            hive.tar.gz "$SSH_USER@$SSH_HOST:/tmp/hive.tar.gz"
+          # 部署脚本与容器配置随代码更新，每次一起推上去
+          scp -P "$SSH_PORT_RESOLVED" -o StrictHostKeyChecking="$SSH_STRICT" -i ~/.ssh/id_deploy \
+            deploy/remote-deploy.sh "$SSH_USER@$SSH_HOST:$APP_DIR/remote-deploy.sh.new"
+          scp -P "$SSH_PORT_RESOLVED" -o StrictHostKeyChecking="$SSH_STRICT" -i ~/.ssh/id_deploy \
+            deploy/Dockerfile "$SSH_USER@$SSH_HOST:$APP_DIR/Dockerfile.new"
+          scp -P "$SSH_PORT_RESOLVED" -o StrictHostKeyChecking="$SSH_STRICT" -i ~/.ssh/id_deploy \
+            deploy/docker-compose.yml "$SSH_USER@$SSH_HOST:$APP_DIR/docker-compose.yml.new"
+
+      - name: Run remote deploy
+        if: steps.precheck.outputs.ready == 'true'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT_RESOLVED" -o StrictHostKeyChecking="$SSH_STRICT" -i ~/.ssh/id_deploy \
+            "$SSH_USER@$SSH_HOST" \
+            "set -Eeuo pipefail; mkdir -p '$APP_DIR'; \
+             mv '$APP_DIR/remote-deploy.sh.new' '$APP_DIR/remote-deploy.sh'; \
+             mv '$APP_DIR/Dockerfile.new' '$APP_DIR/Dockerfile'; \
+             mv '$APP_DIR/docker-compose.yml.new' '$APP_DIR/docker-compose.yml'; \
+             chmod +x '$APP_DIR/remote-deploy.sh'; \
+             cd '$APP_DIR'; APP_DIR='$APP_DIR' ./remote-deploy.sh /tmp/hive.tar.gz"
+
+      - name: Cleanup SSH key
+        if: always() && steps.precheck.outputs.ready == 'true'
+        run: rm -f ~/.ssh/id_deploy

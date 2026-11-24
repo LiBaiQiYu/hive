@@ -10,11 +10,15 @@ dist/
 .dev.vars
 .env
 .env.*
+# 例外：自建部署的环境变量模板要入仓（里面只有空值）
+!deploy/.env.example
 
 # 邀请码清单、数据库导出：属于凭据，只留在本地
 backups/
 *.sqlite
 *.sqlite3
+# 自建形态（pnpm dev:node）的默认数据库目录
+data/
 
 # 杂项
 *.log

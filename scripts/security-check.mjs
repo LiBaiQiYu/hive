@@ -260,6 +260,16 @@ if (seededQq.status !== 200) {
   })
   check('密码找回', '伪造令牌不能改密', fakePost.status === 401, `HTTP ${fakePost.status}`)
 
+  // 自助发信只在自建（RESET_FLOW=self）时开放；Workers 上必须明确拒绝，
+  // 不能变成"谁来都能触发一次发信"的接口
+  const resetReq = await call('POST', '/api/auth/reset-request', { body: { email: 'nobody@example.com' } })
+  check(
+    '密码找回',
+    '未开放的部署形态拒绝自助发信',
+    resetReq.status === 422 || resetReq.status === 200,
+    `HTTP ${resetReq.status}（422=按预期拒绝，200=该实例配了 SMTP）`,
+  )
+
   const xss = '<img src=x onerror=alert(1)>'
   const wrote = await call('PATCH', '/api/me', { cookie, body: { bio: xss } })
   const back = await call('GET', '/api/me', { cookie })

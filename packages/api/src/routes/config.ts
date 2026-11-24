@@ -5,10 +5,26 @@ import { readSettings } from '../services/settings';
 export const configRoutes = new Hono<AppEnv>();
 
 /**
- * GET /api/config —— 登录前就要知道的公开配置。
+ * 密码找回走哪条路 —— 两套运行时的能力不同，如实告诉前端，别让它猜：
  *
- * 目前只有一件事：注册要不要邀请码。注册页据此决定显不显示邀请码输入框，
- * 服务端注册接口读同一个开关，所以两边不会各说各话。
+ *   · `self`    ：配了 SMTP（自建服务器）。玩家填邮箱，我们直接发信；
+ *   · `inbound` ：Workers 免费版。玩家发信到 reset@，Worker 回信带链接；
+ *   · `admin`   ：既没有 SMTP 也没有收信入口，只能找管理员重置。
+ *
+ * 前端据此决定登录页显示输入框还是显示"去发邮件"的说明。三个值都不含
+ * 任何密钥，放在公开配置里是安全的。
+ */
+export type ResetFlow = 'self' | 'inbound' | 'admin';
+
+export function resolveResetFlow(env: { RESET_FLOW?: string }): ResetFlow {
+  const raw = env.RESET_FLOW?.trim().toLowerCase();
+  if (raw === 'self' || raw === 'inbound' || raw === 'admin') return raw;
+  // 没显式配置时按 Workers 的默认形态处理（既有行为）
+  return 'inbound';
+}
+
+/**
+ * GET /api/config —— 登录前就要知道的公开配置。
  *
  * 只放"给游客看也无所谓"的开关；任何密钥、内部开关都不要往这里加。
  */
@@ -19,7 +35,10 @@ configRoutes.get('/', async (c) => {
   c.header('cache-control', 'no-store');
 
   return c.json({
-    data: { registrationRequireInvite: settings.registrationRequireInvite },
+    data: {
+      registrationRequireInvite: settings.registrationRequireInvite,
+      passwordResetFlow: resolveResetFlow(c.env),
+    },
     meta: { requestId: c.get('requestId') },
   });
 });

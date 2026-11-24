@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { NButton, NInput, useMessage } from 'naive-ui';
 import HelpTip from '../components/HelpTip.vue';
 import { ApiError, api } from '../lib/api';
-import { fetchPublicConfig } from '../lib/config';
+import { fetchPublicConfig, type ResetFlow } from '../lib/config';
 import { PASSWORD_RESET_EMAIL } from '../lib/contact';
 import { loadMe } from '../lib/session';
 
@@ -23,10 +23,42 @@ const message = useMessage();
  */
 const requireInvite = ref<boolean | null>(null);
 
+/**
+ * 密码找回的形态（见 lib/config.ts）：
+ *   null      = 还没拿到配置，先什么都不显示，避免文案闪一下再变；
+ *   'self'    = 自建部署，页面里直接填邮箱发信；
+ *   'inbound' = 线上免费版，提示用户发信到 reset@；
+ *   'admin'   = 只能找管理员。
+ */
+const resetFlow = ref<ResetFlow | null>(null);
+const resetEmail = ref('');
+const resetSending = ref(false);
+const resetSent = ref(false);
+
 onMounted(async () => {
   const config = await fetchPublicConfig();
   requireInvite.value = config.registrationRequireInvite;
+  resetFlow.value = config.passwordResetFlow;
 });
+
+/** 自助发信：只在 resetFlow === 'self' 时可用 */
+async function requestReset() {
+  const email = resetEmail.value.trim();
+  if (!email) {
+    message.warning('请填写注册邮箱');
+    return;
+  }
+  resetSending.value = true;
+  try {
+    await api('/auth/reset-request', { method: 'POST', body: { email } });
+    // 服务端对"邮箱不存在"也回 ok（避免枚举账号），所以这里统一提示"如果存在"
+    resetSent.value = true;
+  } catch (err) {
+    message.error(err instanceof ApiError ? err.message : '发送失败，请稍后重试');
+  } finally {
+    resetSending.value = false;
+  }
+}
 
 /**
  * 登录后回跳（比如被守卫从 /settings 带来的）。
@@ -386,12 +418,36 @@ async function submitRegister() {
         <NButton type="primary" attr-type="submit" :disabled="submitting" :loading="submitting" block>
           {{ submitting ? '登录中…' : '登录' }}
         </NButton>
-        <!-- 找回走"发信给 reset@ → 自动回信"，所以这里要写清楚具体怎么做 -->
-        <p class="login-hint">
+        <!-- 找回有三种形态，按服务端告知的 resetFlow 显示对应的一种 -->
+        <div v-if="resetFlow === 'self'" class="login-hint reset-box">
+          <template v-if="!resetSent">
+            忘记密码？填注册邮箱，我们发一封带重置链接的邮件给你（30 分钟内有效）。
+            <div class="reset-row">
+              <NInput
+                v-model:value="resetEmail"
+                placeholder="注册邮箱"
+                size="small"
+                :input-props="{ autocomplete: 'email', type: 'email' }"
+                @keyup.enter="requestReset"
+              />
+              <NButton size="small" :loading="resetSending" :disabled="resetSending" @click="requestReset">
+                发送
+              </NButton>
+            </div>
+          </template>
+          <template v-else>
+            如果 <span class="mono">{{ resetEmail }}</span> 是本站账号，重置链接已经发出，请查收（含垃圾箱）。
+            收不到就联系管理员在「成员管理」里重置。
+          </template>
+        </div>
+        <p v-else-if="resetFlow === 'inbound'" class="login-hint">
           忘记密码？用注册邮箱发一封空白邮件到
           <span class="mono">{{ PASSWORD_RESET_EMAIL }}</span>
           ，系统会回信带重置链接（30 分钟内有效）。
           收不到就联系管理员在「成员管理」里重置。
+        </p>
+        <p v-else-if="resetFlow === 'admin'" class="login-hint">
+          忘记密码？请联系管理员在「成员管理」里重置。
         </p>
       </form>
 

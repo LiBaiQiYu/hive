@@ -10,10 +10,14 @@ import { useRoute } from 'vue-router';
 import { RouterLink } from 'vue-router';
 import { NButton, NInput } from 'naive-ui';
 import { ApiError, api } from '../lib/api';
+import { fetchPublicConfig, type ResetFlow } from '../lib/config';
 import { PASSWORD_RESET_EMAIL } from '../lib/contact';
 
 const route = useRoute();
 const token = computed(() => (typeof route.query.token === 'string' ? route.query.token : ''));
+
+/** 失效提示要按部署形态给不同的下一步，不能让自建用户去发根本不存在的邮件 */
+const flow = ref<ResetFlow>('admin');
 
 const checking = ref(true);
 const valid = ref(false);
@@ -32,6 +36,10 @@ const expiresText = computed(() => {
 });
 
 onMounted(async () => {
+  void fetchPublicConfig().then((config) => {
+    flow.value = config.passwordResetFlow;
+  });
+
   if (!token.value) {
     checking.value = false;
     return;
@@ -97,9 +105,14 @@ async function submit() {
           {{ error || '这个链接无效或已经过期。' }}
         </p>
         <p class="muted" style="margin: 0 0 16px; font-size: 13px; line-height: 1.7">
-          请用注册邮箱重新发一封空白邮件到
-          <span class="mono">{{ PASSWORD_RESET_EMAIL }}</span>
-          ，系统会回信带一个新链接（30 分钟内有效，只能使用一次）。
+          <template v-if="flow === 'self'">
+            回到登录页点「忘记密码」，填注册邮箱重新申请一个链接（30 分钟内有效，只能使用一次）。
+          </template>
+          <template v-else-if="flow === 'inbound'">
+            请用注册邮箱重新发一封空白邮件到
+            <span class="mono">{{ PASSWORD_RESET_EMAIL }}</span>
+            ，系统会回信带一个新链接（30 分钟内有效，只能使用一次）。
+          </template>
           收不到也可以联系管理员在后台重置。
         </p>
         <RouterLink to="/login" class="btn">返回登录</RouterLink>

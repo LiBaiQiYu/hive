@@ -1,13 +1,29 @@
-/** Worker 绑定的类型契约。与 packages/api/wrangler.jsonc 的 vars/secrets 一一对应。 */
-import type { EmailMessage } from 'cloudflare:email';
+/**
+ * 运行时绑定的类型契约。
+ *
+ * 同一个后端跑在两种运行时上：
+ *   · Cloudflare Workers —— `DB` 是 D1，`EMAIL` 是 send_email 绑定；
+ *   · 自建服务器（Node）—— `DB` 是 node:sqlite 的 D1 兼容层，`EMAIL` 是 SMTP 配置。
+ *
+ * 所以这里的 `DB` 类型写成"两者都满足"的最小接口（见 db/binding.ts），
+ * 而不是写死 D1Database —— 否则 Node 侧的类型检查过不去。
+ */
+import type { D1LikeDatabase } from './db/types';
+
+/**
+ * 出站邮件的两条通路。
+ *
+ * Workers 侧由 `wrangler.jsonc` 的 `send_email` 绑定注入了 `{ send(message) }`；
+ * Node 侧由入口把 nodemailer 包成同一个形状。业务代码只认 `.send()`，
+ * 不关心底下是 Cloudflare 还是 SMTP。
+ */
+export interface MailBinding {
+  send(message: { from: string; to: string; raw: string }): Promise<void>;
+}
 
 export interface Env {
-  DB: D1Database;
-  /**
-   * Cloudflare Email Sending 绑定（`wrangler.jsonc` 的 `send_email`）。
-   * 免费版只能发给"已验证目的地地址"，所以绑定是收窄的；本地 `pnpm dev` 没有它。
-   */
-  EMAIL?: { send(message: EmailMessage): Promise<void> };
+  DB: D1LikeDatabase;
+  EMAIL?: MailBinding;
   APP_ENV: string;
   APP_ORIGIN: string;
   PASSWORD_PEPPER: string;
@@ -30,11 +46,19 @@ export interface Env {
    * 没配则退回 OpenDota —— 后者按 IP 计额度，而 Worker 出口 IP 是共享的。
    */
   STRATZ_API_TOKEN?: string;
-  /** outbox 每次抽干的任务数 / 租约秒数（wrangler.jsonc 的 vars） */
+  /** outbox 每次抽干的任务数 / 租约秒数 */
   SYNC_JOB_BATCH_SIZE?: string;
   SYNC_JOB_LEASE_SECONDS?: string;
   /** 审计日志保留天数，每日维护按它裁剪 */
   AUDIT_RETENTION_DAYS?: string;
+  /**
+   * 密码找回走哪条路（见 `routes/config.ts` 的 `resolveResetFlow`）：
+   *   `self`    —— 配了 SMTP，玩家填邮箱我们发信（自建部署）；
+   *   `inbound` —— 玩家发信到 reset@，Worker 回信（Cloudflare 免费版）；
+   *   `admin`   —— 只能找管理员重置。
+   * 不配时按 `inbound` 处理，保持 Workers 上的既有行为。
+   */
+  RESET_FLOW?: string;
 }
 
 export interface Variables {
