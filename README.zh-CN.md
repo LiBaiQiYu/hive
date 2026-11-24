@@ -122,10 +122,10 @@ flowchart TB
 
 ### 环境要求
 
-- Node.js **20 及以上**
+- Node.js **20 及以上**（自建部署用 `node:sqlite`，需要 **22 及以上**；容器里是 22）
 - pnpm **9.15**
-- Cloudflare 账号（仅在部署时需要）
-- 可选：用于同步段位的 [STRATZ](https://stratz.com) API token、用于昵称头像的 Steam Web API key、用于密码找回与提醒的 Cloudflare Email Routing
+- Cloudflare 账号（仅在部署到 Workers 时需要）
+- 可选：用于同步段位的 [STRATZ](https://stratz.com) API token、用于昵称头像的 Steam Web API key、用于密码找回与提醒的 Cloudflare Email Routing（自建部署改用 SMTP）
 
 ### 安装与启动
 
@@ -136,6 +136,8 @@ pnpm dev        # 迁移 → 构建 → 起服务（http://127.0.0.1:8787）
 ```
 
 本地开发使用本地 D1 数据库。把 `packages/api/.dev.vars.example` 复制为 `packages/api/.dev.vars` 并填好本地密钥（见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）。生产密钥走 `wrangler secret put`，从不入库。
+
+自建形态（Node + SQLite）另有一套命令，见下方「脚本」与 [deploy/README.md](deploy/README.md)。
 
 > `pnpm dev:remote` 会让 Worker 在边缘运行、直连**生产库**——只用于复现线上问题。
 
