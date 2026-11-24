@@ -358,6 +358,13 @@ for (const t of ['users','events','registrations','matches','app_settings']) {
 
 ## 七、常见问题
 
+**`node:sqlite` 打印 `ExperimentalWarning: SQLite is an experimental feature`**
+正常现象。这个模块在 Node 22/24 里仍标着 experimental，但 API 已经稳定，
+我们只用了 `DatabaseSync` 的 `prepare/run/get/all/exec` 这几个最基础的接口。
+**因此容器里的 Node 大版本是钉死的**（`node:22-bookworm-slim`）：升级 Node 前先在
+本地跑一遍 `pnpm test`（含 9 条 D1 兼容层契约测试），确认没有行为变化再改 Dockerfile。
+想彻底消掉这条警告，可以在启动命令上加 `--disable-warning=ExperimentalWarning`。
+
 **容器起来了但 8787 端口不通**
 看 `docker logs hive`。常见是 `shared/.env` 缺 `PASSWORD_PEPPER` / `IP_HASH_SALT`，
 进程启动时直接 `process.exit(1)`（宁可起不来，也别带半套配置对外服务）。
