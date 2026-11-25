@@ -23,10 +23,14 @@ services:
     container_name: hive
     restart: unless-stopped
 
-    # 只监听回环地址。对外访问走 1Panel「网站 → 反向代理 → http://127.0.0.1:8787」，
-    # HTTPS / gzip 由 OpenResty 负责，容器不直接暴露公网。
+    # 监听所有网卡，可以直接用 http://<服务器IP>:8787 访问。
+    #
+    # 原本故意绑 127.0.0.1（只让 Nginx 反代进来，容器不直接暴露公网）。
+    # 但那样在域名接好、1Panel 站点建好之前，外部根本连不上。
+    # 现在先开放端口用于验证；接完域名后建议改回 '127.0.0.1:8787:8787'，
+    # 让 HTTPS 由 OpenResty 统一处理（明文 HTTP 暴露在公网不安全）。
     ports:
-      - '127.0.0.1:8787:8787'
+      - '8787:8787'
 
     environment:
       NODE_ENV: production
