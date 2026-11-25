@@ -137,35 +137,87 @@ ssh-copy-id -i ./deploy_key.pub deploy@<server>
 
 `deploy_key` 的内容（含 `-----BEGIN...` 到 `-----END...`）稍后填进 GitHub Secret。
 
-### 5. 1Panel 建站
+### 5. 反向代理（OpenResty）
 
-1Panel 左侧 **网站 → 创建网站 → 反向代理**：
+容器只绑 `127.0.0.1:8787`，对外必须走 OpenResty。配置在仓库里，
+用脚本装（会先 `nginx -t` 校验，失败自动还原）：
+
+```bash
+# 把配置与脚本传上去
+scp deploy/nginx-hive.conf deploy/nginx-hive-https.conf \
+    deploy/apply-nginx.sh deploy/issue-cert.sh \
+    root@<server>:/opt/hive/
+ssh root@<server> 'chmod +x /opt/hive/*.sh'
+
+# 只装 HTTP（证书还没签时用这个）
+ssh root@<server> '/opt/hive/apply-nginx.sh'
+```
+
+它会：备份已有配置 → 写入 `conf.d/20-hive.conf` → `nginx -t` → `openresty -s reload`。
+配置文件以 `20-` 开头，排在 pixel-blog 的 `10-` 之后，两者互不干扰。
+
+> **不要**在 1Panel 界面里再建一次同名站点：那会生成第二份 server 块，
+> 两份配置抢同一个 `server_name`，行为取决于文件顺序。选一种方式即可。
+
+**gzip** 与 **`/assets/` 长缓存**已经写在 `nginx-hive.conf` 里，不用另配。
+**不要**自己配 WebSocket，这个站没有实时功能。
+
+### 6. 域名与 HTTPS
+
+#### 6.1 加 DNS 记录
+
+在 Cloudflare 加一条 A 记录：
 
 | 字段 | 值 |
 | --- | --- |
-| 主域名 | `hive.你的域名` |
-| 代理地址 | `http://127.0.0.1:8787` |
-| 启用 HTTPS | 勾选，用 DNS 或 HTTP 验证申请 Let's Encrypt |
+| 名称 | `hive-new`（完整即 `hive-new.cwa1e.top`） |
+| 内容 | 服务器公网 IP |
+| 代理状态 | **仅 DNS（灰色云朵）** |
 
-创建后在 **网站 → 配置 → 反向代理** 确认 `proxy_pass http://127.0.0.1:8787;`。
-1Panel 默认会带上 `Host` / `X-Real-IP` / `X-Forwarded-For`，Hono 能正常取到真实 IP。
+> 灰色云朵很关键：开橙色云朵时，ACME 的 HTTP-01 验证请求会被 Cloudflare 接走，
+> 到不了源站，证书签不下来。
 
-**gzip**（可选，容器自己不压缩，交给 OpenResty）：
+#### 6.2 签证书
 
-```nginx
-gzip on;
-gzip_types text/plain text/css application/javascript application/json image/svg+xml;
-gzip_min_length 1024;
+```bash
+ssh root@<server> '/opt/hive/issue-cert.sh'
 ```
 
-> **不要**自己配 WebSocket，这个站没有实时功能。
+脚本会先自检（域名能不能解析、80 端口通不通），不满足直接报出**具体该查哪一条**，
+不会留下半签状态。签发成功后证书装到
+`/opt/1panel/apps/openresty/openresty/www/ssl/<域名>/`，
+并注册 `--reloadcmd`（续期后自动 reload OpenResty）。
 
-### 6. Cloudflare DNS
+查看状态：
 
-如果域名托管在 Cloudflare：
-- 新增 A 记录 `hive` → 服务器 IP
-- **代理状态先设为「仅 DNS」**（灰色云朵）。橙色云朵会让流量先走 CF 再回源，
-  而站点本来就在 CF 上跑，容易绕晕；试跑通过后再决定要不要开。
+```bash
+ssh root@<server> '/opt/hive/issue-cert.sh --check'
+```
+
+#### 6.3 切到 HTTPS
+
+```bash
+ssh root@<server> '/opt/hive/apply-nginx.sh --https'
+```
+
+这会把 80 端口改成 301 跳转（**保留 ACME 验证路径**，否则三个月后自动续期会失败），
+并在 443 上加载证书。
+
+#### 6.4 改 `APP_ORIGIN`
+
+`APP_ORIGIN` 必须和对外的最终地址一致，否则：
+
+- Cookie 的 `Secure` 判断错 → 登录成功但页面仍是未登录；
+- CSRF 来源校验拒绝表单 → 所有 POST 返回 403；
+- 密码重置邮件里的链接指向错地址。
+
+```bash
+ssh root@<server>
+vi /opt/hive/shared/.env      # APP_ORIGIN=https://hive-new.cwa1e.top
+cd /opt/hive && docker compose up -d --force-recreate
+```
+
+改完用 `docker logs hive | grep 'app origin'` 确认生效。
 
 ---
 

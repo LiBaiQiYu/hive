@@ -23,14 +23,13 @@ services:
     container_name: hive
     restart: unless-stopped
 
-    # 监听所有网卡，可以直接用 http://<服务器IP>:8787 访问。
+    # 只绑回环：对外访问必须走 OpenResty 反代（deploy/nginx-hive.conf）。
     #
-    # 原本故意绑 127.0.0.1（只让 Nginx 反代进来，容器不直接暴露公网）。
-    # 但那样在域名接好、1Panel 站点建好之前，外部根本连不上。
-    # 现在先开放端口用于验证；接完域名后建议改回 '127.0.0.1:8787:8787'，
-    # 让 HTTPS 由 OpenResty 统一处理（明文 HTTP 暴露在公网不安全）。
+    # 容器不直接暴露公网 —— HTTPS、gzip、限流都由 Nginx 统一处理。
+    # 临时想用 http://<IP>:8787 直接验证时，改成 '8787:8787' 再
+    # `docker compose up -d --force-recreate`，验完记得改回来。
     ports:
-      - '8787:8787'
+      - '127.0.0.1:8787:8787'
 
     environment:
       NODE_ENV: production
