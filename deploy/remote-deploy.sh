@@ -26,7 +26,11 @@ COMPOSE_FILE="$APP_DIR/docker-compose.yml"
 DOCKERFILE="$APP_DIR/Dockerfile"
 HEALTH_URL="http://127.0.0.1:${PORT}/api/health"
 SERVICE="hive"
-IMAGE="hive-app:latest"
+# 分开存：IMAGE_NAME 不带 tag。之前写成 IMAGE="hive-app:latest" 再拼
+# `$IMAGE:$STAMP`，得到 "hive-app:latest:2026..." 这种非法引用，
+# docker tag 直接失败——而失败被 `|| true` 吞掉了，回滚时才发现没有历史镜像。
+IMAGE_NAME="hive-app"
+IMAGE="$IMAGE_NAME:latest"
 
 log()  { printf '\n\033[1;36m[deploy]\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m[  ok  ]\033[0m %s\n' "$*"; }
@@ -57,6 +61,16 @@ compose() { "${COMPOSE[@]}" -f "$COMPOSE_FILE" "$@"; }
 STAMP="$(date +%Y%m%d-%H%M%S)"
 NEW_RELEASE="$RELEASES_DIR/$STAMP"
 mkdir -p "$RELEASES_DIR" "$APP_DIR/shared/data"
+
+# 数据目录必须归容器里的 node 用户（uid 1000）所有：
+# 容器以 node 身份跑，宿主机目录是 root:root 755 时 SQLite 打不开文件
+# （报 "unable to open database file"，看起来像路径错，其实是权限）。
+# 反复修正不报错，第一次部署和后续升级都能跑。
+if [ "$(stat -c %u "$APP_DIR/shared/data" 2>/dev/null || echo 1000)" != "1000" ]; then
+  chown -R 1000:1000 "$APP_DIR/shared/data" 2>/dev/null || \
+    warn "无法把 shared/data 改成 uid 1000（若不是 root 执行，请先手工 chown）"
+fi
+chmod 750 "$APP_DIR/shared/data" 2>/dev/null || true
 
 log "解包产物到 $NEW_RELEASE"
 mkdir -p "$NEW_RELEASE"
@@ -91,7 +105,10 @@ log "构建镜像"
 compose build "$SERVICE"
 
 # 给这次构建打上版本 tag：回滚时直接 retag，不用重新构建（快，也不依赖构建环境）
-docker tag "$IMAGE" "$IMAGE:$STAMP" 2>/dev/null || true
+# 失败要喊出来：没有历史 tag，回滚就只能重新构建（慢且依赖构建环境）
+if ! docker tag "$IMAGE" "$IMAGE_NAME:$STAMP"; then
+  warn "给镜像打版本 tag 失败（$IMAGE_NAME:$STAMP），回滚将退化为重新构建"
+fi
 
 # ------------------------------------------------------------------ 重启服务 --
 # 用 up -d --force-recreate 而不是 restart：镜像 tag 没变（都是 hive-app:latest），
@@ -123,7 +140,7 @@ if [ "$healthy" -ne 1 ]; then
     # 镜像 tag 是 hive-app:latest，直接 recreate 会继续跑新代码。
     # 优先用上次构建留下的版本 tag 重新打回去（秒级、不依赖构建）；
     # 没有那个 tag（老版本没打）才退化成重新构建。
-    PREV_TAG="$IMAGE:$(basename "$PREVIOUS_RELEASE")"
+    PREV_TAG="$IMAGE_NAME:$(basename "$PREVIOUS_RELEASE")"
     if docker image inspect "$PREV_TAG" >/dev/null 2>&1; then
       log "用已有镜像回滚：$PREV_TAG"
       docker tag "$PREV_TAG" "$IMAGE"
@@ -156,7 +173,7 @@ ls -1dt */ 2>/dev/null | tail -n +"$((KEEP_RELEASES + 1))" | while read -r old; 
   if [ "$(readlink -f "$CURRENT_LINK")" != "$(readlink -f "$old")" ]; then
     rm -rf -- "$old"
     # 对应的版本镜像也一起清掉，否则磁盘会被一堆 hive-app:<时间戳> 吃掉
-    docker rmi "$IMAGE:$(basename "$old")" >/dev/null 2>&1 || true
+    docker rmi "$IMAGE_NAME:$(basename "$old")" >/dev/null 2>&1 || true
     ok "已删除旧版本 $old"
   fi
 done
