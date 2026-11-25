@@ -90,7 +90,7 @@ pnpm sec:check      # 安全攻击用例 ≈78 项（含授权矩阵/注入/越�
 pnpm web:check      # Vue 模板体检：用 @vue/compiler-sfc 编一遍 .vue，抓语法错与未定义绑定
 
 # 自建形态（Node + SQLite，不需要 wrangler）
-pnpm build:server       # esbuild 打包 → packages/api/dist/{server,migrate}.mjs
+pnpm build:server       # esbuild 打包 → packages/api/dist/{server,migrate}.mjs（nodemailer 也打进去，镜像里不装 npm 包）
 pnpm db:migrate:sqlite  # 把 18 个迁移应用到 DB_PATH 指向的 sqlite 文件
 pnpm dev:node           # build + build:server + migrate + 起服务，读 .env.local
 ```
@@ -144,6 +144,7 @@ pnpm dev:node           # build + build:server + migrate + 起服务，读 .env.
 | D1 导出的 `.sql` 直接 `exec` 到 SQLite → `no such table: main.invite_codes`。导出文件里表顺序不保证满足外键依赖（`INSERT users` 可能早于 `CREATE TABLE invite_codes`）；D1 靠 `defer_foreign_keys` 把检查推到提交时，但那**要求被引用的表已经存在** | `deploy/import-d1.sh` 的做法：`PRAGMA foreign_keys = OFF` → `BEGIN` → 清同名表 → `exec(整份 SQL)` → `COMMIT` → `PRAGMA foreign_keys = ON` → `foreign_key_check` + `integrity_check` 校验。已实测：17 users / 11 events / 105 audit_logs 全部导入，0 外键违规 |
 | 备份 SQLite 用 `cp` 拷正在写的库 → 可能拿到半份事务，恢复时丢数据或库损坏（WAL 模式下尤其） | 用 `VACUUM INTO '<path>'`（SQLite 原生在线备份，在一个读事务里生成一致副本）。`deploy/backup.sh` 已封装；恢复时**必须把 `-wal` / `-shm` 一起删掉**，否则和新主库对不上 |
 | 自建侧 `static.ts` 忘了给 `Content-Type`：浏览器对 `text/plain` 的 JS 会拒绝执行（strict MIME checking），页面一片空白但**所有接口都正常**，最容易误判成前端 bug | `headersFor()` 按扩展名显式补 `Content-Type`；`/assets/*` 走 `immutable` 长缓存，`index.html` 走 `must-revalidate`。有扩展名但文件不存在时返回 404，**不要回落成 index.html**（否则浏览器把 JS 当页面解析） |
+| `build-server.mjs` 把 `nodemailer` 放进 `external` → 产物 `server.mjs` 里留一句裸 import，而镜像里**没有 node_modules**（Dockerfile 不跑 npm install）。症状极隐蔽：**启动正常、页面正常、只发信那一刻**报 `Cannot find package 'nodemailer'`，密码找回 500 | `external` 只留 `['node:*']`，nodemailer 打进产物（~911 KB）。改完检查 `grep -c nodemailer packages/api/dist/server.mjs` 有命中；实测办法是拿**没有 node_modules 的目录**跑一遍发信（真发一封、从 base64 正文里抽 token、改密、验证旧密码失效） |
 
 ## 关键设计决策（改了会连累别处）
 

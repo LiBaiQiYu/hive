@@ -10,8 +10,10 @@
  *      .js + 改 import 路径，麻烦且容易错；
  *   2. 产物体积只有几百 KB，容器镜像里不用带 node_modules。
  *
- * 注意：`node:sqlite` / `nodemailer` 在 Node 侧是外部依赖（前者内置，
- * 后者在镜像里 npm install），所以标成 external。
+ * 注意：`node:sqlite` 这类内置模块标成 external（交给 Node 原生加载），
+ * 但 **nodemailer 要打进来** —— 否则容器里还得 `npm install` 一次，
+ * 等于部署要求服务器能访问 npm registry（国内经常卡在这里）。
+ * 打进来之后产物 ~900KB，换来"服务器只认 Docker 镜像，不需要任何包管理器"。
  */
 import { build } from 'esbuild';
 import { rmSync } from 'node:fs';
@@ -22,8 +24,8 @@ const shared = {
   target: 'node22',
   format: 'esm',
   sourcemap: true,
-  // 打进产物的依赖包要显式点名：其余（node: 内置、浏览器侧的东西）一律外置
-  external: ['node:*', 'nodemailer'],
+  // 只把 Node 内置模块留给运行时；其余（含 nodemailer）全部打进产物
+  external: ['node:*'],
   // ESM 产物里 __dirname / require 这类 CommonJS 惯用法要补垫片
   banner: {
     js: [

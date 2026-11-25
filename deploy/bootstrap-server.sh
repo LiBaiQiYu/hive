@@ -36,6 +36,19 @@ else
   ok "Dockerfile 已存在"
 fi
 
+if [ ! -f "$APP_DIR/backup.sh" ]; then
+  log "备份脚本需要手动上传：scp deploy/backup.sh $APP_DIR/ && chmod +x $APP_DIR/backup.sh"
+  log "（之后在 1Panel 计划任务里配成每天跑一次）"
+else
+  ok "backup.sh 已存在"
+fi
+
+if [ ! -f "$APP_DIR/import-d1.sh" ]; then
+  log "从 Cloudflare 迁数据时才需要：scp deploy/import-d1.sh $APP_DIR/ && chmod +x $APP_DIR/import-d1.sh"
+else
+  ok "import-d1.sh 已存在"
+fi
+
 if [ ! -f "$APP_DIR/shared/.env" ]; then
   log "创建 shared/.env 模板"
   cat >"$APP_DIR/shared/.env" <<'ENVFILE'
@@ -91,8 +104,13 @@ cat <<EOF
 
 下一步：
   1. 编辑 $APP_DIR/shared/.env 填真实值（至少 APP_ORIGIN / PASSWORD_PEPPER / IP_HASH_SALT）
-  2. 在 1Panel 创建「反向代理」网站，代理到 http://127.0.0.1:8787
-  3. 在 1Panel 计划任务里加一条 SQLite 备份（见 deploy/README.md）
-  4. 配置 GitHub Secrets 后 push 代码，触发首次自动部署
+     PASSWORD_PEPPER / IP_HASH_SALT 若要从线上迁过来，必须与 Workers 上的值**完全一致**，
+     否则现有账号全部登录失效。
+  2. 在 1Panel 创建「反向代理」网站，代理到 http://127.0.0.1:8787，并申请 HTTPS 证书
+  3. 在 1Panel 计划任务里加一条：$APP_DIR/backup.sh（每天一次）
+  4. 配置 GitHub Secrets（SSH_HOST / SSH_USER / SSH_PRIVATE_KEY）后 push 代码，触发首次自动部署
+
+镜像里不含 node_modules（server.mjs 是单文件 bundle），
+所以服务器不需要能访问 npm registry。
 
 EOF

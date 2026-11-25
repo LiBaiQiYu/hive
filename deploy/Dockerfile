@@ -2,12 +2,14 @@
 # HIVE —— 自建服务器运行时镜像
 #
 # 构建**不在这里做**：GitHub Actions 用 4 核 16G 的机器跑 pnpm build，
-# 只把三个产物（server.mjs / migrate.mjs / public + migrations）传到服务器。
-# 这个镜像只负责「带着 Node + 运行期依赖跑起来」。
+# 只把四个产物（server.mjs / migrate.mjs / public / migrations）传到服务器。
 #
-# 构建上下文是 release 目录（deploy/docker-compose.yml 的 context: ./current），
-# 所以下面 COPY 的都是 release 里的文件 —— 代码不进 bind mount，
-# 每次部署由 CI 构建新镜像，天然避开「符号链接切换后 Docker 还挂旧目录」的坑。
+# 这个镜像里**没有任何 npm install**：server.mjs 已由 esbuild 把 nodemailer
+# 一起打进来（只有 node: 内置模块留给运行时）。好处是部署不依赖
+# npm registry 可达性——国内服务器常常卡在这一步，而且省掉一次网络安装。
+#
+# 构建上下文是 release 目录（deploy/docker-compose.yml 的 `build: ./current`），
+# 所以下面 COPY 的都是 release 里的文件；Dockerfile 本身由部署脚本复制进去。
 # ---------------------------------------------------------------------------
 FROM node:22-bookworm-slim
 
@@ -26,10 +28,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /srv
 
-# 唯一的运行期 npm 依赖：nodemailer（server.mjs 里被 esbuild 标成 external 的那个）
-RUN npm install --omit=dev --no-audit --no-fund nodemailer@10 && npm cache clean --force
-
-# 产物按 release 目录结构复制进来
+# 产物按 release 目录结构复制进来（无 node_modules 需要）
 COPY server.mjs /srv/app/server.mjs
 COPY migrate.mjs /srv/app/migrate.mjs
 COPY public /srv/app/public
@@ -47,4 +46,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD node -e "fetch('http://127.0.0.1:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
+# 先迁移再起服务：两步都幂等，迁移失败则容器直接退出（不会带着旧表结构对外服务）
 CMD ["sh", "-c", "node /srv/app/migrate.mjs && exec node /srv/app/server.mjs"]

@@ -4,8 +4,12 @@
 GitHub Actions 实现 `push main` 即自动部署。
 
 **核心取舍：构建在云端完成，服务器只负责运行。** 前端 `vite build` 和后端
-`esbuild` 都在 GitHub 的 4 核 16G 机器上跑完，只把 10 MB 左右的产物传过去——
+`esbuild` 都在 GitHub 的 4 核 16G 机器上跑完，只把 2 MB 左右的产物传过去——
 2 核 2G 的服务器全程不承担构建内存峰值。
+
+**镜像里没有任何 `npm install`**：`server.mjs` 是单文件 bundle（nodemailer 也打进去了，
+只留 `node:` 内置模块给运行时）。所以部署**不依赖 npm registry 可达性**——
+国内服务器常常卡在这一步，也省掉一次网络安装。
 
 ## 架构
 
@@ -196,7 +200,7 @@ git push origin main
 
 1. `Typecheck` / `Unit tests` — 约 30 秒
 2. `Build frontend` / `Build backend` — 约 1 分钟
-3. `Upload artifact and deploy script` — 传约 10 MB
+3. `Upload artifact and deploy script` — 传约 2 MB（server.mjs 911 KB + 前端产物）
 4. `Run remote deploy` — 服务器上：解包 → 切软链 → 构建镜像 → 重建容器 → 健康检查
 
 成功后访问 `https://hive.你的域名` 验证。
@@ -349,7 +353,8 @@ for (const t of ['users','events','registrations','matches','app_settings']) {
 | 出站邮件 | `send_email` 绑定（只发给已验证地址） | SMTP（可以发给任何人） |
 | 密码找回 | 玩家发信到 reset@，Worker 回信 | 填邮箱直接发信（`RESET_FLOW=self`） |
 | 收信 | Email Routing → Worker | **不支持**（没有收信入口） |
-| 版本回滚 | `wrangler versions deploy` | `current` 符号链接 + 重新构建镜像 |
+| 依赖安装 | wrangler 自动打包 | `server.mjs` 单文件 bundle，镜像里不装任何 npm 包 |
+| 版本回滚 | `wrangler versions deploy` | `current` 符号链接 + 版本镜像 tag |
 
 代码是同一份：`packages/api/src/app.ts` 与所有 routes / services 完全共用，
 差异只在入口层（`src/index.ts` vs `src/server/index.ts`）与邮件/数据库的绑定。
@@ -388,6 +393,22 @@ for (const t of ['users','events','registrations','matches','app_settings']) {
 `curl http://127.0.0.1:8787/api/health` 手动试。失败原因按顺序查：
 容器是否在跑 → 端口是否绑定 → `.env` 是否缺项 → 数据库文件权限（容器内是 `node` 用户，
 `shared/data` 必须可写）。
+
+**发信报 `Cannot find package 'nodemailer'` / 密码找回 500**
+说明 `server.mjs` 是**只打了一半**的产物。`packages/api/build-server.mjs` 的 `external`
+必须是 `['node:*']`——nodemailer 一旦被外置，容器里没有 node_modules 就加载不到，
+而且只在真正发信那一刻才炸（启动与页面都不受影响，很容易上线后才发现）。
+改完 `pnpm build:server` 后，产物应该 ~911 KB；查一遍：
+```bash
+grep -c "nodemailer" packages/api/dist/server.mjs   # 应该有命中
+```
+
+**想在服务器上直接跑（不用 Docker）**
+把 release 目录传上去即可，唯一要求是 **Node 22+**（`node:sqlite` 从 22 起可用）：
+```bash
+node migrate.mjs && node server.mjs
+```
+不需要 `npm install`——所有依赖都在 `server.mjs` 里。
 
 **想完全弃用 Cloudflare**
 确认 `https://hive.你的域名` 一切正常（首页、赛事、排行榜、战绩、绑定 Steam）后，
